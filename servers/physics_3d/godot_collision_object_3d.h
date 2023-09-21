@@ -180,11 +180,11 @@ public:
 	}
 
 	_FORCE_INLINE_ bool collides_with(GodotCollisionObject3D *p_other) const {
-		return shares_world(p_other) && (p_other->collision_layer & collision_mask);
+		return shares_world(p_other) && (p_other->collision_layer & collision_mask & ~COLLISION_WORLD);
 	}
 
 	_FORCE_INLINE_ bool interacts_with(const GodotCollisionObject3D *p_other) const {
-		return shares_world(p_other) && (collision_layer & p_other->collision_mask || p_other->collision_layer & collision_mask);
+		return shares_world(p_other) && (collision_layer & ~COLLISION_WORLD & p_other->collision_mask || p_other->collision_layer & ~COLLISION_WORLD & collision_mask);
 	}
 
 	void remove_shape(GodotShape3D *p_shape) override;
