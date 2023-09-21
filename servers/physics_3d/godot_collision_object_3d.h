@@ -45,7 +45,7 @@
 
 class GodotSpace3D;
 
-const uint32_t COLLISION_WORLD = (65535<<16);
+const uint32_t SHARD_MASK = (255);
 
 class GodotCollisionObject3D : public GodotShapeOwner3D {
 public:
@@ -176,15 +176,15 @@ public:
 	_FORCE_INLINE_ real_t get_collision_priority() const { return collision_priority; }
 
 	_FORCE_INLINE_ bool shares_world(const GodotCollisionObject3D *p_other) const {
-		return (COLLISION_WORLD & collision_layer) && ((COLLISION_WORLD & collision_layer) == (COLLISION_WORLD & p_other->collision_layer));
+		return (SHARD_MASK & collision_layer) && ((SHARD_MASK & collision_layer) == (SHARD_MASK & p_other->collision_layer));
 	}
 
 	_FORCE_INLINE_ bool collides_with(GodotCollisionObject3D *p_other) const {
-		return shares_world(p_other) && (p_other->collision_layer & collision_mask & ~COLLISION_WORLD);
+		return shares_world(p_other) && (p_other->collision_layer & collision_mask & ~SHARD_MASK);
 	}
 
 	_FORCE_INLINE_ bool interacts_with(const GodotCollisionObject3D *p_other) const {
-		return shares_world(p_other) && (collision_layer & ~COLLISION_WORLD & p_other->collision_mask || p_other->collision_layer & ~COLLISION_WORLD & collision_mask);
+		return shares_world(p_other) && (collision_layer & ~SHARD_MASK & p_other->collision_mask || p_other->collision_layer & ~SHARD_MASK & collision_mask);
 	}
 
 	void remove_shape(GodotShape3D *p_shape) override;

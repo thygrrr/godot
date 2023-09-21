@@ -46,6 +46,8 @@
 #include "servers/rendering/storage/utilities.h"
 #include "servers/xr/xr_interface.h"
 
+const uint32_t SHARD_MASK = (255);
+
 class RendererSceneCull : public RenderingMethod {
 public:
 	RendererSceneRender *scene_render = nullptr;
