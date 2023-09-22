@@ -1010,7 +1010,7 @@ void EditorPropertyLayersGrid::_notification(int p_what) {
 				Point2 ofs = block_ofs;
 
 				for (int i = 0; i < 2; i++) {
-					for (int j = 0; j < layer_group_size; j++) {
+					for (int j = 0; j < layer_group_size && layer_index < layer_count; j++) {
 						const bool on = value & (1 << layer_index);
 						Rect2 rect2 = Rect2(ofs, Size2(bsize, bsize));
 
@@ -1020,7 +1020,14 @@ void EditorPropertyLayersGrid::_notification(int p_what) {
 							color.a += 0.15;
 						}
 
-						draw_rect(rect2, color);
+						if (layer_index >= 24) 
+						{
+							auto alternative = color;
+							alternative.g = 0.5f;
+							draw_rect(rect2, alternative);
+						}
+						else draw_rect(rect2, color);
+
 						flag_rects.push_back(rect2);
 
 						Ref<Font> font = get_theme_font(SNAME("font"), SNAME("Label"));
