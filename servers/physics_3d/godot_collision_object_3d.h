@@ -45,7 +45,7 @@
 
 class GodotSpace3D;
 
-const uint32_t SHARD_MASK = (255);
+const uint32_t SHARD_MASK = (255 << 8);
 
 class GodotCollisionObject3D : public GodotShapeOwner3D {
 public:

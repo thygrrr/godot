@@ -1147,7 +1147,7 @@ void EditorPropertyLayers::setup(LayerType p_layer_type) {
 	switch (p_layer_type) {
 		case LAYER_RENDER_2D: {
 			basename = "layer_names/2d_render";
-			layer_group_size = 5;
+			layer_group_size = 4;
 			layer_count = 20;
 		} break;
 
@@ -1165,7 +1165,7 @@ void EditorPropertyLayers::setup(LayerType p_layer_type) {
 
 		case LAYER_RENDER_3D: {
 			basename = "layer_names/3d_render";
-			layer_group_size = 5;
+			layer_group_size = 4;
 			layer_count = 20;
 		} break;
 
