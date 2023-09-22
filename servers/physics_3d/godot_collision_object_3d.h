@@ -176,7 +176,7 @@ public:
 	_FORCE_INLINE_ real_t get_collision_priority() const { return collision_priority; }
 
 	_FORCE_INLINE_ bool shares_world(const GodotCollisionObject3D *p_other) const {
-		return (SHARD_MASK & collision_layer) && ((SHARD_MASK & collision_layer) == (SHARD_MASK & p_other->collision_layer));
+		return ((SHARD_MASK & collision_layer) == (SHARD_MASK & p_other->collision_layer));
 	}
 
 	_FORCE_INLINE_ bool collides_with(GodotCollisionObject3D *p_other) const {
