@@ -74,7 +74,7 @@ real_t Vector4::length() const {
 
 void Vector4::normalize() {
 	real_t lengthsq = length_squared();
-	if (lengthsq == 0) {
+	if (lengthsq < CMP_NORMALIZE_TOLERANCE) {
 		x = y = z = w = 0;
 	} else {
 		real_t length = Math::sqrt(lengthsq);

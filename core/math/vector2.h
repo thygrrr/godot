@@ -78,6 +78,7 @@ struct _NO_DISCARD_ Vector2 {
 	}
 
 	void normalize();
+	void normalize_safe();
 	Vector2 normalized() const;
 	bool is_normalized() const;
 

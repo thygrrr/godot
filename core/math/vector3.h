@@ -462,15 +462,11 @@ _FORCE_INLINE_ real_t vec3_dot(const Vector3 &p_a, const Vector3 &p_b) {
 	return p_a.dot(p_b);
 }
 
-real_t Vector3::length() const {
-	real_t x2 = x * x;
-	real_t y2 = y * y;
-	real_t z2 = z * z;
-
-	return Math::sqrt(x2 + y2 + z2);
+_FORCE_INLINE_ real_t Vector3::length() const {
+	return Math::sqrt(length_squared());
 }
 
-real_t Vector3::length_squared() const {
+_FORCE_INLINE_ real_t Vector3::length_squared() const {
 	real_t x2 = x * x;
 	real_t y2 = y * y;
 	real_t z2 = z * z;
@@ -480,7 +476,7 @@ real_t Vector3::length_squared() const {
 
 void Vector3::normalize() {
 	real_t lengthsq = length_squared();
-	if (lengthsq == 0) {
+	if (lengthsq < CMP_NORMALIZE_TOLERANCE) {
 		x = y = z = 0;
 	} else {
 		real_t length = Math::sqrt(lengthsq);
@@ -498,7 +494,7 @@ Vector3 Vector3::normalized() const {
 
 bool Vector3::is_normalized() const {
 	// use length_squared() instead of length() to avoid sqrt(), makes it more stringent.
-	return Math::is_equal_approx(length_squared(), 1, (real_t)UNIT_EPSILON);
+	return Math::is_equal_approx(length_squared(), 1, (real_t)CMP_NORMALIZE_TOLERANCE);
 }
 
 Vector3 Vector3::inverse() const {

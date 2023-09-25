@@ -71,19 +71,38 @@ bool Quaternion::is_finite() const {
 }
 
 real_t Quaternion::length() const {
-	return Math::sqrt(length_squared());
+	real_t l = length_squared();
+	if (l < CMP_NORMALIZE_TOLERANCE) return 0;
+	return Math::sqrt(l);
 }
 
-void Quaternion::normalize() {
-	*this /= length();
+void Quaternion::normalize() {	
+	real_t l = length_squared();
+	if (l < CMP_NORMALIZE_TOLERANCE) {
+		x = 0;
+		y = 0;
+		z = 0;
+		w = 1;
+	} else {
+		l = Math::sqrt(l);
+		x /= l;
+		y /= l;
+		z /= l;
+		w /= l;
+	}
 }
 
 Quaternion Quaternion::normalized() const {
-	return *this / length();
+	real_t l = length_squared();	
+	if (l < CMP_NORMALIZE_TOLERANCE) {
+		return Quaternion(0,0,0,1);
+	}
+	l = Math::sqrt(l);
+	return Quaternion(x/l,y/l,z/l,w/l);
 }
 
 bool Quaternion::is_normalized() const {
-	return Math::is_equal_approx(length_squared(), 1, (real_t)UNIT_EPSILON); //use less epsilon
+	return Math::is_equal_approx(length_squared(), 1, (real_t)CMP_NORMALIZE_TOLERANCE);
 }
 
 Quaternion Quaternion::inverse() const {
@@ -317,10 +336,13 @@ Quaternion::Quaternion(const Vector3 &p_axis, real_t p_angle) {
 // (ax, ay, az), where ax is the angle of rotation around x axis,
 // and similar for other axes.
 // This implementation uses YXZ convention (Z is the first rotation).
-Quaternion Quaternion::from_euler(const Vector3 &p_euler) {
-	real_t half_a1 = p_euler.y * 0.5f;
-	real_t half_a2 = p_euler.x * 0.5f;
-	real_t half_a3 = p_euler.z * 0.5f;
+Quaternion::Quaternion(const Vector3 &p_euler) : Quaternion(p_euler.x, p_euler.y, p_euler.z) {}
+
+Quaternion::Quaternion(real_t p_euler_x, real_t p_euler_y, real_t p_euler_z)
+{
+	real_t half_a1 = p_euler_y * 0.5f;
+	real_t half_a2 = p_euler_x * 0.5f;
+	real_t half_a3 = p_euler_z * 0.5f;
 
 	// R = Y(a1).X(a2).Z(a3) convention for Euler angles.
 	// Conversion to quaternion as listed in https://ntrs.nasa.gov/archive/nasa/casi.ntrs.nasa.gov/19770024290.pdf (page A-6)
@@ -333,9 +355,15 @@ Quaternion Quaternion::from_euler(const Vector3 &p_euler) {
 	real_t cos_a3 = Math::cos(half_a3);
 	real_t sin_a3 = Math::sin(half_a3);
 
-	return Quaternion(
-			sin_a1 * cos_a2 * sin_a3 + cos_a1 * sin_a2 * cos_a3,
-			sin_a1 * cos_a2 * cos_a3 - cos_a1 * sin_a2 * sin_a3,
-			-sin_a1 * sin_a2 * cos_a3 + cos_a1 * cos_a2 * sin_a3,
-			sin_a1 * sin_a2 * sin_a3 + cos_a1 * cos_a2 * cos_a3);
+	x = sin_a1 * cos_a2 * sin_a3 + cos_a1 * sin_a2 * cos_a3;
+	y =	sin_a1 * cos_a2 * cos_a3 - cos_a1 * sin_a2 * sin_a3;
+	z =	-sin_a1 * sin_a2 * cos_a3 + cos_a1 * cos_a2 * sin_a3;
+	w =	sin_a1 * sin_a2 * sin_a3 + cos_a1 * cos_a2 * cos_a3;
+}
+
+
+// This factory method can be safely deprecated, it is superseded by the appropriate constructor.
+// It is likely this is in use in many end-user code bases, so it is kept for now.
+Quaternion Quaternion::from_euler(const Vector3 &p_euler) {
+	return Quaternion(p_euler);
 }

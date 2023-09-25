@@ -125,9 +125,13 @@ struct _NO_DISCARD_ Quaternion {
 			w(p_w) {
 	}
 
-	Quaternion(const Vector3 &p_axis, real_t p_angle);
+	_FORCE_INLINE_ Quaternion(const Vector3 &p_axis, real_t p_angle);
 
-	Quaternion(const Quaternion &p_q) :
+	_FORCE_INLINE_ Quaternion(const Vector3 &p_euler);
+
+	_FORCE_INLINE_ Quaternion(real_t p_euler_x, real_t p_euler_y, real_t p_euler_z);
+
+	_FORCE_INLINE_ Quaternion(const Quaternion &p_q) :
 			x(p_q.x),
 			y(p_q.y),
 			z(p_q.z),

@@ -51,10 +51,15 @@ real_t Vector2::length_squared() const {
 
 void Vector2::normalize() {
 	real_t l = x * x + y * y;
-	if (l != 0) {
+	if (l > CMP_NORMALIZE_TOLERANCE) {
 		l = Math::sqrt(l);
 		x /= l;
 		y /= l;
+	}
+	else
+	{
+		x = 0;
+		y = 0;
 	}
 }
 
@@ -66,7 +71,7 @@ Vector2 Vector2::normalized() const {
 
 bool Vector2::is_normalized() const {
 	// use length_squared() instead of length() to avoid sqrt(), makes it more stringent.
-	return Math::is_equal_approx(length_squared(), 1, (real_t)UNIT_EPSILON);
+	return Math::is_equal_approx(length_squared(), 1, (real_t)CMP_NORMALIZE_TOLERANCE);
 }
 
 real_t Vector2::distance_to(const Vector2 &p_vector2) const {

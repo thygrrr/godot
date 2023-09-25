@@ -138,7 +138,7 @@ bool Vector3::is_equal_approx(const Vector3 &p_v) const {
 }
 
 bool Vector3::is_zero_approx() const {
-	return Math::is_zero_approx(x) && Math::is_zero_approx(y) && Math::is_zero_approx(z);
+	return length_squared() < CMP_NORMALIZE_TOLERANCE;
 }
 
 bool Vector3::is_finite() const {
