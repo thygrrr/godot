@@ -141,6 +141,11 @@ Comment: AMD FidelityFX Super Resolution
 Copyright: 2021, Advanced Micro Devices, Inc.
 License: Expat
 
+Files: ./thirdparty/amd-fsr2/
+Comment: AMD FidelityFX Super Resolution 2
+Copyright: 2022-2023, Advanced Micro Devices, Inc.
+License: Expat
+
 Files: ./thirdparty/angle/
 Comment: ANGLE
 Copyright: 2018, The ANGLE Project Authors.
@@ -165,6 +170,11 @@ Files: ./thirdparty/certs/ca-certificates.crt
 Comment: CA certificates
 Copyright: Mozilla Contributors
 License: MPL-2.0
+
+Files: ./thirdparty/clipper2/
+Comment: Clipper2
+Copyright: 2010-2013, Angus Johnson
+License: BSL-1.0
 
 Files: ./thirdparty/cvtt/
 Comment: Convection Texture Tools Stand-Alone Kernels
