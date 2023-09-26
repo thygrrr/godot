@@ -71,38 +71,33 @@ bool Quaternion::is_finite() const {
 }
 
 real_t Quaternion::length() const {
-	real_t l = length_squared();
-	if (l < CMP_NORMALIZE_TOLERANCE) return 0;
-	return Math::sqrt(l);
+	return Math::sqrt(length_squared());
 }
 
 void Quaternion::normalize() {	
-	real_t l = length_squared();
+	real_t l = length();
 	if (l < CMP_NORMALIZE_TOLERANCE) {
 		x = 0;
 		y = 0;
 		z = 0;
 		w = 1;
 	} else {
-		l = Math::sqrt(l);
-		x /= l;
-		y /= l;
-		z /= l;
-		w /= l;
+		l = 1.0f/l;
+		x *= l;
+		y *= l;
+		z *= l;
+		w *= l;
 	}
 }
 
 Quaternion Quaternion::normalized() const {
-	real_t l = length_squared();	
-	if (l < CMP_NORMALIZE_TOLERANCE) {
-		return Quaternion(0,0,0,1);
-	}
-	l = Math::sqrt(l);
-	return Quaternion(x/l,y/l,z/l,w/l);
+	Quaternion q = *this;
+	q.normalize();
+	return q;
 }
 
 bool Quaternion::is_normalized() const {
-	return Math::is_equal_approx(length_squared(), 1, (real_t)CMP_NORMALIZE_TOLERANCE);
+	return Math::is_equal_approx(length_squared(), 1, (real_t)UNIT_EPSILON);
 }
 
 Quaternion Quaternion::inverse() const {
