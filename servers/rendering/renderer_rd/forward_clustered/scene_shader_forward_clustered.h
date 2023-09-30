@@ -155,6 +155,8 @@ public:
 
 		DepthDraw depth_draw = DEPTH_DRAW_OPAQUE;
 		DepthTest depth_test = DEPTH_TEST_ENABLED;
+		RD::CompareOperator depth_func = RD::CompareOperator::COMPARE_OP_LESS_OR_EQUAL;
+		RD::CompareOperator depth_func_prepass = RD::CompareOperator::COMPARE_OP_EQUAL;
 
 		bool uses_point_size = false;
 		bool uses_alpha = false;

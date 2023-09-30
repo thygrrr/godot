@@ -55,6 +55,7 @@ void SceneShaderForwardMobile::ShaderData::set_code(const String &p_code) {
 
 	int blend_mode = BLEND_MODE_MIX;
 	int depth_testi = DEPTH_TEST_ENABLED;
+	int depth_funci = DEPTH_LESS_EQUAL;
 	int alpha_antialiasing_mode = ALPHA_ANTIALIASING_OFF;
 	int cull = CULL_BACK;
 
@@ -98,6 +99,9 @@ void SceneShaderForwardMobile::ShaderData::set_code(const String &p_code) {
 	actions.render_mode_values["depth_draw_always"] = Pair<int *, int>(&depth_drawi, DEPTH_DRAW_ALWAYS);
 
 	actions.render_mode_values["depth_test_disabled"] = Pair<int *, int>(&depth_testi, DEPTH_TEST_DISABLED);
+
+	actions.render_mode_values["depth_func_less_equal"] = Pair<int *, int>(&depth_funci, DEPTH_LESS_EQUAL);
+	actions.render_mode_values["depth_func_greater"] = Pair<int *, int>(&depth_funci, DEPTH_GREATER);
 
 	actions.render_mode_values["cull_disabled"] = Pair<int *, int>(&cull, CULL_DISABLED);
 	actions.render_mode_values["cull_front"] = Pair<int *, int>(&cull, CULL_FRONT);

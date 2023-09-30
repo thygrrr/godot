@@ -53,6 +53,8 @@ void SceneShaderForwardClustered::ShaderData::set_code(const String &p_code) {
 
 	int blend_mode = BLEND_MODE_MIX;
 	int depth_testi = DEPTH_TEST_ENABLED;
+	int depth_funci = RD::CompareOperator::COMPARE_OP_LESS_OR_EQUAL;
+	int depth_func_prepassi = RD::CompareOperator::COMPARE_OP_EQUAL;
 	int alpha_antialiasing_mode = ALPHA_ANTIALIASING_OFF;
 	int cull_modei = CULL_BACK;
 
@@ -98,6 +100,15 @@ void SceneShaderForwardClustered::ShaderData::set_code(const String &p_code) {
 
 	actions.render_mode_values["depth_test_disabled"] = Pair<int *, int>(&depth_testi, DEPTH_TEST_DISABLED);
 
+	actions.render_mode_values["depth_func_less"] = Pair<int *, int>(&depth_funci, RD::CompareOperator::COMPARE_OP_LESS);
+	actions.render_mode_values["depth_func_less_equal"] = Pair<int *, int>(&depth_funci, RD::CompareOperator::COMPARE_OP_LESS_OR_EQUAL);
+	actions.render_mode_values["depth_func_greater_equal"] = Pair<int *, int>(&depth_funci, RD::CompareOperator::COMPARE_OP_GREATER_OR_EQUAL);
+	actions.render_mode_values["depth_func_greater"] = Pair<int *, int>(&depth_funci, RD::CompareOperator::COMPARE_OP_GREATER);
+	actions.render_mode_values["depth_func_always"] = Pair<int *, int>(&depth_funci, RD::CompareOperator::COMPARE_OP_ALWAYS);
+	actions.render_mode_values["depth_func_never"] = Pair<int *, int>(&depth_funci, RD::CompareOperator::COMPARE_OP_NEVER);
+	actions.render_mode_values["depth_func_equal"] = Pair<int *, int>(&depth_funci, RD::CompareOperator::COMPARE_OP_EQUAL);
+	actions.render_mode_values["depth_func_not_equal"] = Pair<int *, int>(&depth_funci, RD::CompareOperator::COMPARE_OP_NOT_EQUAL);	
+
 	actions.render_mode_values["cull_disabled"] = Pair<int *, int>(&cull_modei, CULL_DISABLED);
 	actions.render_mode_values["cull_front"] = Pair<int *, int>(&cull_modei, CULL_FRONT);
 	actions.render_mode_values["cull_back"] = Pair<int *, int>(&cull_modei, CULL_BACK);
@@ -142,6 +153,9 @@ void SceneShaderForwardClustered::ShaderData::set_code(const String &p_code) {
 
 	depth_draw = DepthDraw(depth_drawi);
 	depth_test = DepthTest(depth_testi);
+	depth_func = RD::CompareOperator(depth_funci);
+	depth_func_prepass = RD::CompareOperator(depth_func_prepassi);
+
 	cull_mode = Cull(cull_modei);
 	uses_screen_texture_mipmaps = gen_code.uses_screen_texture_mipmaps;
 	uses_screen_texture = gen_code.uses_screen_texture;
@@ -250,8 +264,10 @@ void SceneShaderForwardClustered::ShaderData::set_code(const String &p_code) {
 
 	if (depth_test != DEPTH_TEST_DISABLED) {
 		depth_stencil_state.enable_depth_test = true;
-		depth_stencil_state.depth_compare_operator = RD::COMPARE_OP_LESS_OR_EQUAL;
+		//depth_stencil_state.depth_compare_operator = RD::COMPARE_OP_LESS_OR_EQUAL;
 		depth_stencil_state.enable_depth_write = depth_draw != DEPTH_DRAW_DISABLED ? true : false;
+
+		depth_stencil_state.depth_compare_operator = depth_func;
 	}
 	bool depth_pre_pass_enabled = bool(GLOBAL_GET("rendering/driver/depth_prepass/enable"));
 
@@ -331,7 +347,7 @@ void SceneShaderForwardClustered::ShaderData::set_code(const String &p_code) {
 								// We already have a depth from the depth pre-pass, there is no need to write it again.
 								// In addition we can use COMPARE_OP_EQUAL instead of COMPARE_OP_LESS_OR_EQUAL.
 								// This way we can use the early depth test to discard transparent fragments before the fragment shader even starts.
-								depth_stencil.depth_compare_operator = RD::COMPARE_OP_EQUAL;
+								depth_stencil.depth_compare_operator = depth_func_prepass;
 								depth_stencil.enable_depth_write = false;
 							}
 

@@ -75,6 +75,17 @@ public:
 			DEPTH_TEST_ENABLED
 		};
 
+		enum DepthFunc {
+			DEPTH_LESS,
+			DEPTH_LESS_EQUAL,
+			DEPTH_EQUAL,
+			DEPTH_GREATER_EQUAL,
+			DEPTH_GREATER,
+			DEPTH_NOT_EQUAL,
+			DEPTH_NEVER,
+			DEPTH_ALWAYS
+		};
+
 		enum Cull {
 			CULL_DISABLED,
 			CULL_FRONT,
