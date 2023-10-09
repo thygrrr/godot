@@ -913,6 +913,8 @@ Ref<Theme> create_editor_theme(const Ref<Theme> p_theme) {
 	style_tab_disabled->set_bg_color(disabled_bg_color);
 	style_tab_disabled->set_border_color(disabled_bg_color);
 
+	Ref<StyleBoxFlat> style_tab_focus = style_widget_focus->duplicate();
+
 	// Editor background
 	Color background_color_opaque = background_color;
 	background_color_opaque.a = 1.0;
@@ -949,7 +951,7 @@ Ref<Theme> create_editor_theme(const Ref<Theme> p_theme) {
 	toolbar_stylebox->set_border_color(accent_color);
 	toolbar_stylebox->set_border_width(SIDE_BOTTOM, Math::round(2 * EDSCALE));
 	toolbar_stylebox->set_content_margin(SIDE_BOTTOM, 0);
-	toolbar_stylebox->set_expand_margin_all(2 * EDSCALE);
+	toolbar_stylebox->set_expand_margin_individual(4 * EDSCALE, 2 * EDSCALE, 4 * EDSCALE, 4 * EDSCALE);
 	theme->set_stylebox("ContextualToolbar", EditorStringName(EditorStyles), toolbar_stylebox);
 
 	// Script Editor
@@ -1020,6 +1022,30 @@ Ref<Theme> create_editor_theme(const Ref<Theme> p_theme) {
 	theme->set_constant("h_separation", "Button", 4 * EDSCALE);
 	theme->set_constant("outline_size", "Button", 0);
 
+	// Flat button variations.
+
+	Ref<StyleBoxEmpty> style_flat_button = make_empty_stylebox();
+	for (int i = 0; i < 4; i++) {
+		style_flat_button->set_content_margin((Side)i, style_widget->get_margin((Side)i) + style_widget->get_border_width((Side)i));
+	}
+
+	Ref<StyleBoxFlat> style_flat_button_pressed = style_widget_pressed->duplicate();
+	Color flat_pressed_color = dark_color_1.lightened(0.24).lerp(accent_color, 0.2) * Color(0.8, 0.8, 0.8, 0.85);
+	if (dark_theme) {
+		flat_pressed_color = dark_color_1.lerp(accent_color, 0.12) * Color(0.6, 0.6, 0.6, 0.85);
+	}
+	style_flat_button_pressed->set_bg_color(flat_pressed_color);
+
+	theme->set_stylebox("normal", "FlatButton", style_flat_button);
+	theme->set_stylebox("hover", "FlatButton", style_flat_button);
+	theme->set_stylebox("pressed", "FlatButton", style_flat_button_pressed);
+	theme->set_stylebox("disabled", "FlatButton", style_flat_button);
+
+	theme->set_stylebox("normal", "FlatMenuButton", style_flat_button);
+	theme->set_stylebox("hover", "FlatMenuButton", style_flat_button);
+	theme->set_stylebox("pressed", "FlatMenuButton", style_flat_button_pressed);
+	theme->set_stylebox("disabled", "FlatMenuButton", style_flat_button);
+
 	const float ACTION_BUTTON_EXTRA_MARGIN = 32 * EDSCALE;
 
 	theme->set_type_variation("InspectorActionButton", "Button");
@@ -1048,7 +1074,8 @@ Ref<Theme> create_editor_theme(const Ref<Theme> p_theme) {
 	theme->set_color("icon_normal_color", "EditorLogFilterButton", icon_disabled_color);
 	// When pressed, add a small bottom border to the buttons to better show their active state,
 	// similar to active tabs.
-	Ref<StyleBoxFlat> editor_log_button_pressed = style_widget_pressed->duplicate();
+
+	Ref<StyleBoxFlat> editor_log_button_pressed = style_flat_button_pressed->duplicate();
 	editor_log_button_pressed->set_border_width(SIDE_BOTTOM, 2 * EDSCALE);
 	editor_log_button_pressed->set_border_color(accent_color);
 	theme->set_stylebox("pressed", "EditorLogFilterButton", editor_log_button_pressed);
@@ -1103,7 +1130,6 @@ Ref<Theme> create_editor_theme(const Ref<Theme> p_theme) {
 	theme->set_stylebox("normal", "MenuBar", style_widget);
 	theme->set_stylebox("hover", "MenuBar", style_widget_hover);
 	theme->set_stylebox("pressed", "MenuBar", style_widget_pressed);
-	theme->set_stylebox("focus", "MenuBar", style_widget_focus);
 	theme->set_stylebox("disabled", "MenuBar", style_widget_disabled);
 
 	theme->set_color("font_color", "MenuBar", font_color);
@@ -1536,10 +1562,12 @@ Ref<Theme> create_editor_theme(const Ref<Theme> p_theme) {
 	theme->set_stylebox("tab_hovered", "TabContainer", style_tab_hovered);
 	theme->set_stylebox("tab_unselected", "TabContainer", style_tab_unselected);
 	theme->set_stylebox("tab_disabled", "TabContainer", style_tab_disabled);
+	theme->set_stylebox("tab_focus", "TabContainer", style_tab_focus);
 	theme->set_stylebox("tab_selected", "TabBar", style_tab_selected);
 	theme->set_stylebox("tab_hovered", "TabBar", style_tab_hovered);
 	theme->set_stylebox("tab_unselected", "TabBar", style_tab_unselected);
 	theme->set_stylebox("tab_disabled", "TabBar", style_tab_disabled);
+	theme->set_stylebox("tab_focus", "TabBar", style_tab_focus);
 	theme->set_stylebox("button_pressed", "TabBar", style_menu);
 	theme->set_stylebox("button_highlight", "TabBar", style_menu);
 	theme->set_color("font_selected_color", "TabContainer", font_color);
@@ -1889,6 +1917,10 @@ Ref<Theme> create_editor_theme(const Ref<Theme> p_theme) {
 
 	theme->set_constant("outline_size", "LinkButton", 0);
 
+	theme->set_type_variation("HeaderSmallLink", "LinkButton");
+	theme->set_font("font", "HeaderSmallLink", theme->get_font(SNAME("font"), SNAME("HeaderSmall")));
+	theme->set_font_size("font_size", "HeaderSmallLink", theme->get_font_size(SNAME("font_size"), SNAME("HeaderSmall")));
+
 	// TooltipPanel + TooltipLabel
 	// TooltipPanel is also used for custom tooltips, while TooltipLabel
 	// is only relevant for default tooltips.
@@ -1928,6 +1960,9 @@ Ref<Theme> create_editor_theme(const Ref<Theme> p_theme) {
 
 	// GraphEdit
 	theme->set_stylebox("panel", "GraphEdit", style_tree_bg);
+	Ref<StyleBoxFlat> graph_toolbar_style = make_flat_stylebox(dark_color_1 * Color(1, 1, 1, 0.6), 4, 2, 4, 2, 3);
+	theme->set_stylebox("menu_panel", "GraphEdit", graph_toolbar_style);
+
 	if (dark_theme) {
 		theme->set_color("grid_major", "GraphEdit", Color(1.0, 1.0, 1.0, 0.1));
 		theme->set_color("grid_minor", "GraphEdit", Color(1.0, 1.0, 1.0, 0.05));
@@ -2297,7 +2332,6 @@ Ref<Theme> create_editor_theme(const Ref<Theme> p_theme) {
 	theme->set_color("completion_existing_color", "CodeEdit", EDITOR_GET("text_editor/theme/highlighting/completion_existing_color"));
 	theme->set_color("completion_scroll_color", "CodeEdit", EDITOR_GET("text_editor/theme/highlighting/completion_scroll_color"));
 	theme->set_color("completion_scroll_hovered_color", "CodeEdit", EDITOR_GET("text_editor/theme/highlighting/completion_scroll_hovered_color"));
-	theme->set_color("completion_font_color", "CodeEdit", EDITOR_GET("text_editor/theme/highlighting/completion_font_color"));
 	theme->set_color("font_color", "CodeEdit", EDITOR_GET("text_editor/theme/highlighting/text_color"));
 	theme->set_color("line_number_color", "CodeEdit", EDITOR_GET("text_editor/theme/highlighting/line_number_color"));
 	theme->set_color("caret_color", "CodeEdit", EDITOR_GET("text_editor/theme/highlighting/caret_color"));

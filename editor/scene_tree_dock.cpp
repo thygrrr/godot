@@ -1548,7 +1548,7 @@ void SceneTreeDock::_fill_path_renames(Vector<StringName> base_path, Vector<Stri
 bool SceneTreeDock::_has_tracks_to_delete(Node *p_node, List<Node *> &p_to_delete) const {
 	AnimationPlayer *ap = Object::cast_to<AnimationPlayer>(p_node);
 	if (ap) {
-		Node *root = ap->get_node(ap->get_root());
+		Node *root = ap->get_node(ap->get_root_node());
 		if (root && !p_to_delete.find(root)) {
 			List<StringName> anims;
 			ap->get_animation_list(&anims);
@@ -1683,6 +1683,32 @@ bool SceneTreeDock::_check_node_path_recursive(Node *p_root_node, Variant &r_var
 			}
 		} break;
 
+		case Variant::OBJECT: {
+			Resource *resource = Object::cast_to<Resource>(r_variant);
+			if (!resource) {
+				break;
+			}
+
+			List<PropertyInfo> properties;
+			resource->get_property_list(&properties);
+
+			for (const PropertyInfo &E : properties) {
+				if (!(E.usage & (PROPERTY_USAGE_STORAGE | PROPERTY_USAGE_EDITOR))) {
+					continue;
+				}
+				String propertyname = E.name;
+				Variant old_variant = resource->get(propertyname);
+				Variant updated_variant = old_variant;
+				if (_check_node_path_recursive(p_root_node, updated_variant, p_renames)) {
+					EditorUndoRedoManager *undo_redo = EditorUndoRedoManager::get_singleton();
+					undo_redo->add_do_property(resource, propertyname, updated_variant);
+					undo_redo->add_undo_property(resource, propertyname, old_variant);
+					resource->set(propertyname, updated_variant);
+				}
+			}
+			break;
+		};
+
 		default: {
 		}
 	}
@@ -1735,7 +1761,7 @@ void SceneTreeDock::perform_node_renames(Node *p_base, HashMap<Node *, NodePath>
 		AnimationPlayer *ap = Object::cast_to<AnimationPlayer>(p_base);
 		List<StringName> anims;
 		ap->get_animation_list(&anims);
-		Node *root = ap->get_node(ap->get_root());
+		Node *root = ap->get_node(ap->get_root_node());
 
 		if (root) {
 			HashMap<Node *, NodePath>::Iterator found_root_path = p_renames->find(root);
@@ -2924,7 +2950,7 @@ void SceneTreeDock::_add_children_to_popup(Object *p_obj, int p_depth) {
 
 void SceneTreeDock::_tree_rmb(const Vector2 &p_menu_pos) {
 	if (!EditorNode::get_singleton()->get_edited_scene()) {
-		menu->clear();
+		menu->clear(false);
 		if (profile_allow_editing) {
 			menu->add_icon_shortcut(get_editor_theme_icon(SNAME("Add")), ED_GET_SHORTCUT("scene_tree/add_child_node"), TOOL_NEW);
 			menu->add_icon_shortcut(get_editor_theme_icon(SNAME("Instance")), ED_GET_SHORTCUT("scene_tree/instantiate_scene"), TOOL_INSTANTIATE);
@@ -2943,7 +2969,7 @@ void SceneTreeDock::_tree_rmb(const Vector2 &p_menu_pos) {
 		return;
 	}
 
-	menu->clear();
+	menu->clear(false);
 
 	Ref<Script> existing_script;
 	bool existing_script_removable = true;

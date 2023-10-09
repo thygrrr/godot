@@ -92,7 +92,7 @@ String AnimationNodeStateMachineEditor::_get_root_playback_path(String &r_node_d
 	if (edited_path.size()) {
 		while (!is_playable_anodesm_found) {
 			base_path = String("/").join(edited_path);
-			Ref<AnimationNodeStateMachine> anodesm = !edited_path.size() ? tree->get_tree_root() : tree->get_tree_root()->find_node_by_path(base_path);
+			Ref<AnimationNodeStateMachine> anodesm = !edited_path.size() ? Ref<AnimationNode>(tree->get_root_animation_node().ptr()) : tree->get_root_animation_node()->find_node_by_path(base_path);
 			if (!anodesm.is_valid()) {
 				break;
 			} else {
@@ -557,18 +557,12 @@ void AnimationNodeStateMachineEditor::_open_menu(const Vector2 &p_position) {
 		return;
 	}
 
-	menu->clear();
+	menu->clear(false);
 	animations_menu->clear();
 	animations_to_add.clear();
 
 	List<StringName> animation_names;
-	if (tree->has_node(tree->get_animation_player())) {
-		AnimationPlayer *ap = Object::cast_to<AnimationPlayer>(tree->get_node(tree->get_animation_player()));
-		if (ap) {
-			ap->get_animation_list(&animation_names);
-		}
-	}
-
+	tree->get_animation_list(&animation_names);
 	menu->add_submenu_item(TTR("Add Animation"), "animations");
 	if (animation_names.is_empty()) {
 		menu->set_item_disabled(menu->get_item_idx_from_text(TTR("Add Animation")), true);
@@ -1676,7 +1670,7 @@ AnimationNodeStateMachineEditor::AnimationNodeStateMachineEditor() {
 	bg.instantiate();
 
 	tool_select = memnew(Button);
-	tool_select->set_flat(true);
+	tool_select->set_theme_type_variation("FlatButton");
 	top_hb->add_child(tool_select);
 	tool_select->set_toggle_mode(true);
 	tool_select->set_button_group(bg);
@@ -1685,7 +1679,7 @@ AnimationNodeStateMachineEditor::AnimationNodeStateMachineEditor() {
 	tool_select->connect("pressed", callable_mp(this, &AnimationNodeStateMachineEditor::_update_mode), CONNECT_DEFERRED);
 
 	tool_create = memnew(Button);
-	tool_create->set_flat(true);
+	tool_create->set_theme_type_variation("FlatButton");
 	top_hb->add_child(tool_create);
 	tool_create->set_toggle_mode(true);
 	tool_create->set_button_group(bg);
@@ -1693,7 +1687,7 @@ AnimationNodeStateMachineEditor::AnimationNodeStateMachineEditor() {
 	tool_create->connect("pressed", callable_mp(this, &AnimationNodeStateMachineEditor::_update_mode), CONNECT_DEFERRED);
 
 	tool_connect = memnew(Button);
-	tool_connect->set_flat(true);
+	tool_connect->set_theme_type_variation("FlatButton");
 	top_hb->add_child(tool_connect);
 	tool_connect->set_toggle_mode(true);
 	tool_connect->set_button_group(bg);
@@ -1706,7 +1700,7 @@ AnimationNodeStateMachineEditor::AnimationNodeStateMachineEditor() {
 	selection_tools_hb->add_child(memnew(VSeparator));
 
 	tool_erase = memnew(Button);
-	tool_erase->set_flat(true);
+	tool_erase->set_theme_type_variation("FlatButton");
 	tool_erase->set_tooltip_text(TTR("Remove selected node or transition."));
 	tool_erase->connect("pressed", callable_mp(this, &AnimationNodeStateMachineEditor::_erase_selected).bind(false));
 	tool_erase->set_disabled(true);
@@ -1721,7 +1715,7 @@ AnimationNodeStateMachineEditor::AnimationNodeStateMachineEditor() {
 	transition_tools_hb->add_child(switch_mode);
 
 	auto_advance = memnew(Button);
-	auto_advance->set_flat(true);
+	auto_advance->set_theme_type_variation("FlatButton");
 	auto_advance->set_tooltip_text(TTR("New Transitions Should Auto Advance"));
 	auto_advance->set_toggle_mode(true);
 	auto_advance->set_pressed(true);

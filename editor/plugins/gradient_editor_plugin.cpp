@@ -531,7 +531,7 @@ void GradientEdit::_redraw() {
 			draw_texture(get_theme_icon(SNAME("overbright_indicator"), SNAME("ColorPicker")), Point2(button_offset, 0));
 		}
 	} else {
-		// If no color is selected, draw grey color with 'X' on top.
+		// If no color is selected, draw gray color with 'X' on top.
 		draw_rect(Rect2(button_offset, 0, h, h), Color(0.5, 0.5, 0.5, 1));
 		draw_line(Vector2(button_offset, 0), Vector2(button_offset + h, h), Color(0.8, 0.8, 0.8));
 		draw_line(Vector2(button_offset, h), Vector2(button_offset + h, 0), Color(0.8, 0.8, 0.8));
@@ -659,7 +659,7 @@ bool EditorInspectorPluginGradient::can_handle(Object *p_object) {
 
 void EditorInspectorPluginGradient::parse_begin(Object *p_object) {
 	Gradient *gradient = Object::cast_to<Gradient>(p_object);
-	ERR_FAIL_COND(!gradient);
+	ERR_FAIL_NULL(gradient);
 	Ref<Gradient> g(gradient);
 
 	GradientEditor *editor = memnew(GradientEditor);

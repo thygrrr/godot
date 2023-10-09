@@ -267,6 +267,7 @@ typedef void (*GDExtensionClassUnreference)(GDExtensionClassInstancePtr p_instan
 typedef void (*GDExtensionClassCallVirtual)(GDExtensionClassInstancePtr p_instance, const GDExtensionConstTypePtr *p_args, GDExtensionTypePtr r_ret);
 typedef GDExtensionObjectPtr (*GDExtensionClassCreateInstance)(void *p_class_userdata);
 typedef void (*GDExtensionClassFreeInstance)(void *p_class_userdata, GDExtensionClassInstancePtr p_instance);
+typedef GDExtensionClassInstancePtr (*GDExtensionClassRecreateInstance)(void *p_class_userdata, GDExtensionObjectPtr p_object);
 typedef GDExtensionClassCallVirtual (*GDExtensionClassGetVirtual)(void *p_class_userdata, GDExtensionConstStringNamePtr p_name);
 typedef void *(*GDExtensionClassGetVirtualCallData)(void *p_class_userdata, GDExtensionConstStringNamePtr p_name);
 typedef void (*GDExtensionClassCallVirtualWithData)(GDExtensionClassInstancePtr p_instance, GDExtensionConstStringNamePtr p_name, void *p_virtual_call_userdata, const GDExtensionConstTypePtr *p_args, GDExtensionTypePtr r_ret);
@@ -308,6 +309,7 @@ typedef struct {
 	GDExtensionClassUnreference unreference_func;
 	GDExtensionClassCreateInstance create_instance_func; // (Default) constructor; mandatory. If the class is not instantiable, consider making it virtual or abstract.
 	GDExtensionClassFreeInstance free_instance_func; // Destructor; mandatory.
+	GDExtensionClassRecreateInstance recreate_instance_func;
 	// Queries a virtual function by name and returns a callback to invoke the requested virtual function.
 	GDExtensionClassGetVirtual get_virtual_func;
 	// Paired with `call_virtual_with_data_func`, this is an alternative to `get_virtual_func` for extensions that
@@ -428,6 +430,8 @@ typedef GDExtensionBool (*GDExtensionScriptInstanceSet)(GDExtensionScriptInstanc
 typedef GDExtensionBool (*GDExtensionScriptInstanceGet)(GDExtensionScriptInstanceDataPtr p_instance, GDExtensionConstStringNamePtr p_name, GDExtensionVariantPtr r_ret);
 typedef const GDExtensionPropertyInfo *(*GDExtensionScriptInstanceGetPropertyList)(GDExtensionScriptInstanceDataPtr p_instance, uint32_t *r_count);
 typedef void (*GDExtensionScriptInstanceFreePropertyList)(GDExtensionScriptInstanceDataPtr p_instance, const GDExtensionPropertyInfo *p_list);
+typedef GDExtensionBool (*GDExtensionScriptInstanceGetClassCategory)(GDExtensionScriptInstanceDataPtr p_instance, GDExtensionPropertyInfo *p_class_category);
+
 typedef GDExtensionVariantType (*GDExtensionScriptInstanceGetPropertyType)(GDExtensionScriptInstanceDataPtr p_instance, GDExtensionConstStringNamePtr p_name, GDExtensionBool *r_is_valid);
 typedef GDExtensionBool (*GDExtensionScriptInstanceValidateProperty)(GDExtensionScriptInstanceDataPtr p_instance, GDExtensionPropertyInfo *p_property);
 
@@ -506,6 +510,7 @@ typedef struct {
 	GDExtensionScriptInstanceGet get_func;
 	GDExtensionScriptInstanceGetPropertyList get_property_list_func;
 	GDExtensionScriptInstanceFreePropertyList free_property_list_func;
+	GDExtensionScriptInstanceGetClassCategory get_class_category_func; // Optional. Set to NULL for the default behavior.
 
 	GDExtensionScriptInstancePropertyCanRevert property_can_revert_func;
 	GDExtensionScriptInstancePropertyGetRevert property_get_revert_func;
@@ -2185,6 +2190,17 @@ typedef void *(*GDExtensionInterfaceObjectGetInstanceBinding)(GDExtensionObjectP
  * @param p_callbacks A pointer to a GDExtensionInstanceBindingCallbacks struct.
  */
 typedef void (*GDExtensionInterfaceObjectSetInstanceBinding)(GDExtensionObjectPtr p_o, void *p_token, void *p_binding, const GDExtensionInstanceBindingCallbacks *p_callbacks);
+
+/**
+ * @name object_free_instance_binding
+ * @since 4.2
+ *
+ * Free an Object's instance binding.
+ *
+ * @param p_o A pointer to the Object.
+ * @param p_library A token the library received by the GDExtension's entry point function.
+ */
+typedef void (*GDExtensionInterfaceObjectFreeInstanceBinding)(GDExtensionObjectPtr p_o, void *p_token);
 
 /**
  * @name object_set_instance

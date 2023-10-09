@@ -73,7 +73,7 @@ Vector<uint8_t> RenderingDevice::shader_compile_spirv_from_source(ShaderStage p_
 		}
 	}
 
-	ERR_FAIL_COND_V(!compile_to_spirv_function, Vector<uint8_t>());
+	ERR_FAIL_NULL_V(compile_to_spirv_function, Vector<uint8_t>());
 
 	return compile_to_spirv_function(p_stage, p_source_code, p_language, r_error, this);
 }
@@ -643,7 +643,7 @@ Error RenderingDevice::_reflect_spirv(const Vector<ShaderStageSPIRVData> &p_spir
 
 					for (uint32_t j = 0; j < iv_count; j++) {
 						if (input_vars[j] && input_vars[j]->decoration_flags == 0) { // Regular input.
-							r_reflection_data.vertex_input_mask |= (1 << uint32_t(input_vars[j]->location));
+							r_reflection_data.vertex_input_mask |= (1ULL << uint32_t(input_vars[j]->location));
 						}
 					}
 				}

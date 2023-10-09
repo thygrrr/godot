@@ -195,10 +195,7 @@ void DisplayServerIOS::send_window_event(DisplayServer::WindowEvent p_event) con
 
 void DisplayServerIOS::_window_callback(const Callable &p_callable, const Variant &p_arg) const {
 	if (!p_callable.is_null()) {
-		const Variant *argp = &p_arg;
-		Variant ret;
-		Callable::CallError ce;
-		p_callable.callp((const Variant **)&argp, 1, ret, ce);
+		p_callable.call(p_arg);
 	}
 }
 
@@ -354,20 +351,32 @@ void DisplayServerIOS::tts_stop() {
 	[tts stopSpeaking];
 }
 
-Rect2i DisplayServerIOS::get_display_safe_area() const {
-	if (@available(iOS 11, *)) {
-		UIEdgeInsets insets = UIEdgeInsetsZero;
-		UIView *view = AppDelegate.viewController.godotView;
-		if ([view respondsToSelector:@selector(safeAreaInsets)]) {
-			insets = [view safeAreaInsets];
-		}
-		float scale = screen_get_scale();
-		Size2i insets_position = Size2i(insets.left, insets.top) * scale;
-		Size2i insets_size = Size2i(insets.left + insets.right, insets.top + insets.bottom) * scale;
-		return Rect2i(screen_get_position() + insets_position, screen_get_size() - insets_size);
+bool DisplayServerIOS::is_dark_mode_supported() const {
+	if (@available(iOS 13.0, *)) {
+		return true;
 	} else {
-		return Rect2i(screen_get_position(), screen_get_size());
+		return false;
 	}
+}
+
+bool DisplayServerIOS::is_dark_mode() const {
+	if (@available(iOS 13.0, *)) {
+		return [UITraitCollection currentTraitCollection].userInterfaceStyle == UIUserInterfaceStyleDark;
+	} else {
+		return false;
+	}
+}
+
+Rect2i DisplayServerIOS::get_display_safe_area() const {
+	UIEdgeInsets insets = UIEdgeInsetsZero;
+	UIView *view = AppDelegate.viewController.godotView;
+	if ([view respondsToSelector:@selector(safeAreaInsets)]) {
+		insets = [view safeAreaInsets];
+	}
+	float scale = screen_get_scale();
+	Size2i insets_position = Size2i(insets.left, insets.top) * scale;
+	Size2i insets_size = Size2i(insets.left + insets.right, insets.top + insets.bottom) * scale;
+	return Rect2i(screen_get_position() + insets_position, screen_get_size() - insets_size);
 }
 
 int DisplayServerIOS::get_screen_count() const {
