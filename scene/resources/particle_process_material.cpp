@@ -531,10 +531,10 @@ void ParticleProcessMaterial::_update_shader() {
 
 	code += "\n";
 	code += "void calculate_initial_physical_params(inout PhysicalParameters params, inout uint alt_seed){\n";
-	code += "	params.linear_accel = mix(linear_accel_min, linear_accel_min ,rand_from_seed(alt_seed));\n";
-	code += "	params.radial_accel = mix(radial_accel_min, radial_accel_min,rand_from_seed(alt_seed));\n";
-	code += "	params.tangent_accel = mix(tangent_accel_min, tangent_accel_max,rand_from_seed(alt_seed));\n";
-	code += "	params.damping = mix(damping_min, damping_max,rand_from_seed(alt_seed));\n";
+	code += "	params.linear_accel = mix(linear_accel_min, linear_accel_max, rand_from_seed(alt_seed));\n";
+	code += "	params.radial_accel = mix(radial_accel_min, radial_accel_max, rand_from_seed(alt_seed));\n";
+	code += "	params.tangent_accel = mix(tangent_accel_min, tangent_accel_max, rand_from_seed(alt_seed));\n";
+	code += "	params.damping = mix(damping_min, damping_max, rand_from_seed(alt_seed));\n";
 	code += "}\n";
 	code += "\n";
 	code += "void calculate_initial_dynamics_params(inout DynamicsParameters params,inout uint alt_seed){\n";
@@ -985,10 +985,6 @@ void ParticleProcessMaterial::_update_shader() {
 		code += "			VELOCITY = mix(VELOCITY,vec3(0.0),clamp(collision_friction, 0.0, 1.0));\n";
 		code += "		} else {\n";
 		code += "			VELOCITY = vec3(0.0);\n";
-		// If turbulence is enabled, set the noise direction to up so the turbulence color is "neutral"
-		if (turbulence_enabled) {
-			code += "			noise_direction = vec3(1.0, 0.0, 0.0);\n";
-		}
 		code += "		}\n";
 		code += "	}\n";
 	} else if (collision_mode == COLLISION_HIDE_ON_CONTACT) {
@@ -1007,14 +1003,16 @@ void ParticleProcessMaterial::_update_shader() {
 		}
 		code += "		\n";
 		code += "		vec3 noise_direction = get_noise_direction(TRANSFORM[3].xyz);\n";
-		// The following snippet causes massive performance hit. We don't need it as long as collision is disabled.
-		// Refer to GH-83744 for more info.
-		if (collision_mode != COLLISION_DISABLED) {
+
+		// Godot detects when the COLLIDED keyword is used. If it's used anywhere in the shader then Godot will generate the screen space SDF for collisions.
+		// We don't need it as long as collision is disabled. Refer to GH-83744 for more info.
+		if (collision_mode == COLLISION_RIGID) {
 			code += "		if (!COLLIDED) {\n";
-			code += "			\n";
-			code += "			float vel_mag = length(final_velocity);\n";
-			code += "			float vel_infl = clamp(dynamic_params.turb_influence * turbulence_influence, 0.0,1.0);\n";
-			code += "			final_velocity = mix(final_velocity, normalize(noise_direction) * vel_mag * (1.0 + (1.0 - vel_infl) * 0.2), vel_infl);\n";
+		}
+		code += "			float vel_mag = length(final_velocity);\n";
+		code += "			float vel_infl = clamp(dynamic_params.turb_influence * turbulence_influence, 0.0,1.0);\n";
+		code += "			final_velocity = mix(final_velocity, normalize(noise_direction) * vel_mag * (1.0 + (1.0 - vel_infl) * 0.2), vel_infl);\n";
+		if (collision_mode == COLLISION_RIGID) {
 			code += "		}\n";
 		}
 	}
