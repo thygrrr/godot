@@ -65,12 +65,13 @@
 # Jorge González <jlexgog@gmail.com>, 2023.
 # Jorge Julio Torres <jjulio.tlg.89@gmail.com>, 2023.
 # simomi 073 <arcemoyanomanuel@gmail.com>, 2023.
+# Alejandro Ruiz Esclapez <ruizesa24@gmail.com>, 2023.
 msgid ""
 msgstr ""
 "Project-Id-Version: Godot Engine class reference\n"
 "Report-Msgid-Bugs-To: https://github.com/godotengine/godot\n"
-"PO-Revision-Date: 2023-10-25 16:15+0000\n"
-"Last-Translator: Jorge Julio Torres <jjulio.tlg.89@gmail.com>\n"
+"PO-Revision-Date: 2023-12-06 21:45+0000\n"
+"Last-Translator: Alejandro Ruiz Esclapez <ruizesa24@gmail.com>\n"
 "Language-Team: Spanish <https://hosted.weblate.org/projects/godot-engine/"
 "godot-class-reference/es/>\n"
 "Language: es\n"
@@ -78,7 +79,25 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8-bit\n"
 "Plural-Forms: nplurals=2; plural=n != 1;\n"
-"X-Generator: Weblate 5.1.1\n"
+"X-Generator: Weblate 5.3-dev\n"
+
+msgid "All classes"
+msgstr "Todas las clases"
+
+msgid "Globals"
+msgstr "Globales"
+
+msgid "Nodes"
+msgstr "Nodos"
+
+msgid "Resources"
+msgstr "Recursos"
+
+msgid "Other objects"
+msgstr "Otros objetos"
+
+msgid "Variant types"
+msgstr "Tipo de variantes"
 
 msgid "Description"
 msgstr "Descripción"
@@ -110,6 +129,9 @@ msgstr "Enumeraciones"
 msgid "Constants"
 msgstr "Constantes"
 
+msgid "Annotations"
+msgstr "Anotaciones"
+
 msgid "Property Descriptions"
 msgstr "Descripciones de Propiedades"
 
@@ -132,13 +154,10 @@ msgid "Inherited By:"
 msgstr "Heredado por:"
 
 msgid "(overrides %s)"
-msgstr "(sobreescribe %s)"
+msgstr "(sobrescribe %s)"
 
 msgid "Default"
 msgstr "Predeterminado"
-
-msgid "Setter"
-msgstr "Regulador o fijador"
 
 msgid "value"
 msgstr "valor"
@@ -149,7 +168,7 @@ msgstr "Método de Acceso al Valor o Getter"
 msgid ""
 "This method should typically be overridden by the user to have any effect."
 msgstr ""
-"Típicamente, este método debería ser sobreescrito por el usuario para que "
+"Normalmente, este método debería ser sobrescrito por el usuario para que "
 "tenga algún efecto."
 
 msgid ""
@@ -6833,9 +6852,6 @@ msgstr ""
 msgid "Particles are drawn in the order emitted."
 msgstr "Las partículas se dibujan en el orden en que se emiten."
 
-msgid "Particles are drawn in order of remaining lifetime."
-msgstr "Las partículas se dibujan en orden según el tiempo de vida restante."
-
 msgid "Represents the size of the [enum Parameter] enum."
 msgstr "Representa el tamaño del enumerado [enum Parameter]."
 
@@ -10386,27 +10402,14 @@ msgstr "Carga una imagen del contenido binario de un archivo JPEG."
 msgid "Loads an image from the binary contents of a PNG file."
 msgstr "Carga una imagen del contenido binario de un archivo PNG."
 
-msgid "Loads an image from the binary contents of a TGA file."
-msgstr "Carga una imagen del contenido binario de un archivo TGA."
-
 msgid "Loads an image from the binary contents of a WebP file."
 msgstr "Carga una imagen del contenido binario de un archivo WebP."
-
-msgid ""
-"Multiplies color values with alpha values. Resulting color values for a pixel "
-"are [code](color * alpha)/256[/code]."
-msgstr ""
-"Multiplica los valores de color por los valores alfa. Los valores de color "
-"resultantes para un píxel son [code](color * alfa)/256[/code]."
 
 msgid ""
 "Converts a standard RGBE (Red Green Blue Exponent) image to an sRGB image."
 msgstr ""
 "Convierte una imagen estándar RGBE (Red Green Blue Exponent) en una imagen "
 "sRGB."
-
-msgid "Shrinks the image by a factor of 2."
-msgstr "Reduce la imagen en un factor de 2."
 
 msgid "Converts the raw data from the sRGB colorspace to a linear scale."
 msgstr ""
@@ -12629,9 +12632,6 @@ msgid ""
 msgstr ""
 "Devuelve [code]true[/code] si se trata de un marcador de posición de carga de "
 "instancia. Ver [InstancePlaceholder]."
-
-msgid "Returns the [SceneTree] that contains this node."
-msgstr "Devuelve el [SceneTree] que contiene este nodo."
 
 msgid "Returns the node's [Viewport]."
 msgstr "Devuelve el [Viewport] del nodo."
@@ -15058,13 +15058,6 @@ msgstr ""
 "Administrador de Proyectos cuando se pasa el cursor por encima del proyecto."
 
 msgid ""
-"Forces a delay between frames in the main loop (in milliseconds). This may be "
-"useful if you plan to disable vertical synchronization."
-msgstr ""
-"Fuerza un retardo entre fotogramas en el bucle principal (en milisegundos). "
-"Esto puede ser útil si planea deshabilitar la sincronización vertical."
-
-msgid ""
 "If [code]true[/code], enables low-processor usage mode. This setting only "
 "works on desktop platforms. The screen is not redrawn if nothing changes "
 "visually. This is meant for writing applications and editors, but is pretty "
@@ -16515,9 +16508,6 @@ msgid "Draw particles in the order that they appear in the particles array."
 msgstr ""
 "Dibuja las partículas en el orden en que aparecen en el array de partículas."
 
-msgid "Sort particles based on their lifetime."
-msgstr "Clasificar las partículas en función de su vida útil."
-
 msgid "Sort particles based on their distance to the camera."
 msgstr "Clasifica las partículas según su distancia a la cámara."
 
@@ -16675,9 +16665,6 @@ msgid ""
 msgstr ""
 "El hardware soporta el multihilo. Este enum no se usa actualmente en Godot 3."
 "x."
-
-msgid "Resources"
-msgstr "Recursos"
 
 msgid "Loads a specific resource type from a file."
 msgstr "Carga un tipo de recurso específico de un archivo."

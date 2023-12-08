@@ -980,21 +980,6 @@ msgstr "Oraj Sponsoroj"
 msgid "Silver Sponsors"
 msgstr "Arĝentaj Sponsoroj"
 
-msgid "Bronze Sponsors"
-msgstr "Bronzaj Sponsoroj"
-
-msgid "Mini Sponsors"
-msgstr "Minisponsoroj"
-
-msgid "Gold Donors"
-msgstr "Oraj Donacantoj"
-
-msgid "Silver Donors"
-msgstr "Arĝentaj Donacantoj"
-
-msgid "Bronze Donors"
-msgstr "Bronzaj Donacantoj"
-
 msgid "Donors"
 msgstr "Donacantoj"
 
@@ -1765,17 +1750,6 @@ msgstr ""
 "Malŝaltas la kromprogramon ĉe '%s' por malebligi pli erarojn."
 
 msgid ""
-"Unable to load addon script from path: '%s' Base type is not EditorPlugin."
-msgstr ""
-"Ne eblas ŝargi kromprograman skripton ĉe dosierindiko: '%s'. Baza tipo ne "
-"estas EditorPlugin."
-
-msgid "Unable to load addon script from path: '%s' Script is not in tool mode."
-msgstr ""
-"Ne eblas ŝargi kromprograman skripton ĉe dosierindiko: '%s'. Skripto ne estas "
-"en ila reĝimo."
-
-msgid ""
 "Scene '%s' was automatically imported, so it can't be modified.\n"
 "To make changes to it, a new inherited scene can be created."
 msgstr ""
@@ -2132,6 +2106,9 @@ msgstr ""
 
 msgid "Make Unique"
 msgstr "Farigi unikan"
+
+msgid "Save As..."
+msgstr "Konservi kiel..."
 
 msgid "Show in FileSystem"
 msgstr "Montri en dosiersistemo"
@@ -2706,9 +2683,6 @@ msgstr "Ŝargi ekzistantan risurcon el disko kaj redakti ĝin."
 
 msgid "Save the currently edited resource."
 msgstr "Konservi la aktuale redaktantan risurcon."
-
-msgid "Save As..."
-msgstr "Konservi kiel..."
 
 msgid "Copy Resource"
 msgstr "Kopii risurcon"

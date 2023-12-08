@@ -1361,7 +1361,7 @@ def make_enum(t: str, is_bitfield: bool, state: State) -> str:
         if is_bitfield:
             if not state.classes[c].enums[e].is_bitfield:
                 print_error(f'{state.current_class}.xml: Enum "{t}" is not bitfield.', state)
-            return f"|bitfield|\<:ref:`{e}<enum_{c}_{e}>`\>"
+            return f"|bitfield|\\<:ref:`{e}<enum_{c}_{e}>`\\>"
         else:
             return f":ref:`{e}<enum_{c}_{e}>`"
 
@@ -1536,8 +1536,9 @@ def make_rst_index(grouped_classes: Dict[str, List[str]], dry_run: bool, output_
     else:
         f = open(os.path.join(output_dir, "index.rst"), "w", encoding="utf-8")
 
-    # Remove the "Edit on Github" button from the online docs page.
-    f.write(":github_url: hide\n\n")
+    # Remove the "Edit on Github" button from the online docs page, and disallow user-contributed notes
+    # on the index page. User-contributed notes are allowed on individual class pages.
+    f.write(":github_url: hide\n:allow_comments: False\n\n")
 
     # Warn contributors not to edit this file directly.
     # Also provide links to the source files for reference.
@@ -1551,16 +1552,11 @@ def make_rst_index(grouped_classes: Dict[str, List[str]], dry_run: bool, output_
 
     f.write(".. _doc_class_reference:\n\n")
 
-    main_title = translate("All classes")
-    f.write(f"{main_title}\n")
-    f.write(f"{'=' * len(main_title)}\n\n")
+    f.write(make_heading("All classes", "="))
 
     for group_name in CLASS_GROUPS:
         if group_name in grouped_classes:
-            group_title = translate(CLASS_GROUPS[group_name])
-
-            f.write(f"{group_title}\n")
-            f.write(f"{'=' * len(group_title)}\n\n")
+            f.write(make_heading(CLASS_GROUPS[group_name], "="))
 
             f.write(".. toctree::\n")
             f.write("    :maxdepth: 1\n")
@@ -2081,9 +2077,9 @@ def format_text_block(
                     post_text = text[endurl_pos + 6 :]
 
                     if pre_text and pre_text[-1] not in MARKUP_ALLOWED_PRECEDENT:
-                        pre_text += "\ "
+                        pre_text += "\\ "
                     if post_text and post_text[0] not in MARKUP_ALLOWED_SUBSEQUENT:
-                        post_text = "\ " + post_text
+                        post_text = "\\ " + post_text
 
                     text = pre_text + tag_text + post_text
                     pos = len(pre_text) + len(tag_text)
@@ -2161,9 +2157,9 @@ def format_text_block(
 
         # Properly escape things like `[Node]s`
         if escape_pre and pre_text and pre_text[-1] not in MARKUP_ALLOWED_PRECEDENT:
-            pre_text += "\ "
+            pre_text += "\\ "
         if escape_post and post_text and post_text[0] not in MARKUP_ALLOWED_SUBSEQUENT:
-            post_text = "\ " + post_text
+            post_text = "\\ " + post_text
 
         next_brac_pos = post_text.find("[", 0)
         iter_pos = 0
@@ -2171,7 +2167,7 @@ def format_text_block(
             iter_pos = post_text.find("*", iter_pos, next_brac_pos)
             if iter_pos == -1:
                 break
-            post_text = f"{post_text[:iter_pos]}\*{post_text[iter_pos + 1 :]}"
+            post_text = f"{post_text[:iter_pos]}\\*{post_text[iter_pos + 1 :]}"
             iter_pos += 2
 
         iter_pos = 0
@@ -2180,7 +2176,7 @@ def format_text_block(
             if iter_pos == -1:
                 break
             if not post_text[iter_pos + 1].isalnum():  # don't escape within a snake_case word
-                post_text = f"{post_text[:iter_pos]}\_{post_text[iter_pos + 1 :]}"
+                post_text = f"{post_text[:iter_pos]}\\_{post_text[iter_pos + 1 :]}"
                 iter_pos += 2
             else:
                 iter_pos += 1
@@ -2221,7 +2217,7 @@ def escape_rst(text: str, until_pos: int = -1) -> str:
         pos = text.find("*", pos, until_pos)
         if pos == -1:
             break
-        text = f"{text[:pos]}\*{text[pos + 1 :]}"
+        text = f"{text[:pos]}\\*{text[pos + 1 :]}"
         pos += 2
 
     # Escape _ character at the end of a word to avoid interpreting it as an inline hyperlink
@@ -2231,7 +2227,7 @@ def escape_rst(text: str, until_pos: int = -1) -> str:
         if pos == -1:
             break
         if not text[pos + 1].isalnum():  # don't escape within a snake_case word
-            text = f"{text[:pos]}\_{text[pos + 1 :]}"
+            text = f"{text[:pos]}\\_{text[pos + 1 :]}"
             pos += 2
         else:
             pos += 1

@@ -1050,21 +1050,6 @@ msgstr "מממני זהב"
 msgid "Silver Sponsors"
 msgstr "תורמים בדרגת כסף"
 
-msgid "Bronze Sponsors"
-msgstr "תורמים בדרגת ארד"
-
-msgid "Mini Sponsors"
-msgstr "מממנים קטנים"
-
-msgid "Gold Donors"
-msgstr "תורמים בדרגת זהב"
-
-msgid "Silver Donors"
-msgstr "תורמים בדרגת כסף"
-
-msgid "Bronze Donors"
-msgstr "תורמים בדרגת ארד"
-
 msgid "Donors"
 msgstr "תורמים"
 
@@ -1882,13 +1867,6 @@ msgstr ""
 "יש לבטל את ההרחבה ,%s, כדי למנוע שגיאות נוספות."
 
 msgid ""
-"Unable to load addon script from path: '%s' Base type is not EditorPlugin."
-msgstr "לא ניתן לטעון סקריפט הרחבה מנתיב: '%s' סוג הבסיס אינו EditorPlugin."
-
-msgid "Unable to load addon script from path: '%s' Script is not in tool mode."
-msgstr "לא ניתן לטעון סקריפט הרחבה מנתיב: '%s' סקריפט אינו מוגדר ככלי (tool)."
-
-msgid ""
 "Scene '%s' was automatically imported, so it can't be modified.\n"
 "To make changes to it, a new inherited scene can be created."
 msgstr ""
@@ -2199,6 +2177,9 @@ msgstr "מחרוזת ניתנת לתרגום (גודל %d)"
 
 msgid "Make Unique"
 msgstr "הפוך לייחודי"
+
+msgid "Save As..."
+msgstr "שמירה בשם…"
 
 msgid "Show in FileSystem"
 msgstr "הצגה בחלון הקבצים"
@@ -2666,9 +2647,6 @@ msgstr "טעינת משאב קיים מהכונן ועריכתו."
 
 msgid "Save the currently edited resource."
 msgstr "שמירת המשאב שנערך כרגע."
-
-msgid "Save As..."
-msgstr "שמירה בשם…"
 
 msgid "Copy Resource"
 msgstr "העתקת משאב"

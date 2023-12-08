@@ -1521,21 +1521,6 @@ msgstr "Patrocinadors Gold"
 msgid "Silver Sponsors"
 msgstr "Donants Plata"
 
-msgid "Bronze Sponsors"
-msgstr "Donants Bronze"
-
-msgid "Mini Sponsors"
-msgstr "Mini Patrocinadors"
-
-msgid "Gold Donors"
-msgstr "Donants Gold"
-
-msgid "Silver Donors"
-msgstr "Donants Silver"
-
-msgid "Bronze Donors"
-msgstr "Donants Bronze"
-
 msgid "Donors"
 msgstr "Donants"
 
@@ -2323,17 +2308,6 @@ msgstr ""
 "Es desactivarà el complement (addon) a '% s' per a evitar més errors."
 
 msgid ""
-"Unable to load addon script from path: '%s' Base type is not EditorPlugin."
-msgstr ""
-"No es pot carregar l'Script del complement: El tipus base de '%s' no és pas "
-"EditorPlugin."
-
-msgid "Unable to load addon script from path: '%s' Script is not in tool mode."
-msgstr ""
-"No s'ha carregat l'Script d'addon des del camí: L'Script '%s' no és en el "
-"mode d'Eina."
-
-msgid ""
 "Scene '%s' was automatically imported, so it can't be modified.\n"
 "To make changes to it, a new inherited scene can be created."
 msgstr ""
@@ -2736,6 +2710,9 @@ msgstr "Carrega Rapida"
 
 msgid "Make Unique"
 msgstr "Fes-lo Únic"
+
+msgid "Save As..."
+msgstr "Anomena i Desa..."
 
 msgid "Show in FileSystem"
 msgstr "Mostrar en el Sistema de Fitxers"
@@ -3440,9 +3417,6 @@ msgstr "Carrega un recurs des del disc i edita'l."
 
 msgid "Save the currently edited resource."
 msgstr "Desa el recurs editat ara."
-
-msgid "Save As..."
-msgstr "Anomena i Desa..."
 
 msgid "Copy Resource"
 msgstr "Copia el Recurs"
