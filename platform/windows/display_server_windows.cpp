@@ -8572,4 +8572,6 @@ DisplayServerWindows::~DisplayServerWindows() {
 	}
 
 	OleUninitialize();
+
+	UnregisterClassW(wc.lpszClassName, wc.hInstance);
 }
