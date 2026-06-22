@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -44,6 +45,7 @@ namespace GodotPlugins
             }
         }
 
+        [RequiresUnreferencedCode("Resolves and loads plugin assemblies by name via reflection, which is not compatible with trimming.")]
         protected override Assembly? Load(AssemblyName assemblyName)
         {
             if (assemblyName.Name == null)
