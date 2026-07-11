@@ -117,8 +117,12 @@ public:
 	};
 
 private:
-	HashMap<StringName, HashMap<StringName, ThemeItemBind>> theme_item_binds;
-	HashMap<StringName, List<ThemeItemBind>> theme_item_binds_list; // Used for listing purposes.
+	// Static: theme item binds are registered from GDCLASS _bind_methods(),
+	// which runs only once per process. They must survive engine
+	// reinitialization (libgodot restart), where ThemeDB is re-created but
+	// class registration is not re-run.
+	static inline HashMap<StringName, HashMap<StringName, ThemeItemBind>> theme_item_binds;
+	static inline HashMap<StringName, List<ThemeItemBind>> theme_item_binds_list; // Used for listing purposes.
 
 	void _sort_theme_items();
 

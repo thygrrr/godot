@@ -2349,9 +2349,14 @@ Error BindingsGenerator::_generate_cs_type(const TypeInterface &itype, const Str
 
 		output.append(MEMBER_BEGIN "private static " + instance_type_name + " singleton;\n");
 
+		// The cached wrapper is re-fetched if it was disposed, which happens
+		// when the engine is reinitialized in the same process (libgodot
+		// restart): singletons of the previous engine instance are disposed
+		// on shutdown and new ones exist in the new instance.
 		output << MEMBER_BEGIN "public static " + instance_type_name + " " CS_PROPERTY_SINGLETON " =>\n"
-			   << INDENT2 "singleton \?\?= (" + instance_type_name + ")"
-			   << C_METHOD_ENGINE_GET_SINGLETON "(\"" << itype.name << "\");\n";
+			   << INDENT2 "singleton == null || singleton.NativeInstance == IntPtr.Zero\n"
+			   << INDENT3 "? singleton = (" + instance_type_name + ")" C_METHOD_ENGINE_GET_SINGLETON "(\"" << itype.name << "\")\n"
+			   << INDENT3 ": singleton;\n";
 	}
 
 	if (!itype.is_singleton) {

@@ -224,6 +224,14 @@ int AudioDriverManager::get_driver_count() {
 	return driver_count;
 }
 
+void AudioDriverManager::reset() {
+	// Drop all registered drivers (they are owned by the OS instance, which is
+	// destroyed on engine reinitialization) and restore the initial state with
+	// only the dummy driver.
+	drivers[0] = &AudioDriverManager::dummy_driver;
+	driver_count = 1;
+}
+
 void AudioDriverManager::initialize(int p_driver) {
 	GLOBAL_DEF_RST("audio/driver/enable_input", false);
 	GLOBAL_DEF_RST(PropertyInfo(Variant::INT, "audio/driver/mix_rate", PROPERTY_HINT_RANGE, "11025,192000,1,or_greater,suffix:Hz"), DEFAULT_MIX_RATE);

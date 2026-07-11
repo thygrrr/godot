@@ -59,7 +59,11 @@ JavaScriptBridge::JavaScriptBridge() {
 	singleton = this;
 }
 
-JavaScriptBridge::~JavaScriptBridge() {}
+JavaScriptBridge::~JavaScriptBridge() {
+	if (singleton == this) {
+		singleton = nullptr;
+	}
+}
 
 void JavaScriptBridge::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("eval", "code", "use_global_execution_context"), &JavaScriptBridge::eval, DEFVAL(false));

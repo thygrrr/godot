@@ -23,8 +23,8 @@ namespace Godot.NativeInterop
         // ReSharper disable once ParameterOnlyUsedForPreconditionCheck.Global
         public static void Initialize(IntPtr unmanagedCallbacks, int unmanagedCallbacksSize)
         {
-            if (initialized)
-                throw new InvalidOperationException("Already initialized.");
+            // May be called again when the engine is reinitialized in the same
+            // process (libgodot restart); refresh the callback table.
             initialized = true;
 
             if (unmanagedCallbacksSize != sizeof(UnmanagedCallbacks))

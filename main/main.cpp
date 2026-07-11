@@ -5396,6 +5396,12 @@ void Main::cleanup(bool p_force) {
 
 	unregister_core_types();
 
+	if (CoreGlobals::engine_reinit_enabled) {
+		// The audio drivers registered by the OS instance are owned by it and
+		// die with it; drop them so the next instance re-registers its own.
+		AudioDriverManager::reset();
+	}
+
 	OS::get_singleton()->benchmark_end_measure("Shutdown", "Main::Cleanup");
 	OS::get_singleton()->benchmark_dump();
 
