@@ -65,4 +65,11 @@ public:
 
 	static inline GDExtensionInitializationFunction global_init_func_libgodot = nullptr;
 	static inline int32_t global_load_status_libgodot = 0;
+
+	// When true (set by libgodot hosts), process-lifetime tables (StringName
+	// table, ClassDB class metadata) are kept alive across engine
+	// cleanup/setup cycles so the engine can be reinitialized in the same
+	// process. Statically cached StringNames and class/method metadata remain
+	// valid across instances; the OS reclaims the memory at process exit.
+	static inline bool engine_reinit_enabled = false;
 };

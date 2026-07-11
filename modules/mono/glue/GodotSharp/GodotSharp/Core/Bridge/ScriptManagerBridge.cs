@@ -76,6 +76,20 @@ namespace Godot.Bridge
         private static ConcurrentDictionary<IntPtr, (string? assemblyName, string classFullName)>
             _scriptDataForReload = new();
 
+        /// <summary>
+        /// Drops all cached script bridge state. Must be called when the engine
+        /// is reinitialized in the same process (libgodot restart): the cached
+        /// entries reference native script objects owned by the previous engine
+        /// instance and are no longer valid. Lookup tables are repopulated when
+        /// the project assembly is (re)loaded by the new instance.
+        /// </summary>
+        public static void ResetForEngineReinitialization()
+        {
+            _scriptTypeBiMap = new();
+            _pathTypeBiMap = new();
+            _scriptDataForReload = new();
+        }
+
         [UnmanagedCallersOnly]
         internal static void FrameCallback()
         {

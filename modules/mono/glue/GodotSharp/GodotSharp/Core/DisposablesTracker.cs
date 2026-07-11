@@ -52,7 +52,17 @@ namespace Godot
             foreach (WeakReference<IDisposable> item in OtherInstances.Keys)
             {
                 if (item.TryGetTarget(out IDisposable? self))
+                {
+                    // Do not dispose StringNames on engine shutdown: the engine
+                    // keeps the native StringName table alive across engine
+                    // reinitializations (libgodot restart), so statically cached
+                    // StringNames (e.g. generated NativeName/MethodName fields)
+                    // remain valid and are reused by the next engine instance.
+                    if (self is StringName)
+                        continue;
+
                     self.Dispose();
+                }
             }
 
             if (isStdoutVerbose)

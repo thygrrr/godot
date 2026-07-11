@@ -76,6 +76,7 @@ namespace GodotPlugins
         private static readonly List<AssemblyName> SharedAssemblies = new();
         private static readonly Assembly CoreApiAssembly = typeof(global::Godot.GodotObject).Assembly;
         private static Assembly? _editorApiAssembly;
+        private static Assembly? _projectAssembly;
         private static PluginLoadContextWrapper? _projectLoadContext;
         private static bool _editorHint = false;
 
@@ -84,6 +85,7 @@ namespace GodotPlugins
             AssemblyLoadContext.Default;
 
         private static DllImportResolver? _dllImportResolver;
+        private static bool _initializedFromEngine;
 
         // Right now we do it this way for simplicity as hot-reload is disabled. It will need to be changed later.
         [UnmanagedCallersOnly]
@@ -96,15 +98,30 @@ namespace GodotPlugins
             {
                 _editorHint = editorHint.ToBool();
 
-                _dllImportResolver = new GodotDllImportResolver(godotDllHandle).OnResolveDllImport;
+                if (_initializedFromEngine)
+                {
+                    // The engine was reinitialized in this process (libgodot
+                    // restart): cached script bridge state points at native
+                    // objects of the previous engine instance.
+                    ScriptManagerBridge.ResetForEngineReinitialization();
+                }
+                _initializedFromEngine = true;
 
-                SharedAssemblies.Add(CoreApiAssembly.GetName());
-                NativeLibrary.SetDllImportResolver(CoreApiAssembly, _dllImportResolver);
+                // A DllImport resolver can only be registered once per assembly.
+                // When the engine is reinitialized in the same process (libgodot
+                // restart), the resolver from the previous run stays valid: the
+                // native godot library remains loaded, so its handle is unchanged.
+                if (_dllImportResolver == null)
+                {
+                    _dllImportResolver = new GodotDllImportResolver(godotDllHandle).OnResolveDllImport;
+                    SharedAssemblies.Add(CoreApiAssembly.GetName());
+                    NativeLibrary.SetDllImportResolver(CoreApiAssembly, _dllImportResolver);
+                }
 
                 AlcReloadCfg.Configure(alcReloadEnabled: _editorHint);
                 NativeFuncs.Initialize(unmanagedCallbacks, unmanagedCallbacksSize);
 
-                if (_editorHint)
+                if (_editorHint && _editorApiAssembly == null)
                 {
                     _editorApiAssembly = Assembly.Load("GodotSharpEditor");
                     SharedAssemblies.Add(_editorApiAssembly.GetName());
@@ -143,16 +160,24 @@ namespace GodotPlugins
             try
             {
                 if (_projectLoadContext != null)
-                    return godot_bool.True; // Already loaded
+                {
+                    // Already loaded. When the engine was reinitialized in the
+                    // same process (libgodot restart), the script bridge state
+                    // was reset, so the script lookups must be repopulated for
+                    // the new engine instance.
+                    if (_projectAssembly != null)
+                        ScriptManagerBridge.LookupScriptsInAssembly(_projectAssembly);
+                    return godot_bool.True;
+                }
 
                 string assemblyPath = new(nAssemblyPath);
 
-                (var projectAssembly, _projectLoadContext) = LoadPlugin(assemblyPath, isCollectible: _editorHint);
+                (_projectAssembly, _projectLoadContext) = LoadPlugin(assemblyPath, isCollectible: _editorHint);
 
                 string loadedAssemblyPath = _projectLoadContext.AssemblyLoadedPath ?? assemblyPath;
                 *outLoadedAssemblyPath = Marshaling.ConvertStringToNative(loadedAssemblyPath);
 
-                ScriptManagerBridge.LookupScriptsInAssembly(projectAssembly);
+                ScriptManagerBridge.LookupScriptsInAssembly(_projectAssembly);
 
                 return godot_bool.True;
             }
