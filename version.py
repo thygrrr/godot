@@ -1,5 +1,5 @@
 short_name = "godot"
-name = "Godot Engine"
+name = "Godot Engine (2dog)"
 major = 4
 minor = 7
 patch = 1
