@@ -100,3 +100,47 @@ void libgodot_destroy_godot_instance(GDExtensionObjectPtr p_godot_instance) {
 		os = nullptr;
 	}
 }
+
+int libgodot_import_project(const char *p_project_path, int p_extra_argc, const char *p_extra_argv[]) {
+#ifndef TOOLS_ENABLED
+	return -1; // Editor builds only.
+#else
+	ERR_FAIL_NULL_V(p_project_path, EXIT_FAILURE);
+	ERR_FAIL_COND_V_MSG(instance != nullptr || os != nullptr, EXIT_FAILURE,
+			"libgodot_import_project cannot run while a Godot instance exists in this process.");
+
+	Vector<char *> argv;
+	argv.push_back(const_cast<char *>("--headless"));
+	argv.push_back(const_cast<char *>("--import"));
+	argv.push_back(const_cast<char *>("--path"));
+	argv.push_back(const_cast<char *>(p_project_path));
+	for (int i = 0; i < p_extra_argc; i++) {
+		argv.push_back(const_cast<char *>(p_extra_argv[i]));
+	}
+
+	// Import always runs headless, so the AppKit-free OS variant is safe
+	// regardless of the calling thread (OS_MacOS_NSApp requires the main
+	// thread; see libgodot_create_godot_instance above).
+	OS_MacOS_Headless import_os("libgodot", argv.size(), argv.ptrw());
+
+	int exit_code;
+	@autoreleasepool {
+		// Mirrors godot_main_macos.mm: full second-phase setup, then run()
+		// pumps Main::iteration until the first scan finishes (--import
+		// implies wait_for_import + quit_after=1).
+		Error err = Main::setup("libgodot", argv.size(), argv.ptrw());
+		if (err != OK) {
+			return (err == ERR_HELP) ? EXIT_SUCCESS : EXIT_FAILURE;
+		}
+
+		if (Main::start() == EXIT_SUCCESS) {
+			import_os.run();
+		} else {
+			import_os.set_exit_code(EXIT_FAILURE);
+		}
+		Main::cleanup();
+		exit_code = import_os.get_exit_code();
+	}
+	return exit_code;
+#endif
+}
