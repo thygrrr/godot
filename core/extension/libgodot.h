@@ -70,6 +70,30 @@ LIBGODOT_API GDExtensionObjectPtr libgodot_create_godot_instance(int p_argc, cha
  */
 LIBGODOT_API void libgodot_destroy_godot_instance(GDExtensionObjectPtr p_godot_instance);
 
+/**
+ * @name libgodot_import_project
+ * @since 4.6
+ *
+ * Runs the editor's full `--headless --import` lifecycle in the calling
+ * process, equivalent to `godot --headless --import --path p_project_path`,
+ * and returns when the import completes. Requires an editor build
+ * (TOOLS_ENABLED); template builds return -1.
+ *
+ * Must not be called while a Godot instance created via
+ * libgodot_create_godot_instance exists in this process. Intended for
+ * one-shot helper processes; no further engine startup should be attempted
+ * in the process afterwards.
+ *
+ * @param p_project_path Path to the directory containing project.godot.
+ * @param p_extra_argc   Number of extra command line arguments.
+ * @param p_extra_argv   Extra arguments appended after the built-in
+ *                       ["--headless", "--import", "--path", p_project_path].
+ *
+ * @return Process-style exit code: 0 on success, non-zero on failure,
+ *         -1 if this build has no editor.
+ */
+LIBGODOT_API int libgodot_import_project(const char *p_project_path, int p_extra_argc, const char *p_extra_argv[]);
+
 #ifdef __cplusplus
 }
 #endif // __cplusplus

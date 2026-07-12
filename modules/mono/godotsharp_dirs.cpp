@@ -38,6 +38,7 @@
 
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
+#include "core/io/file_access.h"
 #include "core/os/os.h"
 
 #ifdef TOOLS_ENABLED
@@ -46,9 +47,6 @@
 
 #ifndef TOOLS_ENABLED
 #include "core/config/engine.h"
-#ifndef ANDROID_ENABLED
-#include "core/io/file_access.h"
-#endif
 #endif
 
 namespace GodotSharpDirs {
@@ -184,6 +182,13 @@ private:
 			api_assemblies_base_dir = res_dir.path_join("GodotSharp").path_join("Api");
 		}
 #endif
+		// GODOT_TOOLS_DIR env var overrides the editor tools directory
+		// (mirrors GODOTSHARP_DIR above). Needed by libgodot hosts whose
+		// executable directory does not contain GodotSharp/Tools.
+		String godot_tools_dir_env = OS::get_singleton()->get_environment("GODOT_TOOLS_DIR");
+		if (!godot_tools_dir_env.is_empty() && FileAccess::exists(godot_tools_dir_env.path_join("GodotTools.dll"))) {
+			data_editor_tools_dir = godot_tools_dir_env;
+		}
 		if (api_assemblies_dir.is_empty()) {
 			api_assemblies_dir = api_assemblies_base_dir.path_join(GDMono::get_expected_api_build_config());
 		}
