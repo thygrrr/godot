@@ -7797,7 +7797,13 @@ DisplayServerWindows::DisplayServerWindows(const String &p_rendering_driver, Dis
 	wc.lpszMenuName = nullptr;
 	wc.lpszClassName = L"Engine";
 
-	if (!RegisterClassExW(&wc)) {
+	// The class may still be registered from a previous engine instance
+	// (engine reinitialization): the WndProc is a static function in this
+	// module, which stays loaded for the process lifetime, so reusing the
+	// registration is safe. Never unregister it: doing so leaves the input
+	// stack (TSF/CoreMessaging) with dangling per-class state that fail-fasts
+	// (0xE0464645) when the process exits.
+	if (!RegisterClassExW(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
 		r_error = ERR_UNAVAILABLE;
 		return;
 	}
@@ -8405,5 +8411,7 @@ DisplayServerWindows::~DisplayServerWindows() {
 
 	OleUninitialize();
 
-	UnregisterClassW(wc.lpszClassName, wc.hInstance);
+	// Deliberately do not UnregisterClassW: the constructor tolerates the
+	// class already existing on engine reinitialization, and unregistering
+	// triggers a CoreMessaging fail-fast at process exit (see constructor).
 }

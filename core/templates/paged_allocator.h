@@ -166,7 +166,11 @@ public:
 		}
 		bool leaked = allocs_available < pages_allocated * page_size;
 		if (leaked) {
-			if (CoreGlobals::leak_reporting_enabled) {
+			// With engine reinitialization, process-lifetime tables (StringName,
+			// ClassDB metadata and their Variants) are deliberately kept alive
+			// through engine cleanup, so pages legitimately remain in use when
+			// static allocators are destroyed at process exit.
+			if (CoreGlobals::leak_reporting_enabled && !CoreGlobals::engine_reinit_enabled) {
 				ERR_PRINT(String("Pages in use exist at exit in PagedAllocator: ") + String(typeid(T).name()));
 			}
 		} else {
