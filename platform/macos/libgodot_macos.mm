@@ -123,24 +123,12 @@ int libgodot_import_project(const char *p_project_path, int p_extra_argc, const 
 	// thread; see libgodot_create_godot_instance above).
 	OS_MacOS_Headless import_os("libgodot", argv.size(), argv.ptrw());
 
-	int exit_code;
-	@autoreleasepool {
-		// Mirrors godot_main_macos.mm: full second-phase setup, then run()
-		// pumps Main::iteration until the first scan finishes (--import
-		// implies wait_for_import + quit_after=1).
-		Error err = Main::setup("libgodot", argv.size(), argv.ptrw());
-		if (err != OK) {
-			return (err == ERR_HELP) ? EXIT_SUCCESS : EXIT_FAILURE;
-		}
-
-		if (Main::start() == EXIT_SUCCESS) {
-			import_os.run();
-		} else {
-			import_os.set_exit_code(EXIT_FAILURE);
-		}
-		Main::cleanup();
-		exit_code = import_os.get_exit_code();
-	}
-	return exit_code;
+	// Mirrors godot_main_macos.mm: unlike other platforms, the macOS
+	// OS::run() performs the full lifecycle itself (Main::setup, Main::start,
+	// iteration loop, Main::cleanup) and pumps until the first scan finishes
+	// (--import implies wait_for_import + quit_after=1). Calling Main::setup
+	// here as well would initialize the engine twice.
+	import_os.run();
+	return import_os.get_exit_code();
 #endif
 }
