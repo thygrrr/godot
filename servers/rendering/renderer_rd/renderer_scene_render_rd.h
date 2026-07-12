@@ -58,6 +58,14 @@ class RendererSceneRenderRD : public RendererSceneRender, public RenderingShader
 	friend RendererRD::SkyRD;
 	friend RendererRD::GI;
 
+	// Clears `singleton` for engine reinitialization. Declared as the first
+	// member so its destructor runs after all other members are destroyed:
+	// sky/gi teardown frees shaders through MaterialStorage, whose ShaderData
+	// destructors dereference the singleton.
+	struct SingletonReset {
+		~SingletonReset();
+	} singleton_reset;
+
 protected:
 	RendererRD::ForwardIDStorage *forward_id_storage = nullptr;
 	RendererRD::BokehDOF *bokeh_dof = nullptr;
