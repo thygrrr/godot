@@ -179,6 +179,15 @@ namespace GodotTools.Export
             if (!TryDeterminePlatformFromOSName(osName, out string? platform))
                 throw new NotSupportedException("Target platform not supported.");
 
+            if (platform == OS.Platforms.Web && !path.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
+            {
+                // Pack-only web export (--export-pack): on web the assemblies ship
+                // inside the wasm app bundle produced by the host application's own
+                // `dotnet publish -r browser-wasm`, never inside the pck, and there
+                // is no extracted web template to publish against. Nothing to do.
+                return;
+            }
+
             bool useAndroidLinuxBionic = (bool)GetOption("dotnet/android_use_linux_bionic");
             PublishConfig publishConfig = new()
             {

@@ -17,11 +17,15 @@ def configure(env):
         print("The 'mono' module does not currently support building for this platform. Aborting.")
         sys.exit(255)
 
-    if env["library_type"] != "executable" and not env["disable_crash_handler"]:
-        print_error(".NET installs its own crash handler.")
-        sys.exit(255)
-
     if env["platform"] == "web":
+        # On web the engine is statically linked into the .NET main module,
+        # which installs its own crash handler; Godot's must stay out.
+        # (Desktop shared-library builds keep the crash handler: 2dog has
+        # always shipped it and hosts rely on unchanged native behavior.)
+        if env["library_type"] != "executable" and not env["disable_crash_handler"]:
+            print_error(".NET installs its own crash handler.")
+            sys.exit(255)
+
         if env["library_type"] == "executable":
             print_error(".NET needs to be an entry point on web.")
             sys.exit(255)
