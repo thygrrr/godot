@@ -482,7 +482,7 @@ godot_plugins_initialize_fn initialize_hostfxr_and_godot_plugins(bool &r_runtime
 			initialize_hostfxr_for_config(get_data(config_path));
 
 	if (function_pointers.first == nullptr || function_pointers.second == nullptr) {
-		ERR_FAIL_V_MSG(nullptr, ".NET: Unable to load .NET runtime, no compatible version was found. Please install the .NET SDK 8.0 or later from https://get.dot.net and restart.");
+		ERR_FAIL_V_MSG(nullptr, ".NET: Unable to load .NET runtime, no compatible version was found. Please install the .NET SDK 10.0 or later from https://get.dot.net and restart.");
 	}
 
 	r_runtime_initialized = true;
@@ -743,7 +743,7 @@ void GDMono::initialize() {
 	if (!load_godot_plugins_initialize(godot_plugins_initialize, hostfxr_dll_handle, coreclr_dll_handle, runtime_initialized)) {
 #ifdef TOOLS_ENABLED
 		// Show a message box to the user to make the problem explicit (and explain a potential crash).
-		OS::get_singleton()->alert(TTR("Unable to load .NET runtime, specifically hostfxr.\nAttempting to create/edit a project will lead to a crash.\n\nPlease install the .NET SDK 8.0 or later from https://get.dot.net and restart Godot."), TTR("Failed to load .NET runtime"));
+		OS::get_singleton()->alert(TTR("Unable to load .NET runtime, specifically hostfxr.\nAttempting to create/edit a project will lead to a crash.\n\nPlease install the .NET SDK 10.0 or later from https://get.dot.net and restart Godot."), TTR("Failed to load .NET runtime"));
 #endif
 		ERR_FAIL_MSG(".NET: Failed to load hostfxr");
 	}
