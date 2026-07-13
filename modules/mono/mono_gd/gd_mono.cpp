@@ -662,6 +662,11 @@ bool GDMono::should_initialize() {
 #if defined(TOOLS_ENABLED) || defined(LIBGODOT_HOSTFXR)
 	// Editor builds and libgodot shared library builds always need to initialize the .NET module.
 	return true;
+#elif defined(GD_MONO_LIBGODOT_ENABLED) && defined(WEB_ENABLED)
+	// Web static-library builds are linked into the .NET main module: the
+	// host runtime is present by construction, so don't depend on the
+	// "dotnet" feature tag the editor export flow would have injected.
+	return true;
 #else
 	return OS::get_singleton()->has_feature("dotnet");
 #endif

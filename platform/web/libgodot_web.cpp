@@ -32,6 +32,7 @@
 #include "godot_js.h"
 #include "os_web.h"
 
+#include "core/core_globals.h"
 #include "core/profiling/profiling.h"
 
 #ifndef PROXY_TO_PTHREAD_ENABLED
@@ -78,6 +79,13 @@ GDExtensionObjectPtr libgodot_create_godot_instance(int p_argc, char *p_argv[], 
 
 	godot_init_profiler();
 
+	// 2dog stores the host's GDExtension init function globally instead of
+	// passing it to GodotInstance::initialize(). Engine reinitialization
+	// (CoreGlobals::engine_reinit_enabled) is intentionally NOT enabled on
+	// web: the engine is statically linked into the .NET main module and
+	// cannot be restarted within a page load.
+	CoreGlobals::global_init_func_libgodot = p_init_func;
+
 	os = new OS_Web();
 
 	Error err = Main::setup(p_argv[0], p_argc - 1, &p_argv[1], false);
@@ -86,7 +94,7 @@ GDExtensionObjectPtr libgodot_create_godot_instance(int p_argc, char *p_argv[], 
 	}
 
 	instance = memnew(GodotInstance);
-	if (!instance->initialize(p_init_func)) {
+	if (!instance->initialize()) {
 		memdelete(instance);
 		// Note: When Godot Engine supports reinitialization, clear the instance pointer here.
 		//instance = nullptr;

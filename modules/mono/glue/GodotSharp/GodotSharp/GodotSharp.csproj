@@ -153,15 +153,13 @@
     <Compile Include="DisableRuntimeMarshalling.cs" />
   </ItemGroup>
 
-  <!-- Pack source-only files. -->
+  <!-- Source-only reference files (upstream PR #118976 packs these as
+       contentFiles so the game project hosts libgodot itself; in 2dog the
+       host bridge lives in the twodog library instead, so they are kept
+       in-tree as reference only and never packed). -->
   <ItemGroup>
     <Compile Remove="SourceFiles\**\*.cs" />
-    <None Include="SourceFiles\**\*.cs" PackagePath="contentFiles/cs/netstandard2.0/GodotSharp/" Pack="true" BuildAction="Compile" />
-  </ItemGroup>
-
-  <!-- Pack props file that will be auto-included with GodotSharp. -->
-  <ItemGroup>
-    <None Include="GodotSharp.props" PackagePath="build/GodotSharp.props" Pack="true" />
+    <None Include="SourceFiles\**\*.cs" />
   </ItemGroup>
 
   <!--
