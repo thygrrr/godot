@@ -3272,7 +3272,12 @@ void DisplayServerWindows::cursor_set_shape(DisplayServerEnums::CursorShape p_sh
 	if (cursors_cache.has(p_shape)) {
 		SetCursor(cursors[p_shape]);
 	} else {
-		SetCursor(LoadCursor(hInstance, win_cursors[p_shape]));
+		// Predefined IDC_* cursors must be loaded with a null module handle.
+		// godot.exe gets away with passing `hInstance` because its entry point
+		// is mainCRTStartup, which leaves it null; in embedded (libgodot) hosts
+		// it is the host executable, making LoadCursor fail and SetCursor(null)
+		// hide the cursor.
+		SetCursor(LoadCursor(nullptr, win_cursors[p_shape]));
 	}
 
 	cursor_shape = p_shape;
