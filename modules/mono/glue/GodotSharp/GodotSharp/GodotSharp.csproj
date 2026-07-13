@@ -12,6 +12,16 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
 
     <AnalysisMode>Recommended</AnalysisMode>
+
+    <!-- GodotSharp is NOT trim-compatible: the script/delegate bridge relies
+         on unconstrained reflection (ScriptManagerBridge, DelegateUtils,
+         ReflectionUtils) that is not annotated with DynamicallyAccessedMembers
+         / RequiresUnreferencedCode. Trimmed publishes (browser-wasm) must use
+         TrimMode=partial so this assembly is preserved whole - the
+         2dog.browser-wasm targets do this and additionally root it via
+         TrimmerRootAssembly. Flipping this to true requires the full upstream
+         trim-annotation effort, not just the flag. -->
+    <IsTrimmable>false</IsTrimmable>
   </PropertyGroup>
 
   <PropertyGroup>
