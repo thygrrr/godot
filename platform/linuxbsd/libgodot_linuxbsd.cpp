@@ -111,3 +111,45 @@ int libgodot_import_project(const char *p_project_path, int p_extra_argc, const 
 	return import_os.get_exit_code();
 #endif
 }
+
+int libgodot_export_pack(const char *p_project_path, const char *p_preset, const char *p_output_path, int p_extra_argc, const char *p_extra_argv[]) {
+#ifndef TOOLS_ENABLED
+	return -1; // Editor builds only.
+#else
+	ERR_FAIL_NULL_V(p_project_path, EXIT_FAILURE);
+	ERR_FAIL_NULL_V(p_preset, EXIT_FAILURE);
+	ERR_FAIL_NULL_V(p_output_path, EXIT_FAILURE);
+	ERR_FAIL_COND_V_MSG(instance != nullptr || os != nullptr, EXIT_FAILURE,
+			"libgodot_export_pack cannot run while a Godot instance exists in this process.");
+
+	OS_LinuxBSD export_os;
+
+	Vector<char *> argv;
+	argv.push_back(const_cast<char *>("--headless"));
+	argv.push_back(const_cast<char *>("--export-pack"));
+	argv.push_back(const_cast<char *>(p_preset));
+	argv.push_back(const_cast<char *>(p_output_path));
+	argv.push_back(const_cast<char *>("--path"));
+	argv.push_back(const_cast<char *>(p_project_path));
+	for (int i = 0; i < p_extra_argc; i++) {
+		argv.push_back(const_cast<char *>(p_extra_argv[i]));
+	}
+
+	// Mirrors libgodot_import_project: full second-phase setup, then run()
+	// pumps Main::iteration until the export finishes (--export-pack implies
+	// wait_for_import + quit after export).
+	Error err = Main::setup("libgodot", argv.size(), argv.ptrw());
+	if (err != OK) {
+		return (err == ERR_HELP) ? EXIT_SUCCESS : EXIT_FAILURE;
+	}
+
+	if (Main::start() == EXIT_SUCCESS) {
+		export_os.run();
+	} else {
+		export_os.set_exit_code(EXIT_FAILURE);
+	}
+	Main::cleanup();
+
+	return export_os.get_exit_code();
+#endif
+}
