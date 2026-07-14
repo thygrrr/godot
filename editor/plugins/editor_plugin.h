@@ -308,4 +308,11 @@ public:
 		ERR_FAIL_COND(creation_func_count >= MAX_CREATE_FUNCS);
 		creation_funcs[creation_func_count++] = p_func;
 	}
+
+	// Called from unregister_editor_types() so a reinitialized engine
+	// (libgodot restart) re-registers from a clean slate instead of
+	// accumulating create funcs until MAX_CREATE_FUNCS overflows.
+	static void remove_all_create_funcs() {
+		creation_func_count = 0;
+	}
 };
