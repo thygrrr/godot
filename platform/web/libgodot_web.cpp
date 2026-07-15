@@ -51,6 +51,7 @@
 static OS_Web *os = nullptr;
 
 static GodotInstance *instance = nullptr;
+static bool engine_used = false;
 #ifndef PROXY_TO_PTHREAD_ENABLED
 uint64_t target_ticks = 0;
 #endif
@@ -75,35 +76,38 @@ static void print_web_header() {
 }
 
 GDExtensionObjectPtr libgodot_create_godot_instance(int p_argc, char *p_argv[], GDExtensionInitializationFunction p_init_func) {
-	ERR_FAIL_COND_V_MSG(instance != nullptr, nullptr, "Only one Godot Instance may be created.");
+	ERR_FAIL_COND_V_MSG(instance != nullptr || engine_used, nullptr, "Web libgodot supports one engine lifetime per page.");
 
 	godot_init_profiler();
 
-	// 2dog stores the host's GDExtension init function globally instead of
-	// passing it to GodotInstance::initialize(). Engine reinitialization
-	// (CoreGlobals::engine_reinit_enabled) is intentionally NOT enabled on
-	// web: the engine is statically linked into the .NET main module and
-	// cannot be restarted within a page load.
+	// Web builds are single-use; the statically linked engine cannot restart.
 	CoreGlobals::global_init_func_libgodot = p_init_func;
 
 	os = new OS_Web();
 
 	Error err = Main::setup(p_argv[0], p_argc - 1, &p_argv[1], false);
 	if (err != OK) {
+		delete os;
+		os = nullptr;
+		godot_cleanup_profiler();
 		return nullptr;
 	}
 
 	instance = memnew(GodotInstance);
 	if (!instance->initialize()) {
 		memdelete(instance);
-		// Note: When Godot Engine supports reinitialization, clear the instance pointer here.
-		//instance = nullptr;
+		instance = nullptr;
+		Main::cleanup();
+		delete os;
+		os = nullptr;
+		godot_cleanup_profiler();
 		return nullptr;
 	}
+	engine_used = true;
 
 	print_web_header();
 
-	// Ease up compatibility.
+	// Allow missing resources in embedded web hosts.
 	ResourceLoader::set_abort_on_missing_resources(false);
 
 	return static_cast<GDExtensionObjectPtr>(instance);
@@ -122,7 +126,7 @@ void libgodot_destroy_godot_instance(GDExtensionObjectPtr p_godot_instance) {
 	}
 }
 
-// Needs to be exported. Should GodotInstance have a way to register custom iteration?
+// Called by the managed browser main loop.
 extern "C" LIBGODOT_API GDExtensionBool libgodot_web_iteration() {
 #ifndef PROXY_TO_PTHREAD_ENABLED
 	uint64_t current_ticks = os->get_ticks_usec();
@@ -141,8 +145,7 @@ extern "C" LIBGODOT_API GDExtensionBool libgodot_web_iteration() {
 	int max_fps = Engine::get_singleton()->get_max_fps();
 	if (max_fps > 0) {
 		if (current_ticks - target_ticks > 1000000) {
-			// When the window loses focus, we stop getting updates and accumulate delay.
-			// For this reason, if the difference is too big, we reset target ticks to the current ticks.
+			// Reset accumulated delay after focus loss.
 			target_ticks = current_ticks;
 		}
 		target_ticks += (uint64_t)(1000000 / max_fps);

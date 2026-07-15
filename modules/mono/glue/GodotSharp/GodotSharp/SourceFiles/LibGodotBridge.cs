@@ -62,7 +62,6 @@ namespace GodotPlugins.Game
         {
             using AnsiString ansiName = new(name);
             nint fnPtr = GetProcAddressDelegate(ansiName);
-            // Console.WriteLine($"Loaded {name}");
             return fnPtr;
         }
     }
@@ -202,31 +201,24 @@ namespace GodotPlugins.Game
                 using StringName nativeName = new("GodotInstance");
 
                 using StringName startName = new("start");
-                // Console.WriteLine("GodotInstance before start");
                 mbStart = SimpleInterface.classdb_get_method_bind(nativeName.Ptr, startName.Ptr, 2240911060L);
 
                 using StringName isStartedName = new("is_started");
-                // Console.WriteLine("GodotInstance before is_started");
                 mbIsStarted = SimpleInterface.classdb_get_method_bind(nativeName.Ptr, isStartedName.Ptr, 2240911060L);
 
                 using StringName iteratiomName = new("iteration");
-                // Console.WriteLine("GodotInstance before iteration");
                 mbIteration = SimpleInterface.classdb_get_method_bind(nativeName.Ptr, iteratiomName.Ptr, 2240911060L);
 
                 using StringName focusInName = new("focus_in");
-                // Console.WriteLine("GodotInstance before focus_in");
                 mbFocusIn = SimpleInterface.classdb_get_method_bind(nativeName.Ptr, focusInName.Ptr, 3218959716L);
 
                 using StringName focusOutName = new("focus_out");
-                // Console.WriteLine("GodotInstance before focus_out");
                 mbFocusOut = SimpleInterface.classdb_get_method_bind(nativeName.Ptr, focusOutName.Ptr, 3218959716L);
 
                 using StringName pauseName = new("pause");
-                // Console.WriteLine("GodotInstance before pause");
                 mbPause = SimpleInterface.classdb_get_method_bind(nativeName.Ptr, pauseName.Ptr, 3218959716L);
 
                 using StringName resumeName = new("resume");
-                // Console.WriteLine("GodotInstance before resume");
                 mbResume = SimpleInterface.classdb_get_method_bind(nativeName.Ptr, resumeName.Ptr, 3218959716L);
             }
         }
@@ -246,9 +238,7 @@ namespace GodotPlugins.Game
             {
                 fixed (nint* argsBegin = argsPtrs)
                 {
-                    // Console.WriteLine($"Before libgodot_create_godot_instance {argsPtrs.Length}");
                     nint instance = libgodot_create_godot_instance(argsPtrs.Length, argsBegin, (nint)gdExtensionInit);
-                    // Console.WriteLine("After libgodot_create_godot_instance");
                     if (instance == nint.Zero) { return null; }
                     return new GodotInstance(instance);
                 }
@@ -342,18 +332,14 @@ namespace GodotPlugins.Game
 
         public static void Initialize(nint getProcAddress, nint token)
         {
-            // Console.WriteLine("Inside SimpleInterface.Initialize");
             library = new(getProcAddress, token);
-            // Console.WriteLine("Create library wrapper");
             variant_get_ptr_destructor = (delegate* unmanaged<GDExtensionVariantType, delegate* unmanaged<nint, void>>)library.LoadFunction("variant_get_ptr_destructor");
             classdb_get_method_bind = (delegate* unmanaged<nint, nint, long, nint>)library.LoadFunction("classdb_get_method_bind");
             object_method_bind_ptrcall = (delegate* unmanaged<nint, nint, nint*, nint, void>)library.LoadFunction("object_method_bind_ptrcall");
 
             StringName.InitializeBindings();
-            // Console.WriteLine("StringName after init");
 
             GodotInstance.InitializeBindings();
-            // Console.WriteLine("GodotInstance after init");
         }
     }
 
@@ -369,7 +355,6 @@ namespace GodotPlugins.Game
         [UnmanagedCallersOnly]
         private static unsafe byte GDExtensionInit(nint getProcAddress, nint token, GDExtensionInitialization* initialization)
         {
-            // Console.WriteLine("Inside GDExtensionInit");
             initialization->MinimumInitializationLevel = GDExtensionInitializationLevel.Scene;
             initialization->Initialize = &Initialize;
             initialization->Deinitialize = &Deinitialize;

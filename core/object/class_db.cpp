@@ -2346,11 +2346,7 @@ void ClassDB::cleanup() {
 	//OBJTYPE_LOCK; hah not here
 
 	if (CoreGlobals::engine_reinit_enabled) {
-		// Keep class metadata (ClassInfo, MethodBinds, GDTypes) alive across
-		// engine reinitializations: GDCLASS initialize_class() guards are
-		// function-local statics that only run once per process, so wiping
-		// the class table would leave the next instance without registered
-		// classes. Re-registration on the next setup is idempotent.
+		// GDCLASS registration is process-lifetime in reinit mode.
 		return;
 	}
 

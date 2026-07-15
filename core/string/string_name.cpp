@@ -48,8 +48,7 @@ struct StringName::Table {
 
 void StringName::setup() {
 	if (CoreGlobals::engine_reinit_enabled && configured) {
-		// The table is kept alive across engine reinitializations so that
-		// statically cached StringNames stay valid.
+		// Preserve interned names for static StringNames across restarts.
 		return;
 	}
 	ERR_FAIL_COND(configured);
@@ -61,8 +60,6 @@ void StringName::setup() {
 
 void StringName::cleanup() {
 	if (CoreGlobals::engine_reinit_enabled) {
-		// Keep the table (and all interned names) alive so the engine can be
-		// reinitialized in this process; the OS reclaims it at process exit.
 		return;
 	}
 	MutexLock lock(Table::mutex);
@@ -126,9 +123,6 @@ void StringName::unref() {
 		MutexLock lock(Table::mutex);
 
 		if (CoreGlobals::leak_reporting_enabled && _data->static_count.get() > 0 && !CoreGlobals::engine_reinit_enabled) {
-			// With engine reinitialization the static count legitimately
-			// accumulates across engine instances, so this check would
-			// produce false positives during process teardown.
 			ERR_PRINT("BUG: Unreferenced static string to 0: " + _data->name);
 		}
 		if (_data->prev) {
