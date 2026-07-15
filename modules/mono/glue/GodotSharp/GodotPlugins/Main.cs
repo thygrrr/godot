@@ -247,6 +247,9 @@ namespace GodotPlugins
         {
             try
             {
+                // A strong Assembly reference keeps a collectible load context alive.
+                if (_projectLoadContext?.IsCollectible == true)
+                    _projectAssembly = null;
                 return UnloadPlugin(ref _projectLoadContext).ToGodotBool();
             }
             catch (Exception e)

@@ -74,15 +74,8 @@ LIBGODOT_API void libgodot_destroy_godot_instance(GDExtensionObjectPtr p_godot_i
  * @name libgodot_import_project
  * @since 4.6
  *
- * Runs the editor's full `--headless --import` lifecycle in the calling
- * process, equivalent to `godot --headless --import --path p_project_path`,
- * and returns when the import completes. Requires an editor build
- * (TOOLS_ENABLED); template builds return -1.
- *
- * Must not be called while a Godot instance created via
- * libgodot_create_godot_instance exists in this process. Intended for
- * one-shot helper processes; no further engine startup should be attempted
- * in the process afterwards.
+ * Runs the editor import lifecycle for p_project_path. Requires an editor
+ * build; template builds return -1. Do not call while an instance exists.
  *
  * @param p_project_path Path to the directory containing project.godot.
  * @param p_extra_argc   Number of extra command line arguments.
@@ -98,16 +91,9 @@ LIBGODOT_API int libgodot_import_project(const char *p_project_path, int p_extra
  * @name libgodot_export_pack
  * @since 4.7
  *
- * Runs the editor's full `--headless --export-pack` lifecycle in the calling
- * process, equivalent to
- * `godot --headless --export-pack p_preset p_output_path --path p_project_path`,
- * and returns when the export completes. The project must already be imported.
- * Requires an editor build (TOOLS_ENABLED); template builds return -1.
- *
- * Must not be called while a Godot instance created via
- * libgodot_create_godot_instance exists in this process. Intended for
- * one-shot helper processes; no further engine startup should be attempted
- * in the process afterwards.
+ * Runs the editor pack export lifecycle. The project must already be
+ * imported. Requires an editor build; template builds return -1. Do not call
+ * while an instance exists.
  *
  * @param p_project_path Path to the directory containing project.godot.
  * @param p_preset       Name of the export preset (from export_presets.cfg).

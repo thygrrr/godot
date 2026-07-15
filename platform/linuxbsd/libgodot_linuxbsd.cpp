@@ -49,6 +49,8 @@ GDExtensionObjectPtr libgodot_create_godot_instance(int p_argc, char *p_argv[], 
 
 	Error err = Main::setup(p_argv[0], p_argc - 1, &p_argv[1], false);
 	if (err != OK) {
+		delete os;
+		os = nullptr;
 		return nullptr;
 	}
 
@@ -56,6 +58,9 @@ GDExtensionObjectPtr libgodot_create_godot_instance(int p_argc, char *p_argv[], 
 	if (!instance->initialize()) {
 		memdelete(instance);
 		instance = nullptr;
+		Main::cleanup();
+		delete os;
+		os = nullptr;
 		return nullptr;
 	}
 
@@ -93,9 +98,7 @@ int libgodot_import_project(const char *p_project_path, int p_extra_argc, const 
 		argv.push_back(const_cast<char *>(p_extra_argv[i]));
 	}
 
-	// Mirrors godot_linuxbsd.cpp's main(): full second-phase setup, then
-	// run() pumps Main::iteration until the first scan finishes
-	// (--import implies wait_for_import + quit_after=1).
+	// Run the headless editor lifecycle.
 	Error err = Main::setup("libgodot", argv.size(), argv.ptrw());
 	if (err != OK) {
 		return (err == ERR_HELP) ? EXIT_SUCCESS : EXIT_FAILURE;
@@ -135,9 +138,7 @@ int libgodot_export_pack(const char *p_project_path, const char *p_preset, const
 		argv.push_back(const_cast<char *>(p_extra_argv[i]));
 	}
 
-	// Mirrors libgodot_import_project: full second-phase setup, then run()
-	// pumps Main::iteration until the export finishes (--export-pack implies
-	// wait_for_import + quit after export).
+	// Run the headless editor lifecycle.
 	Error err = Main::setup("libgodot", argv.size(), argv.ptrw());
 	if (err != OK) {
 		return (err == ERR_HELP) ? EXIT_SUCCESS : EXIT_FAILURE;

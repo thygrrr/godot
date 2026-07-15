@@ -45,10 +45,7 @@ GDExtensionObjectPtr libgodot_create_godot_instance(int p_argc, char *p_argv[], 
 	CoreGlobals::global_init_func_libgodot = p_init_func;
 	CoreGlobals::engine_reinit_enabled = true;
 
-	// Check argv for headless flags before creating the OS instance,
-	// mirroring the logic in godot_main_macos.mm. OS_MacOS_NSApp
-	// creates NSApplication which requires the main thread; the
-	// headless variant avoids AppKit entirely.
+	// Avoid AppKit when the host requests a headless display driver.
 	bool is_headless = false;
 	for (int i = 1; i < p_argc; i++) {
 		for (size_t j = 0; j < std::size(OS_MacOS::headless_args); j++) {
@@ -75,6 +72,8 @@ GDExtensionObjectPtr libgodot_create_godot_instance(int p_argc, char *p_argv[], 
 	@autoreleasepool {
 		Error err = Main::setup(p_argv[0], remaining_args, remaining_args > 0 ? &p_argv[1] : nullptr, false);
 		if (err != OK) {
+			delete os;
+			os = nullptr;
 			return nullptr;
 		}
 
@@ -82,6 +81,9 @@ GDExtensionObjectPtr libgodot_create_godot_instance(int p_argc, char *p_argv[], 
 		if (!instance->initialize()) {
 			memdelete(instance);
 			instance = nullptr;
+			Main::cleanup();
+			delete os;
+			os = nullptr;
 			return nullptr;
 		}
 
@@ -118,16 +120,10 @@ int libgodot_import_project(const char *p_project_path, int p_extra_argc, const 
 		argv.push_back(const_cast<char *>(p_extra_argv[i]));
 	}
 
-	// Import always runs headless, so the AppKit-free OS variant is safe
-	// regardless of the calling thread (OS_MacOS_NSApp requires the main
-	// thread; see libgodot_create_godot_instance above).
+	// Import uses the AppKit-free headless OS.
 	OS_MacOS_Headless import_os("libgodot", argv.size(), argv.ptrw());
 
-	// Mirrors godot_main_macos.mm: unlike other platforms, the macOS
-	// OS::run() performs the full lifecycle itself (Main::setup, Main::start,
-	// iteration loop, Main::cleanup) and pumps until the first scan finishes
-	// (--import implies wait_for_import + quit_after=1). Calling Main::setup
-	// here as well would initialize the engine twice.
+	// OS_MacOS_Headless::run owns setup and cleanup.
 	import_os.run();
 	return import_os.get_exit_code();
 #endif
@@ -154,9 +150,7 @@ int libgodot_export_pack(const char *p_project_path, const char *p_preset, const
 		argv.push_back(const_cast<char *>(p_extra_argv[i]));
 	}
 
-	// Export always runs headless, so the AppKit-free OS variant is safe
-	// regardless of the calling thread (see libgodot_import_project above).
-	// OS_MacOS_Headless::run() performs the full lifecycle itself.
+	// OS_MacOS_Headless::run owns the headless export lifecycle.
 	OS_MacOS_Headless export_os("libgodot", argv.size(), argv.ptrw());
 
 	export_os.run();

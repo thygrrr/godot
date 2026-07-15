@@ -10,11 +10,11 @@ namespace Godot
     internal static class DisposablesTracker
     {
         [UnmanagedCallersOnly]
-        internal static void OnGodotShuttingDown()
+        internal static void OnGodotShuttingDown(godot_bool preserveStringNames)
         {
             try
             {
-                OnGodotShuttingDownImpl();
+                OnGodotShuttingDownImpl(preserveStringNames.ToBool());
             }
             catch (Exception e)
             {
@@ -22,7 +22,7 @@ namespace Godot
             }
         }
 
-        private static void OnGodotShuttingDownImpl()
+        private static void OnGodotShuttingDownImpl(bool preserveStringNames)
         {
             bool isStdoutVerbose;
 
@@ -53,12 +53,8 @@ namespace Godot
             {
                 if (item.TryGetTarget(out IDisposable? self))
                 {
-                    // Do not dispose StringNames on engine shutdown: the engine
-                    // keeps the native StringName table alive across engine
-                    // reinitializations (libgodot restart), so statically cached
-                    // StringNames (e.g. generated NativeName/MethodName fields)
-                    // remain valid and are reused by the next engine instance.
-                    if (self is StringName)
+                    // Native StringNames survive only libgodot restart cleanup.
+                    if (preserveStringNames && self is StringName)
                         continue;
 
                     self.Dispose();

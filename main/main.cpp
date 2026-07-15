@@ -411,13 +411,7 @@ void finalize_physics() {
 }
 
 void finalize_display() {
-	// Custom cursors (display/mouse_cursor/custom_image, or set at runtime
-	// via Input.set_custom_mouse_cursor) hold texture references in the
-	// display server's cursor cache, which is only cleared in its destructor
-	// - after the rendering server has finished. Release them here so the
-	// textures free their RIDs while the rendering server is still alive;
-	// otherwise every exit reports "N RIDs of type 'Texture' were leaked"
-	// and the texture destructor hits the dead RenderingServer singleton.
+	// Release cached cursor textures before RenderingServer shutdown.
 	if (display_server) {
 		for (int i = 0; i < DisplayServerEnums::CURSOR_MAX; i++) {
 			display_server->cursor_set_custom_image(Ref<Resource>(), (DisplayServerEnums::CursorShape)i);

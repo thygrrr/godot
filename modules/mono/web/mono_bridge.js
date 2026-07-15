@@ -28,12 +28,9 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
-// Custom Godot replacement. As long as it accepts what original accepted
-// and returns emscripten module, it can serve as a substitute.
+// Wrap the .NET runtime module as Godot's Emscripten module.
 const Godot = async (moduleConfig) => { // eslint-disable-line no-unused-vars
-	// Needed for working [JSImport]/[JSExport] and multithreading
-	// It actually kind of worked with only single thread, but
-	// [JSImport]/[JSExport] still didn't work.
+	// Required for JSImport, JSExport, and multithreading.
 	delete moduleConfig['instantiateWasm'];
 
 	// Depends on "dotnet.native.wasm" being in place of "godot.wasm".
@@ -49,24 +46,20 @@ const Godot = async (moduleConfig) => { // eslint-disable-line no-unused-vars
 		// Pass emscripten config.
 		.withModuleConfig(moduleConfig)
 		.withConfig({
-			// We passed -sPTHREAD_POOL_SIZE=0 as C# depend on it, but C# provides its own
-			// setting to configure the initial thread pool size that we can use instead.
+			// Let .NET configure the initial thread-pool size.
 			pthreadPoolInitialSize: moduleConfig['emscriptenPoolSize'] || 8,
-			// Enables sync calls from and to [JSImport]/[JSExport]
-			// when multithreading is enabled.
+			// Enables synchronous JSImport and JSExport calls with threads.
 			jsThreadBlockingMode: 'ThrowWhenBlockingWait',
 		})
 		.withResourceLoader((_type, name, _defaultUri, _integrity, _behavior) => {
 			if (name === 'dotnet.native.wasm') {
 				if (preloadedWasm) {
-					// Resource loader allows us to pass a promise with response
-					// so we pass preloaded wasm here as a promise.
+					// Pass the preloaded wasm response to the Godot loader.
 					const promise = Promise.resolve(preloadedWasm);
 					preloadedWasm = null;
 					return promise;
 				}
-				// Now that we don't have wasm, if it needs it for something
-				// pass the path to it.
+				// Fall back to the resolved wasm path.
 				return loadPath;
 			}
 			// Use the default path.
@@ -86,8 +79,7 @@ const Godot = async (moduleConfig) => { // eslint-disable-line no-unused-vars
 	}
 	Module['getGodotSharpExports'] = getAssemblyExports.bind(null, dotnetConfig.mainAssemblyName);
 
-	// As "callMain" is missing, we can create custom replacement,
-	// as this is what Godot calls to start wasm.
+	// Godot starts wasm through callMain; provide it when Emscripten omits it.
 	Module.callMain = (args) => runMain(dotnetConfig.mainAssemblyName, args);
 	return Module;
 };
