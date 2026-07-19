@@ -42,8 +42,23 @@ struct StringName::Table {
 	constexpr static uint32_t TABLE_MASK = TABLE_LEN - 1;
 
 	static inline _Data *table[TABLE_LEN];
-	static inline BinaryMutex mutex;
-	static inline PagedAllocator<_Data> allocator;
+
+	// 2dog: the lock and allocator are deliberately leaked. In reinit mode
+	// interned names live until process exit, so statics elsewhere that hold
+	// StringNames call unref() during static destruction - after inline
+	// members here would already be destroyed (destruction order across
+	// translation units is link-order dependent; macOS aborts with "mutex
+	// lock failed", elsewhere freed allocator pages would be touched).
+	// Function-local static pointers have trivial destruction, so neither
+	// object is ever destroyed.
+	static BinaryMutex &mutex() {
+		static BinaryMutex *m = memnew(BinaryMutex);
+		return *m;
+	}
+	static PagedAllocator<_Data> &allocator() {
+		static PagedAllocator<_Data> *a = memnew(PagedAllocator<_Data>);
+		return *a;
+	}
 };
 
 void StringName::setup() {
@@ -62,7 +77,7 @@ void StringName::cleanup() {
 	if (CoreGlobals::engine_reinit_enabled) {
 		return;
 	}
-	MutexLock lock(Table::mutex);
+	MutexLock lock(Table::mutex());
 
 #ifdef DEBUG_ENABLED
 	if (unlikely(debug_stringname)) {
@@ -107,7 +122,7 @@ void StringName::cleanup() {
 			}
 
 			Table::table[i] = Table::table[i]->next;
-			Table::allocator.free(d);
+			Table::allocator().free(d);
 		}
 	}
 	if (lost_strings) {
@@ -120,7 +135,7 @@ void StringName::unref() {
 	ERR_FAIL_COND(!configured);
 
 	if (_data && _data->refcount.unref()) {
-		MutexLock lock(Table::mutex);
+		MutexLock lock(Table::mutex());
 
 		if (CoreGlobals::leak_reporting_enabled && _data->static_count.get() > 0 && !CoreGlobals::engine_reinit_enabled) {
 			ERR_PRINT("BUG: Unreferenced static string to 0: " + _data->name);
@@ -135,7 +150,7 @@ void StringName::unref() {
 		if (_data->next) {
 			_data->next->prev = _data->prev;
 		}
-		Table::allocator.free(_data);
+		Table::allocator().free(_data);
 	}
 
 	_data = nullptr;
@@ -223,7 +238,7 @@ StringName::StringName(const char *p_name, bool p_static) {
 	const uint32_t hash = String::hash(p_name);
 	const uint32_t idx = hash & Table::TABLE_MASK;
 
-	MutexLock lock(Table::mutex);
+	MutexLock lock(Table::mutex());
 	_data = Table::table[idx];
 
 	while (_data) {
@@ -247,7 +262,7 @@ StringName::StringName(const char *p_name, bool p_static) {
 		return;
 	}
 
-	_data = Table::allocator.alloc();
+	_data = Table::allocator().alloc();
 	_data->name = p_name;
 	_data->refcount.init();
 	_data->static_count.set(p_static ? 1 : 0);
@@ -280,7 +295,7 @@ StringName::StringName(const String &p_name, bool p_static) {
 	const uint32_t hash = p_name.hash();
 	const uint32_t idx = hash & Table::TABLE_MASK;
 
-	MutexLock lock(Table::mutex);
+	MutexLock lock(Table::mutex());
 	_data = Table::table[idx];
 
 	while (_data) {
@@ -303,7 +318,7 @@ StringName::StringName(const String &p_name, bool p_static) {
 		return;
 	}
 
-	_data = Table::allocator.alloc();
+	_data = Table::allocator().alloc();
 	_data->name = p_name;
 	_data->refcount.init();
 	_data->static_count.set(p_static ? 1 : 0);
