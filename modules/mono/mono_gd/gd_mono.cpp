@@ -836,9 +836,28 @@ uint64_t GDMono::get_api_editor_hash() {
 bool GDMono::_load_project_assembly() {
 	String assembly_name = Path::get_csharp_project_name();
 
-	String assembly_path = GodotSharpDirs::get_res_temp_assemblies_dir()
-								   .path_join(assembly_name + ".dll");
-	assembly_path = ProjectSettings::get_singleton()->globalize_path(assembly_path);
+	String assembly_path;
+
+#ifdef LIBGODOT_HOSTFXR
+	// 2dog: a libgodot host references the game project, so the host's build
+	// output contains a game assembly matching the host's build configuration.
+	// The managed host advertises that directory via GODOT_PROJECT_ASSEMBLY_DIR;
+	// prefer it over .godot/mono/temp/bin/<config>, which only exists for
+	// configurations the game project was built with directly (a Release-only
+	// build or publish has no Debug dir there and would load no scripts).
+	String host_assemblies_dir = OS::get_singleton()->get_environment("GODOT_PROJECT_ASSEMBLY_DIR");
+	if (!host_assemblies_dir.is_empty()) {
+		String host_assembly_path = host_assemblies_dir.path_join(assembly_name + ".dll");
+		if (FileAccess::exists(host_assembly_path)) {
+			assembly_path = host_assembly_path;
+		}
+	}
+#endif
+
+	if (assembly_path.is_empty()) {
+		assembly_path = ProjectSettings::get_singleton()->globalize_path(
+				GodotSharpDirs::get_res_temp_assemblies_dir().path_join(assembly_name + ".dll"));
+	}
 
 	if (!FileAccess::exists(assembly_path)) {
 		return false;
