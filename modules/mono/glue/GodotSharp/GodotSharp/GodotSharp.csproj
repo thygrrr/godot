@@ -13,15 +13,13 @@
 
     <AnalysisMode>Recommended</AnalysisMode>
 
-    <!-- GodotSharp is NOT trim-compatible: the script/delegate bridge relies
+    <!-- 2dog: trim-annotated fork. The script/delegate bridge paths that rely
          on unconstrained reflection (ScriptManagerBridge, DelegateUtils,
-         ReflectionUtils) that is not annotated with DynamicallyAccessedMembers
-         / RequiresUnreferencedCode. Trimmed publishes (browser-wasm) must use
-         TrimMode=partial so this assembly is preserved whole - the
-         2dog.browser-wasm targets do this and additionally root it via
-         TrimmerRootAssembly. Flipping this to true requires the full upstream
-         trim-annotation effort, not just the flag. -->
-    <IsTrimmable>false</IsTrimmable>
+         ReflectionUtils) carry DynamicallyAccessedMembers annotations or
+         boundary suppressions; trimmed publishes (browser-wasm) additionally
+         use TrimMode=partial and root this assembly whole via
+         TrimmerRootAssembly (see 2dog.browser-wasm.targets). -->
+    <IsTrimmable>true</IsTrimmable>
   </PropertyGroup>
 
   <PropertyGroup>

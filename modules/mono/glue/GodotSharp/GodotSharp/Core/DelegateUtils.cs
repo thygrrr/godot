@@ -140,6 +140,10 @@ namespace Godot
             return false;
         }
 
+        // 2dog: delegate (de)serialization reflects over delegate targets: user script classes and
+        // compiler-generated closures, all living in game assemblies.
+        [UnconditionalSuppressMessage("Trimming", "IL2075",
+            Justification = TrimJustifications.ScriptTypesAreRooted)]
         private static bool TrySerializeSingleDelegate(Delegate @delegate, [MaybeNullWhen(false)] out byte[] buffer)
         {
             buffer = null;
@@ -412,6 +416,10 @@ namespace Godot
             return true;
         }
 
+        [UnconditionalSuppressMessage("Trimming", "IL2072",
+            Justification = TrimJustifications.ScriptTypesAreRooted)]
+        [UnconditionalSuppressMessage("Trimming", "IL2075",
+            Justification = TrimJustifications.ScriptTypesAreRooted)]
         private static bool TryDeserializeSingleDelegate(byte[] buffer, [MaybeNullWhen(false)] out Delegate @delegate)
         {
             @delegate = null;
@@ -510,6 +518,8 @@ namespace Godot
             }
         }
 
+        [UnconditionalSuppressMessage("Trimming", "IL2075",
+            Justification = TrimJustifications.ScriptTypesAreRooted)]
         private static bool TryDeserializeMethodInfo(BinaryReader reader,
             [MaybeNullWhen(false)] out MethodInfo methodInfo)
         {
@@ -546,6 +556,8 @@ namespace Godot
             return methodInfo != null && methodInfo.ReturnType == returnType;
         }
 
+        [UnconditionalSuppressMessage("Trimming", "IL2055",
+            Justification = "Generic arguments were serialized from a live constructed type. " + TrimJustifications.ScriptTypesAreRooted)]
         private static Type? DeserializeType(BinaryReader reader)
         {
             int genericArgumentsCount = reader.ReadInt32();
@@ -799,6 +811,10 @@ namespace Godot
                     [typeof(Variant)] = (in godot_variant variant) => VariantUtils.ConvertTo<Variant>(variant),
                 };
 
+            // 2dog: the reflected constructors are Godot.Collections.Dictionary<,>/Array<> instantiations
+            // (defined in this assembly) and array types of GodotObject-derived classes.
+            [UnconditionalSuppressMessage("Trimming", "IL2070",
+                Justification = TrimJustifications.NativeClassesAreRooted)]
             public static object? ConvertToObjectOfType(in godot_variant variant, Type type)
             {
                 if (_toSystemObjectFuncByType.TryGetValue(type, out var func))
@@ -809,6 +825,8 @@ namespace Godot
 
                 if (typeof(GodotObject[]).IsAssignableFrom(type))
                 {
+                    [UnconditionalSuppressMessage("Trimming", "IL2067",
+                        Justification = "Array types have intrinsic constructors; nothing on the element type is reflected. " + TrimJustifications.ScriptTypesAreRooted)]
                     static GodotObject[] ConvertToSystemArrayOfGodotObject(in godot_array nativeArray, Type type)
                     {
                         var array = Collections.Array.CreateTakingOwnershipOfDisposableValue(

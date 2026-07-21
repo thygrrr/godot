@@ -1,12 +1,29 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
 
 #nullable enable
 
 namespace Godot;
+
+// 2dog: shared justification for trim-analysis suppressions at the script bridge's dynamic
+// boundaries. Every trimmed publish path (Godot.NET.Sdk Browser/iOS targets, the 2dog
+// browser-wasm targets and the generated web hosts) roots the assemblies reached by these
+// lookups - the game assemblies and GodotSharp - whole via TrimmerRootAssembly, so script
+// types and all their members survive trimming; desktop deployments do not trim at all.
+internal static class TrimJustifications
+{
+    public const string ScriptTypesAreRooted =
+        "Script types live in assemblies rooted whole via TrimmerRootAssembly on every trimmed " +
+        "publish path (see TrimJustifications in ReflectionUtils.cs); their members cannot be trimmed.";
+
+    public const string NativeClassesAreRooted =
+        "Native Godot classes live in GodotSharp, which is rooted whole via TrimmerRootAssembly " +
+        "on every trimmed publish path (see TrimJustifications in ReflectionUtils.cs).";
+}
 
 internal class ReflectionUtils
 {
@@ -57,6 +74,8 @@ internal class ReflectionUtils
         };
     }
 
+    [UnconditionalSuppressMessage("Trimming", "IL2026",
+        Justification = TrimJustifications.ScriptTypesAreRooted)]
     public static Type? FindTypeInLoadedAssemblies(string assemblyName, string typeFullName)
     {
         return AppDomain.CurrentDomain.GetAssemblies()
