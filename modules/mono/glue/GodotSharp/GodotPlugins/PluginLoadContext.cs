@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -44,6 +45,11 @@ namespace GodotPlugins
             }
         }
 
+        // 2dog: GodotPlugins only runs in untrimmed desktop/editor deployments - trimmed
+        // publishes (browser-wasm) never ship it; plugin init flows through a registered
+        // function pointer instead (see 2dog.browser-wasm.targets).
+        [UnconditionalSuppressMessage("Trimming", "IL2026",
+            Justification = "Plugin assemblies are loaded from disk in untrimmed deployments only.")]
         protected override Assembly? Load(AssemblyName assemblyName)
         {
             if (assemblyName.Name == null)

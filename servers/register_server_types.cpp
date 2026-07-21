@@ -370,6 +370,9 @@ void register_server_types() {
 	GDREGISTER_CLASS(XRServer);
 #endif // XR_DISABLED
 
+	// 2dog: per-instance settings registration; ProjectSettings is fresh after a restart.
+	MovieWriter::register_settings();
+
 	if constexpr (GD_IS_CLASS_ENABLED(MovieWriterPNGWAV)) {
 		writer_pngwav = memnew(MovieWriterPNGWAV);
 		MovieWriter::add_writer(writer_pngwav);

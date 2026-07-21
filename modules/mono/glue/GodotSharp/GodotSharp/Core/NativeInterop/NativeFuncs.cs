@@ -18,15 +18,11 @@ namespace Godot.NativeInterop
     [GenerateUnmanagedCallbacks(typeof(UnmanagedCallbacks))]
     public static unsafe partial class NativeFuncs
     {
-        private static bool initialized;
-
         // ReSharper disable once ParameterOnlyUsedForPreconditionCheck.Global
         public static void Initialize(IntPtr unmanagedCallbacks, int unmanagedCallbacksSize)
         {
             // May be called again when the engine is reinitialized in the same
             // process (libgodot restart); refresh the callback table.
-            initialized = true;
-
             if (unmanagedCallbacksSize != sizeof(UnmanagedCallbacks))
                 throw new ArgumentException("Unmanaged callbacks size mismatch.", nameof(unmanagedCallbacksSize));
 

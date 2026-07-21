@@ -49,6 +49,20 @@ void MovieWriter::add_writer(MovieWriter *p_writer) {
 	writers[writer_count++] = p_writer;
 }
 
+// 2dog: writers are memdeleted on shutdown but re-added on every engine restart;
+// unregister here so the static array holds neither stale slots nor dangling pointers.
+MovieWriter::~MovieWriter() {
+	for (uint32_t i = 0; i < writer_count; i++) {
+		if (writers[i] == this) {
+			for (uint32_t j = i + 1; j < writer_count; j++) {
+				writers[j - 1] = writers[j];
+			}
+			writer_count--;
+			break;
+		}
+	}
+}
+
 MovieWriter *MovieWriter::find_writer_for_file(const String &p_file) {
 	for (int32_t i = writer_count - 1; i >= 0; i--) { // More recent last, to have override ability.
 		if (writers[i]->handles_file(p_file)) {
@@ -147,7 +161,11 @@ void MovieWriter::_bind_methods() {
 	GDVIRTUAL_BIND(_write_begin, "movie_size", "fps", "base_path")
 	GDVIRTUAL_BIND(_write_frame, "frame_image", "audio_frame_block")
 	GDVIRTUAL_BIND(_write_end)
+}
 
+// 2dog: moved out of _bind_methods, which runs once per process while ProjectSettings
+// is recreated on every engine restart; called from register_server_types each boot.
+void MovieWriter::register_settings() {
 	GLOBAL_DEF(PropertyInfo(Variant::INT, "editor/movie_writer/mix_rate", PROPERTY_HINT_RANGE, "8000,192000,1,suffix:Hz"), 48000);
 	GLOBAL_DEF(PropertyInfo(Variant::INT, "editor/movie_writer/speaker_mode", PROPERTY_HINT_ENUM, "Stereo,3.1,5.1,7.1"), 0);
 	GLOBAL_DEF(PropertyInfo(Variant::FLOAT, "editor/movie_writer/video_quality", PROPERTY_HINT_RANGE, "0.0,1.0,0.01"), 0.75);

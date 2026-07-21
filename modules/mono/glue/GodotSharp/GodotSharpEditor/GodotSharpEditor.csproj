@@ -9,6 +9,8 @@
     <DocumentationFile>$(OutputPath)/$(AssemblyName).xml</DocumentationFile>
     <EnableDefaultItems>false</EnableDefaultItems>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <!-- 2dog: generated editor API bindings hold no reflection; trim-safe as generated. -->
+    <IsTrimmable>true</IsTrimmable>
   </PropertyGroup>
   <PropertyGroup>
     <Description>Godot C# Editor API.</Description>

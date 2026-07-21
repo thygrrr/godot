@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using Godot.Bridge;
@@ -221,6 +222,8 @@ namespace Godot
             return t;
         }
 
+        [UnconditionalSuppressMessage("Trimming", "IL2075",
+            Justification = "The NativeName field is looked up on the nearest native base class. " + TrimJustifications.NativeClassesAreRooted)]
         internal static StringName? InternalGetClassNativeBaseName(Type t)
         {
             if (_nativeNames.TryGetValue(t, out var name))
