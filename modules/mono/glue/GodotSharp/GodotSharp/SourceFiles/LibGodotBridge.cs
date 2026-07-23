@@ -206,8 +206,8 @@ namespace GodotPlugins.Game
                 using StringName isStartedName = new("is_started");
                 mbIsStarted = SimpleInterface.classdb_get_method_bind(nativeName.Ptr, isStartedName.Ptr, 2240911060L);
 
-                using StringName iteratiomName = new("iteration");
-                mbIteration = SimpleInterface.classdb_get_method_bind(nativeName.Ptr, iteratiomName.Ptr, 2240911060L);
+                using StringName iterationName = new("iteration");
+                mbIteration = SimpleInterface.classdb_get_method_bind(nativeName.Ptr, iterationName.Ptr, 2240911060L);
 
                 using StringName focusInName = new("focus_in");
                 mbFocusIn = SimpleInterface.classdb_get_method_bind(nativeName.Ptr, focusInName.Ptr, 3218959716L);

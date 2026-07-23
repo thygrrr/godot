@@ -90,12 +90,13 @@ void EditorHTTPServer::_send_response() {
 	const int query_index = req[1].find_char('?');
 	const String path = (query_index == -1) ? req[1] : req[1].substr(0, query_index);
 
-	const String req_file = path.begins_with("/") ? path.substr(1) : path;
-	const String req_ext = path.get_extension();
+	const String req_file = (path.begins_with("/") ? path.substr(1) : path).uri_decode();
+	const bool invalid_path = req_file.is_absolute_path() || req_file.contains("\\") || req_file == ".." || req_file.begins_with("../") || req_file.contains("/../");
+	const String req_ext = req_file.get_extension();
 	const String cache_path = EditorPaths::get_singleton()->get_temp_dir().path_join("web");
 	const String filepath = cache_path.path_join(req_file);
 
-	if (!mimes.has(req_ext) || !FileAccess::exists(filepath)) {
+	if (invalid_path || !mimes.has(req_ext) || !FileAccess::exists(filepath)) {
 		String s = "HTTP/1.1 404 Not Found\r\n";
 		s += "Connection: Close\r\n";
 		s += "\r\n";
@@ -253,7 +254,7 @@ EditorHTTPServer::EditorHTTPServer() {
 	mimes["svg"] = "image/svg";
 	mimes["wasm"] = "application/wasm";
 #ifdef MODULE_MONO_ENABLED
-	// https://github.com/dotnet/runtime/blob/main/src/mono/wasm/features.md#mime-types
+	// 2dog: MIME types required by .NET browser application bundles.
 	mimes["mjs"] = "application/javascript";
 	mimes["bin"] = "application/octet-stream";
 	mimes["dat"] = "application/octet-stream";

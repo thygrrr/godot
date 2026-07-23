@@ -1708,6 +1708,7 @@ static void gdextension_editor_help_load_xml_from_utf8_chars(const char *p_data)
 }
 
 static void gdextension_register_libgodot_callbacks(GDExtensionClassLibraryPtr p_library, const GDExtensionLibGodotCallbacks *p_callbacks) {
+	ERR_FAIL_NULL(p_callbacks);
 	CoreGlobals::global_project_settings_function = (GDInitFunction)p_callbacks->project_settings_func;
 	CoreGlobals::global_world_init_function = (GDWorldInitFunction)p_callbacks->world_init_func;
 }

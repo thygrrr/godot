@@ -18,10 +18,7 @@ def configure(env):
         sys.exit(255)
 
     if env["platform"] == "web":
-        # On web the engine is statically linked into the .NET main module,
-        # which installs its own crash handler; Godot's must stay out.
-        # (Desktop shared-library builds keep the crash handler: 2dog has
-        # always shipped it and hosts rely on unchanged native behavior.)
+        # 2dog: .NET owns crash handling in web library builds; desktop behavior stays unchanged.
         if env["library_type"] != "executable" and not env["disable_crash_handler"]:
             print_error(".NET installs its own crash handler.")
             sys.exit(255)
@@ -38,7 +35,7 @@ def configure(env):
             print_error(
                 '.NET runtime moves to worker thread when multi-threading is enabled, because of this godot needs to be compiled with "proxy_to_pthread" support.'
             )
-            # https://github.com/dotnet/runtime/issues/126438.
+            # 2dog: https://github.com/dotnet/runtime/issues/126438
             sys.exit(255)
 
         if env["lto"] != "none":

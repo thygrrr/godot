@@ -45,7 +45,7 @@ GDExtensionObjectPtr libgodot_create_godot_instance(int p_argc, char *p_argv[], 
 	CoreGlobals::global_init_func_libgodot = p_init_func;
 	CoreGlobals::engine_reinit_enabled = true;
 
-	// Avoid AppKit when the host requests a headless display driver.
+	// 2dog: avoid AppKit when the embedded host requests a headless display driver.
 	bool is_headless = false;
 	for (int i = 1; i < p_argc; i++) {
 		for (size_t j = 0; j < std::size(OS_MacOS::headless_args); j++) {
@@ -105,7 +105,7 @@ void libgodot_destroy_godot_instance(GDExtensionObjectPtr p_godot_instance) {
 
 int libgodot_import_project(const char *p_project_path, int p_extra_argc, const char *p_extra_argv[]) {
 #ifndef TOOLS_ENABLED
-	return -1; // Editor builds only.
+	return -1;
 #else
 	ERR_FAIL_NULL_V(p_project_path, EXIT_FAILURE);
 	ERR_FAIL_COND_V_MSG(instance != nullptr || os != nullptr, EXIT_FAILURE,
@@ -120,10 +120,10 @@ int libgodot_import_project(const char *p_project_path, int p_extra_argc, const 
 		argv.push_back(const_cast<char *>(p_extra_argv[i]));
 	}
 
-	// Import uses the AppKit-free headless OS.
+	// 2dog: import through the AppKit-free headless OS.
 	OS_MacOS_Headless import_os("libgodot", argv.size(), argv.ptrw());
 
-	// OS_MacOS_Headless::run owns setup and cleanup.
+	// 2dog: OS_MacOS_Headless::run owns setup and cleanup.
 	import_os.run();
 	return import_os.get_exit_code();
 #endif
@@ -131,7 +131,7 @@ int libgodot_import_project(const char *p_project_path, int p_extra_argc, const 
 
 int libgodot_export_pack(const char *p_project_path, const char *p_preset, const char *p_output_path, int p_extra_argc, const char *p_extra_argv[]) {
 #ifndef TOOLS_ENABLED
-	return -1; // Editor builds only.
+	return -1;
 #else
 	ERR_FAIL_NULL_V(p_project_path, EXIT_FAILURE);
 	ERR_FAIL_NULL_V(p_preset, EXIT_FAILURE);
@@ -150,7 +150,7 @@ int libgodot_export_pack(const char *p_project_path, const char *p_preset, const
 		argv.push_back(const_cast<char *>(p_extra_argv[i]));
 	}
 
-	// OS_MacOS_Headless::run owns the headless export lifecycle.
+	// 2dog: OS_MacOS_Headless::run owns setup and cleanup.
 	OS_MacOS_Headless export_os("libgodot", argv.size(), argv.ptrw());
 
 	export_os.run();

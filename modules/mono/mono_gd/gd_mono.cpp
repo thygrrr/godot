@@ -166,8 +166,7 @@ bool try_get_dotnet_root_from_command_line(String &r_dotnet_root) {
 
 String find_hostfxr() {
 #if defined(TOOLS_ENABLED) || defined(LIBGODOT_HOSTFXR)
-	// Use system hostfxr discovery for editor builds and libgodot shared library builds.
-	// For libgodot, this allows using the host application's .NET runtime.
+	// 2dog: editor and libgodot builds discover the host application's runtime through hostfxr.
 	String dotnet_root;
 	String fxr_path;
 	if (godotsharp::hostfxr_resolver::try_get_path(dotnet_root, fxr_path)) {
@@ -442,7 +441,7 @@ using godot_plugins_initialize_fn = bool (*)(void *, GDMonoCache::ManagedCallbac
 #endif
 
 #if defined(GD_MONO_LIBGODOT_ENABLED)
-// Export macros for DLL visibility
+// 2dog: export host registration from library builds.
 #if (defined(_MSC_VER) || defined(__MINGW32__))
 #define MONO_LIBGODOT_API __declspec(dllexport)
 #elif defined(__GNUC__) || defined(__clang__)
@@ -660,12 +659,10 @@ godot_plugins_initialize_fn initialize_coreclr_and_godot_plugins(bool &r_runtime
 
 bool GDMono::should_initialize() {
 #if defined(TOOLS_ENABLED) || defined(LIBGODOT_HOSTFXR)
-	// Editor builds and libgodot shared library builds always need to initialize the .NET module.
+	// 2dog: editor and libgodot builds always initialize the .NET module.
 	return true;
 #elif defined(GD_MONO_LIBGODOT_ENABLED) && defined(WEB_ENABLED)
-	// Web static-library builds are linked into the .NET main module: the
-	// host runtime is present by construction, so don't depend on the
-	// "dotnet" feature tag the editor export flow would have injected.
+	// 2dog: web libraries are linked into .NET, so initialization does not require a feature tag.
 	return true;
 #else
 	return OS::get_singleton()->has_feature("dotnet");
@@ -706,8 +703,7 @@ bool load_godot_plugins_initialize(godot_plugins_initialize_fn &r_godot_plugins_
 	}
 
 #if !defined(TOOLS_ENABLED) && !defined(LIBGODOT_HOSTFXR)
-	// Shared-library (libgodot) builds must use the host application's .NET
-	// runtime via system hostfxr; loading a bundled coreclr would conflict.
+	// 2dog: libgodot must use the host runtime; loading another CoreCLR would conflict.
 	if (load_coreclr(r_coreclr_dll_handle)) {
 		r_godot_plugins_initialize = initialize_coreclr_and_godot_plugins(r_runtime_initialized);
 		ERR_FAIL_NULL_V(r_godot_plugins_initialize, false);
@@ -839,12 +835,7 @@ bool GDMono::_load_project_assembly() {
 	String assembly_path;
 
 #ifdef LIBGODOT_HOSTFXR
-	// 2dog: a libgodot host references the game project, so the host's build
-	// output contains a game assembly matching the host's build configuration.
-	// The managed host advertises that directory via GODOT_PROJECT_ASSEMBLY_DIR;
-	// prefer it over .godot/mono/temp/bin/<config>, which only exists for
-	// configurations the game project was built with directly (a Release-only
-	// build or publish has no Debug dir there and would load no scripts).
+	// 2dog: prefer the host's published game assembly; the conventional Debug path may not exist.
 	String host_assemblies_dir = OS::get_singleton()->get_environment("GODOT_PROJECT_ASSEMBLY_DIR");
 	if (!host_assemblies_dir.is_empty()) {
 		String host_assembly_path = host_assemblies_dir.path_join(assembly_name + ".dll");

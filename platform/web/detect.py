@@ -114,22 +114,14 @@ def configure(env: "SConsEnvironment"):
     cc_version = get_compiler_version(env)
     cc_semver = (cc_version["major"], cc_version["minor"], cc_version["patch"])
 
-    # Minimum emscripten requirements.
-    # 2dog: library builds (any flavor) are linked into the .NET runtime pack's
-    # wasm module, so they must use its Emscripten version (3.1.56).
+    # 2dog: .NET-linked archives must match its Emscripten 3.1.56; standalone builds require 4.0.
     dotnet_linked = env["module_mono_enabled"] or env["library_type"] != "executable"
-    if dotnet_linked and cc_semver < (3, 1, 56):
-        print_error("The minimum Emscripten version to build Godot with .NET is 3.1.56, detected: %s.%s.%s" % cc_semver)
+    if dotnet_linked and cc_semver != (3, 1, 56):
+        print_error("Godot libraries linked by .NET require Emscripten 3.1.56, detected: %s.%s.%s" % cc_semver)
         sys.exit(255)
     elif not dotnet_linked and cc_semver < (4, 0, 0):
         print_error("The minimum Emscripten version to build Godot is 4.0.0, detected: %s.%s.%s" % cc_semver)
         sys.exit(255)
-
-    if cc_semver < (4, 0, 0):
-        print_warning(
-            "The Emscripten version for C# is %s.%s.%s while minimum supported version to build "
-            "Godot is 4.0.0, export is experimental." % cc_semver
-        )
 
     env.Append(LIBEMITTER=[library_emitter])
 

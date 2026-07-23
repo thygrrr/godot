@@ -100,17 +100,12 @@ namespace GodotPlugins
 
                 if (_initializedFromEngine)
                 {
-                    // The engine was reinitialized in this process (libgodot
-                    // restart): cached script bridge state points at native
-                    // objects of the previous engine instance.
+                    // 2dog: discard script bridge state from the previous engine instance.
                     ScriptManagerBridge.ResetForEngineReinitialization();
                 }
                 _initializedFromEngine = true;
 
-                // A DllImport resolver can only be registered once per assembly.
-                // When the engine is reinitialized in the same process (libgodot
-                // restart), the resolver from the previous run stays valid: the
-                // native godot library remains loaded, so its handle is unchanged.
+                // 2dog: resolvers register once; the native library stays loaded across restarts.
                 if (_dllImportResolver == null)
                 {
                     _dllImportResolver = new GodotDllImportResolver(godotDllHandle).OnResolveDllImport;
@@ -161,10 +156,7 @@ namespace GodotPlugins
             {
                 if (_projectLoadContext != null)
                 {
-                    // Already loaded. When the engine was reinitialized in the
-                    // same process (libgodot restart), the script bridge state
-                    // was reset, so the script lookups must be repopulated for
-                    // the new engine instance.
+                    // 2dog: repopulate script lookups after an engine restart reset the bridge.
                     if (_projectAssembly != null)
                         ScriptManagerBridge.LookupScriptsInAssembly(_projectAssembly);
                     return godot_bool.True;
@@ -247,7 +239,7 @@ namespace GodotPlugins
         {
             try
             {
-                // A strong Assembly reference keeps a collectible load context alive.
+                // 2dog: release the Assembly reference before unloading its collectible context.
                 if (_projectLoadContext?.IsCollectible == true)
                     _projectAssembly = null;
                 return UnloadPlugin(ref _projectLoadContext).ToGodotBool();

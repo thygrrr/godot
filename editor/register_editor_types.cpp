@@ -340,10 +340,7 @@ void unregister_editor_types() {
 
 	EditorInspector::set_property_clipboard(EditorInspector::PropertyClipboard::Type::EMPTY, Variant());
 	EditorNode::cleanup();
-	// Undo register_editor_types() registrations that would otherwise
-	// accumulate or dangle across an engine reinitialization (libgodot
-	// restart): the Engine singleton entry would point at freed memory, and
-	// the plugin create funcs would overflow MAX_CREATE_FUNCS.
+	// 2dog: remove process-static registrations that would dangle or accumulate across restarts.
 	Engine::get_singleton()->remove_singleton("EditorInterface");
 	EditorPlugins::remove_all_create_funcs();
 	EditorInterface::free();

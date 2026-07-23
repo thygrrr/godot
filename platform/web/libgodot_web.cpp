@@ -57,13 +57,11 @@ uint64_t target_ticks = 0;
 #endif
 
 static void print_web_header() {
-	// Emscripten.
 	char *emscripten_version_char = godot_js_emscripten_get_version();
 	String emscripten_version = vformat("Emscripten %s", emscripten_version_char);
-	// `free()` is used here because it's not memory that was allocated by Godot.
+	// 2dog: this value is allocated outside Godot's memory API.
 	free(emscripten_version_char);
 
-	// Build features.
 	String thread_support = OS::get_singleton()->has_feature("threads")
 			? "multi-threaded"
 			: "single-threaded";
@@ -80,7 +78,7 @@ GDExtensionObjectPtr libgodot_create_godot_instance(int p_argc, char *p_argv[], 
 
 	godot_init_profiler();
 
-	// Web builds are single-use; the statically linked engine cannot restart.
+	// 2dog: the statically linked web engine supports one lifetime per page.
 	CoreGlobals::global_init_func_libgodot = p_init_func;
 
 	os = new OS_Web();
@@ -107,7 +105,7 @@ GDExtensionObjectPtr libgodot_create_godot_instance(int p_argc, char *p_argv[], 
 
 	print_web_header();
 
-	// Allow missing resources in embedded web hosts.
+	// 2dog: embedded web hosts may provide resources outside the project pack.
 	ResourceLoader::set_abort_on_missing_resources(false);
 
 	return static_cast<GDExtensionObjectPtr>(instance);
@@ -126,8 +124,11 @@ void libgodot_destroy_godot_instance(GDExtensionObjectPtr p_godot_instance) {
 	}
 }
 
-// Called by the managed browser main loop.
+// 2dog: entry point used by the managed browser main loop.
 extern "C" LIBGODOT_API GDExtensionBool libgodot_web_iteration() {
+	ERR_FAIL_NULL_V(instance, true);
+	ERR_FAIL_NULL_V(os, true);
+	ERR_FAIL_NULL_V(DisplayServerWeb::get_singleton(), true);
 #ifndef PROXY_TO_PTHREAD_ENABLED
 	uint64_t current_ticks = os->get_ticks_usec();
 #endif
@@ -137,7 +138,7 @@ extern "C" LIBGODOT_API GDExtensionBool libgodot_web_iteration() {
 		Main::force_redraw();
 #ifndef PROXY_TO_PTHREAD_ENABLED
 	} else if (current_ticks < target_ticks) {
-		return false; // Skip frame.
+		return false;
 #endif
 	}
 
@@ -145,7 +146,7 @@ extern "C" LIBGODOT_API GDExtensionBool libgodot_web_iteration() {
 	int max_fps = Engine::get_singleton()->get_max_fps();
 	if (max_fps > 0) {
 		if (current_ticks - target_ticks > 1000000) {
-			// Reset accumulated delay after focus loss.
+			// 2dog: reset accumulated delay after focus loss.
 			target_ticks = current_ticks;
 		}
 		target_ticks += (uint64_t)(1000000 / max_fps);

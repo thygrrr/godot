@@ -44,7 +44,11 @@ namespace GodotPlugins.Game
 
             set_load_from_executable_fn((nint)(delegate* unmanaged<nint>)&LoadFromExecutable);
 
-            instance.Start();
+            if (!instance.Start())
+            {
+                instance.Dispose();
+                return 1;
+            }
             while (!instance.Iteration()) { }
             instance.Dispose();
 
@@ -122,7 +126,12 @@ namespace GodotPlugins.Game
             }
 
             set_load_from_executable_fn((nint)(delegate* unmanaged<nint>)&LoadFromExecutable);
-            instance.Start();
+            if (!instance.Start())
+            {
+                instance.Dispose();
+                instance = null;
+                return 1;
+            }
 
             emscripten_set_main_loop((nint)(delegate* unmanaged<void>)&MainLoopCallback, -1, 0);
 

@@ -3305,11 +3305,7 @@ void DisplayServerWindows::cursor_set_shape(DisplayServerEnums::CursorShape p_sh
 	if (cursors_cache.has(p_shape)) {
 		SetCursor(cursors[p_shape]);
 	} else {
-		// Predefined IDC_* cursors must be loaded with a null module handle.
-		// godot.exe gets away with passing `hInstance` because its entry point
-		// is mainCRTStartup, which leaves it null; in embedded (libgodot) hosts
-		// it is the host executable, making LoadCursor fail and SetCursor(null)
-		// hide the cursor.
+		// 2dog: predefined IDC_* cursors require a null module handle in embedded hosts.
 		SetCursor(LoadCursor(nullptr, win_cursors[p_shape]));
 	}
 
@@ -5625,11 +5621,8 @@ LRESULT DisplayServerWindows::_handle_early_window_message(HWND hWnd, UINT uMsg,
 	return DefWindowProcW(hWnd, uMsg, wParam, lParam);
 }
 
-// 2dog: per-module window class name. Multiple libgodot copies in one process
-// all see the executable's hInstance, so a shared "Engine" class would keep the
-// FIRST module's WndProc - other instances' windows would dispatch into foreign
-// static state. Suffix with the module base in libgodot mode; plain builds keep
-// the stock name.
+// 2dog: suffix embedded window classes with their module base so concurrent libgodot
+// copies never dispatch through another module's WndProc.
 static const WCHAR *_get_engine_window_class_name() {
 	static WCHAR class_name[32] = L"Engine";
 	static bool initialized = false;
@@ -5637,9 +5630,10 @@ static const WCHAR *_get_engine_window_class_name() {
 		initialized = true;
 		if (CoreGlobals::engine_reinit_enabled) {
 			HMODULE self = nullptr;
-			GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-					(LPCWSTR)&_get_engine_window_class_name, &self);
-			_snwprintf_s(class_name, _countof(class_name), _TRUNCATE, L"Engine.%p", (void *)self);
+			if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+						(LPCWSTR)&_get_engine_window_class_name, &self)) {
+				_snwprintf_s(class_name, _countof(class_name), _TRUNCATE, L"Engine.%p", (void *)self);
+			}
 		}
 	}
 	return class_name;
@@ -7991,15 +7985,14 @@ DisplayServerWindows::DisplayServerWindows(const String &p_rendering_driver, Dis
 	wc.lpszMenuName = nullptr;
 	wc.lpszClassName = _get_engine_window_class_name();
 
-	// The class may still be registered from a previous engine instance
-	// (engine reinitialization): the WndProc is a static function in this
-	// module, which stays loaded for the process lifetime, so reusing the
-	// registration is safe. Never unregister it: doing so leaves the input
-	// stack (TSF/CoreMessaging) with dangling per-class state that fail-fasts
-	// (0xE0464645) when the process exits.
-	if (!RegisterClassExW(&wc) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS) {
-		r_error = ERR_UNAVAILABLE;
-		return;
+	// 2dog: retain the class across restarts; unregistering leaves dangling TSF/CoreMessaging state.
+	if (!RegisterClassExW(&wc)) {
+		WNDCLASSEXW existing = {};
+		existing.cbSize = sizeof(WNDCLASSEXW);
+		if (GetLastError() != ERROR_CLASS_ALREADY_EXISTS || !GetClassInfoExW(wc.hInstance, wc.lpszClassName, &existing) || existing.lpfnWndProc != wc.lpfnWndProc) {
+			r_error = ERR_UNAVAILABLE;
+			return;
+		}
 	}
 
 	_register_raw_input_devices(DisplayServerEnums::INVALID_WINDOW_ID);
@@ -8605,7 +8598,5 @@ DisplayServerWindows::~DisplayServerWindows() {
 
 	OleUninitialize();
 
-	// Deliberately do not UnregisterClassW: the constructor tolerates the
-	// class already existing on engine reinitialization, and unregistering
-	// triggers a CoreMessaging fail-fast at process exit (see constructor).
+	// 2dog: keep the window class registered to preserve TSF/CoreMessaging state.
 }

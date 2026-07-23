@@ -1,6 +1,4 @@
-// When we are passing "callMain" to <EmccExportedRuntimeMethod /> it checks if "callMain" exists,
-// but doesn't generate "callMain" itself. I guess emscripten is hard wired to detect
-// main and only generates "callMain" if it detects it. Or it is some C# customization.
+// 2dog: library builds have no C main, but Emscripten requires this exported runtime symbol.
 const callMain = function (_args) { // eslint-disable-line no-unused-vars
 	throw new Error('"callMain" is not implemented.');
 };

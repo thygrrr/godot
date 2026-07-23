@@ -13,12 +13,7 @@
 
     <AnalysisMode>Recommended</AnalysisMode>
 
-    <!-- 2dog: trim-annotated fork. The script/delegate bridge paths that rely
-         on unconstrained reflection (ScriptManagerBridge, DelegateUtils,
-         ReflectionUtils) carry DynamicallyAccessedMembers annotations or
-         boundary suppressions; trimmed publishes (browser-wasm) additionally
-         use TrimMode=partial and root this assembly whole via
-         TrimmerRootAssembly (see 2dog.browser-wasm.targets). -->
+    <!-- 2dog: reflection boundaries are trim-annotated; trimmed publishes also root this assembly. -->
     <IsTrimmable>true</IsTrimmable>
   </PropertyGroup>
 
@@ -156,15 +151,12 @@
     <Compile Include="Compat.cs" />
   </ItemGroup>
 
-  <!-- Disable runtime marshaling for this assembly. -->
+  <!-- 2dog: disable runtime marshalling for this assembly. -->
   <ItemGroup>
     <Compile Include="DisableRuntimeMarshalling.cs" />
   </ItemGroup>
 
-  <!-- Source-only reference files (upstream PR #118976 packs these as
-       contentFiles so the game project hosts libgodot itself; in 2dog the
-       host bridge lives in the twodog library instead, so they are kept
-       in-tree as reference only and never packed). -->
+  <!-- 2dog: keep upstream host bridge sources as unpacked references; twodog owns the implementation. -->
   <ItemGroup>
     <Compile Remove="SourceFiles\**\*.cs" />
     <None Include="SourceFiles\**\*.cs" />

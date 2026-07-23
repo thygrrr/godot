@@ -938,8 +938,7 @@ if env["disable_exceptions"]:
 elif env.msvc:
     env.Append(CXXFLAGS=["/EHsc"])
 
-# Disable crash handler. Mainly useful when using Godot as a library as some runtimes install
-# their own signal handlers, so they both will try to register their own signal handlers
+# 2dog: library hosts may install signal handlers that conflict with Godot's crash handler.
 if env["disable_crash_handler"]:
     env.AppendUnique(CPPDEFINES=["DISABLE_CRASH_HANDLER"])
 

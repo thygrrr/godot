@@ -511,11 +511,8 @@ void GDExtension::_register_extension_class_internal(GDExtensionClassLibraryPtr 
 	extension->gdextension.library = self;
 	extension->gdextension.parent_class_name = parent_class_name;
 	extension->gdextension.class_name = class_name;
-	// 2dog: an embedded runtime host may register classes after full
-	// initialization, where level_initialized has settled at EDITOR on
-	// editor-variant builds. Editor-only classes exist only when an actual
-	// editor is running; otherwise ClassDB would refuse to instantiate them
-	// (scene loads, classdb_construct_object) in headless/runtime hosts.
+	// 2dog: embedded hosts may register runtime classes after editor-level initialization.
+	// Only mark them editor-only when an editor is actually running.
 	extension->gdextension.editor_class = self->level_initialized == INITIALIZATION_LEVEL_EDITOR && Engine::get_singleton()->is_editor_hint();
 	extension->gdextension.is_virtual = p_extension_funcs->is_virtual;
 	extension->gdextension.is_abstract = p_extension_funcs->is_abstract;

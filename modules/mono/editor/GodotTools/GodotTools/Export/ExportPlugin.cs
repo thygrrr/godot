@@ -181,10 +181,7 @@ namespace GodotTools.Export
 
             if (platform == OS.Platforms.Web && !path.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
             {
-                // Pack-only web export (--export-pack): on web the assemblies ship
-                // inside the wasm app bundle produced by the host application's own
-                // `dotnet publish -r browser-wasm`, never inside the pck, and there
-                // is no extracted web template to publish against. Nothing to do.
+                // 2dog: pack-only web exports have no template; the host publish supplies assemblies.
                 return;
             }
 
@@ -265,7 +262,7 @@ namespace GodotTools.Export
 
             List<string> outputPaths = new();
 
-            bool embedBuildResults = ((bool)GetOption("dotnet/embed_build_outputs") || platform == OS.Platforms.Android) && (platform != OS.Platforms.MacOS || platform != OS.Platforms.Web);
+            bool embedBuildResults = ((bool)GetOption("dotnet/embed_build_outputs") || platform == OS.Platforms.Android) && platform != OS.Platforms.MacOS && platform != OS.Platforms.Web;
 
             var exportedJars = new HashSet<string>();
 
@@ -332,7 +329,7 @@ namespace GodotTools.Export
 
                     if (platform == OS.Platforms.Web)
                     {
-                        // AddSharedObject also populates gdextensionLibs, which we don't want, so move it manually.
+                        // 2dog: copy directly because AddSharedObject also populates gdextensionLibs.
                         Directory.CopyDirectory(webAppBundlePath, baseDir, true);
                         File.Move(Path.Combine(baseDir, "_framework", "dotnet.native.wasm"), $"{path.GetBaseName()}.wasm");
                         continue;

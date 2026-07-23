@@ -9,11 +9,8 @@ using System.Text;
 
 namespace Godot;
 
-// 2dog: shared justification for trim-analysis suppressions at the script bridge's dynamic
-// boundaries. Every trimmed publish path (Godot.NET.Sdk Browser/iOS targets, the 2dog
-// browser-wasm targets and the generated web hosts) roots the assemblies reached by these
-// lookups - the game assemblies and GodotSharp - whole via TrimmerRootAssembly, so script
-// types and all their members survive trimming; desktop deployments do not trim at all.
+// 2dog: trimmed publish paths root game assemblies and GodotSharp, making these reflection
+// boundaries safe; desktop deployments do not trim.
 internal static class TrimJustifications
 {
     public const string ScriptTypesAreRooted =

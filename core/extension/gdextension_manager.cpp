@@ -65,6 +65,8 @@ GDExtensionManager::LoadStatus GDExtensionManager::_load_extension_internal(cons
 }
 
 void GDExtensionManager::load_embedded_extension() {
+	CoreGlobals::global_project_settings_function = nullptr;
+	CoreGlobals::global_world_init_function = nullptr;
 	if (CoreGlobals::global_init_func_libgodot != nullptr) {
 		GDExtensionConstPtr<const GDExtensionInitializationFunction> ptr((const GDExtensionInitializationFunction *)&CoreGlobals::global_init_func_libgodot);
 		CoreGlobals::global_load_status_libgodot = load_extension_from_function("libgodot://main", ptr);

@@ -43,14 +43,8 @@ struct StringName::Table {
 
 	static inline _Data *table[TABLE_LEN];
 
-	// 2dog: the lock and allocator are deliberately leaked. In reinit mode
-	// interned names live until process exit, so statics elsewhere that hold
-	// StringNames call unref() during static destruction - after inline
-	// members here would already be destroyed (destruction order across
-	// translation units is link-order dependent; macOS aborts with "mutex
-	// lock failed", elsewhere freed allocator pages would be touched).
-	// Function-local static pointers have trivial destruction, so neither
-	// object is ever destroyed.
+	// 2dog: keep the table lock and allocator alive for static StringNames across engine restarts.
+	// Leaking function-local pointers also avoids cross-translation-unit destruction ordering.
 	static BinaryMutex &mutex() {
 		static BinaryMutex *m = memnew(BinaryMutex);
 		return *m;
@@ -63,7 +57,7 @@ struct StringName::Table {
 
 void StringName::setup() {
 	if (CoreGlobals::engine_reinit_enabled && configured) {
-		// Preserve interned names for static StringNames across restarts.
+		// 2dog: preserve interned names held by statics across engine restarts.
 		return;
 	}
 	ERR_FAIL_COND(configured);

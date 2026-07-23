@@ -90,10 +90,15 @@ Error EditorExportPlatformWeb::_extract_template(const String &p_template, const
 		unzCloseCurrentFile(pkg);
 
 		//write
-		String dst = p_dir.path_join(file.contains("libgodot") ? file : file.replace("godot", p_name));
+		String dst = p_dir.path_join(file.begins_with("libgodot/") ? file : file.replace("godot", p_name));
 		String dst_dir = dst.get_base_dir();
 		if (!DirAccess::exists(dst_dir)) {
-			DirAccess::make_dir_recursive_absolute(dst_dir);
+			Error err = DirAccess::make_dir_recursive_absolute(dst_dir);
+			if (err != OK) {
+				add_message(EXPORT_MESSAGE_ERROR, TTR("Prepare Templates"), vformat(TTR("Could not create directory: \"%s\"."), dst_dir));
+				unzClose(pkg);
+				return err;
+			}
 		}
 
 		Ref<FileAccess> f = FileAccess::open(dst, FileAccess::WRITE);
@@ -433,7 +438,7 @@ bool EditorExportPlatformWeb::has_valid_export_configuration(const Ref<EditorExp
 	bool thread_support = (bool)p_preset->get("variant/thread_support");
 
 #ifdef MODULE_MONO_ENABLED
-	// Web export is still a work in progress, keep a message as a warning.
+	// 2dog: .NET web export remains experimental.
 	err += TTR("Exporting to Web when using C#/.NET is experimental.") + "\n";
 	if (extensions) {
 		r_error += TTR("Exporting C#/.NET with GDExtensions is currently not supported.") + "\n";
@@ -530,7 +535,6 @@ Error EditorExportPlatformWeb::export_project(const Ref<EditorExportPreset> &p_p
 		return error;
 	}
 
-	// TODO: Should we add a step between _export_begin and _export_end, something like _export_modify, and put _export_begin back to the beginning?
 	ExportNotifier notifier(*this, p_preset, p_debug, p_path, p_flags, p_notify);
 
 	// Check if any export plugin failed.
@@ -625,12 +629,21 @@ Error EditorExportPlatformWeb::export_project(const Ref<EditorExportPreset> &p_p
 		}
 	}
 
-	// Remove libgodot related files if they exist.
+	// 2dog: libgodot inputs are build-only and must not ship in the export.
 	String libgodot_dir = base_dir.path_join("libgodot");
 	if (DirAccess::exists(libgodot_dir)) {
 		Ref<DirAccess> libgodot_dir_da = DirAccess::open(libgodot_dir);
-		libgodot_dir_da->erase_contents_recursive();
-		DirAccess::remove_absolute(libgodot_dir);
+		if (libgodot_dir_da.is_null()) {
+			return ERR_CANT_OPEN;
+		}
+		Error cleanup_error = libgodot_dir_da->erase_contents_recursive();
+		if (cleanup_error != OK) {
+			return cleanup_error;
+		}
+		cleanup_error = DirAccess::remove_absolute(libgodot_dir);
+		if (cleanup_error != OK) {
+			return cleanup_error;
+		}
 	}
 
 	return OK;
@@ -885,7 +898,9 @@ Error EditorExportPlatformWeb::_export_project(const Ref<EditorExportPreset> &p_
 		// Export generates several files, clean them up on failure.
 		if (DirAccess::exists(dest)) {
 			Ref<DirAccess> dest_da = DirAccess::open(dest);
-			dest_da->erase_contents_recursive();
+			if (dest_da.is_valid() && dest_da->erase_contents_recursive() != OK) {
+				add_message(EXPORT_MESSAGE_WARNING, TTR("Run"), vformat(TTR("Could not clean HTTP server directory: %s."), dest));
+			}
 		}
 	}
 	return err;

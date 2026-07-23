@@ -2346,7 +2346,7 @@ void ClassDB::cleanup() {
 	//OBJTYPE_LOCK; hah not here
 
 	if (CoreGlobals::engine_reinit_enabled) {
-		// GDCLASS registration is process-lifetime in reinit mode.
+		// 2dog: GDCLASS registration has process lifetime in reinit mode.
 		return;
 	}
 

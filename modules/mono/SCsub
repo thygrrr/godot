@@ -7,10 +7,6 @@ Import("env")
 Import("env_modules")
 
 if env["platform"] == "web":
-    if env["library_type"] == "shared_library":
-        # Shared library doesn't work right now.
-        env["EXPORTED_FUNCTIONS_SHARED"] += ["_set_load_from_executable_fn"]
-
     env.AddJSLibraries(["web/setjmp_stub.js"])
     env.AddJSPre(["web/callMain_stub.js"])
     env["CUSTOM_GODOT_JS"] = env.File("web/mono_bridge.js")
@@ -32,7 +28,6 @@ if env.editor_build:
     env_mono.add_source_files(env.modules_sources, "editor/*.cpp")
     SConscript("editor/script_templates/SCsub")
 elif env.get("library_type", "") == "shared_library":
-    # For libgodot shared library builds, we need hostfxr_resolver and semver
-    # to discover the system .NET SDK (used via LIBGODOT_HOSTFXR define)
+    # 2dog: libgodot discovers the host application's .NET runtime through hostfxr.
     env_mono.add_source_files(env.modules_sources, "editor/hostfxr_resolver.cpp")
     env_mono.add_source_files(env.modules_sources, "editor/semver.cpp")
