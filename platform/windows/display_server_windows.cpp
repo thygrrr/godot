@@ -40,6 +40,7 @@
 
 #include "core/config/engine.h"
 #include "core/config/project_settings.h"
+#include "core/core_globals.h"
 #include "core/input/input.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
@@ -5381,6 +5382,26 @@ LRESULT DisplayServerWindows::_handle_early_window_message(HWND hWnd, UINT uMsg,
 	return DefWindowProcW(hWnd, uMsg, wParam, lParam);
 }
 
+// 2dog: per-module window class name. Multiple libgodot copies in one process
+// all see the executable's hInstance, so a shared "Engine" class would keep the
+// FIRST module's WndProc - other instances' windows would dispatch into foreign
+// static state. Suffix with the module base in libgodot mode; plain builds keep
+// the stock name.
+static const WCHAR *_get_engine_window_class_name() {
+	static WCHAR class_name[32] = L"Engine";
+	static bool initialized = false;
+	if (!initialized) {
+		initialized = true;
+		if (CoreGlobals::engine_reinit_enabled) {
+			HMODULE self = nullptr;
+			GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+					(LPCWSTR)&_get_engine_window_class_name, &self);
+			_snwprintf_s(class_name, _countof(class_name), _TRUNCATE, L"Engine.%p", (void *)self);
+		}
+	}
+	return class_name;
+}
+
 // The window procedure for our window class "Engine", used to handle processing of window-related system messages/events.
 // See: https://docs.microsoft.com/en-us/windows/win32/winmsg/window-procedures
 LRESULT DisplayServerWindows::WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -7089,7 +7110,7 @@ Error DisplayServerWindows::_create_window(DisplayServerEnums::WindowID p_window
 		wd.id = id;
 		wd.hWnd = CreateWindowExW(
 				dwExStyle,
-				L"Engine", L"",
+				_get_engine_window_class_name(), L"",
 				dwStyle,
 				WindowRect.left,
 				WindowRect.top,
@@ -7800,7 +7821,7 @@ DisplayServerWindows::DisplayServerWindows(const String &p_rendering_driver, Dis
 	wc.hCursor = nullptr;
 	wc.hbrBackground = nullptr;
 	wc.lpszMenuName = nullptr;
-	wc.lpszClassName = L"Engine";
+	wc.lpszClassName = _get_engine_window_class_name();
 
 	// The class may still be registered from a previous engine instance
 	// (engine reinitialization): the WndProc is a static function in this
