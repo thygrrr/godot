@@ -20,9 +20,7 @@ public static partial class ScriptManagerBridge
         private System.Collections.Generic.Dictionary<IntPtr, Type> _scriptTypeMap = new();
         private System.Collections.Generic.Dictionary<Type, IntPtr> _typeScriptMap = new();
 
-        // 2dog: script types enter the maps annotated as fully preserved; the accessors below
-        // re-attach that annotation after the dictionary hop (annotations cannot flow through
-        // generic type arguments), so every reflective consumer downstream stays trim-checked.
+        // 2dog: accessors restore trimming annotations lost through generic dictionary storage.
         public void Add(IntPtr scriptPtr, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] Type scriptType)
         {
             // TODO: What if this is called while unloading a load context, but after we already did cleanup in preparation for unloading?
@@ -79,7 +77,7 @@ public static partial class ScriptManagerBridge
 
         public System.Collections.Generic.Dictionary<string, Type>.KeyCollection Paths => _pathTypeMap.Keys;
 
-        // 2dog: same annotation contract as ScriptTypeBiMap (see comment there).
+        // 2dog: use the same annotation contract as ScriptTypeBiMap.
         public void Add(string scriptPath, [DynamicallyAccessedMembers(DynamicallyAccessedMemberTypes.All)] Type scriptType)
         {
             _pathTypeMap.Add(scriptPath, scriptType);

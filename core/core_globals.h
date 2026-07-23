@@ -66,6 +66,6 @@ public:
 	static inline GDExtensionInitializationFunction global_init_func_libgodot = nullptr;
 	static inline int32_t global_load_status_libgodot = 0;
 
-	// Preserve process-lifetime metadata for libgodot engine restarts.
+	// 2dog: preserve process-lifetime metadata across libgodot engine restarts.
 	static inline bool engine_reinit_enabled = false;
 };

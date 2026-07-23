@@ -102,7 +102,7 @@ public:
 
 	_FORCE_INLINE_ static String get_expected_api_build_config() {
 #if defined(TOOLS_ENABLED) || defined(LIBGODOT_HOSTFXR)
-		// Editor builds and libgodot shared library builds use Debug assemblies
+		// 2dog: editor and libgodot builds use Debug API assemblies.
 		return "Debug";
 #else
 #ifdef DEBUG_ENABLED

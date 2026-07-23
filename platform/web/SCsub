@@ -58,10 +58,7 @@ sys_env.AddJSPost([
     "js/patches/patch_em_gl.js",
 ])
 
-# 2dog: non-mono library builds host the engine in the .NET wasm runtime just
-# like mono ones. Reuse the mono module's runtime-flavor-agnostic dotnet
-# bridge (defines the `Godot` module factory over _framework/dotnet.js) and
-# add the callMain stub its SCsub adds for mono builds.
+# 2dog: non-mono libraries share the .NET wasm bridge and callMain stub used by mono builds.
 if env["library_type"] != "executable" and not env["module_mono_enabled"]:
     sys_env.AddJSPre(["js/patches/callMain_stub.js"])
     env["CUSTOM_GODOT_JS"] = env.File("#modules/mono/web/mono_bridge.js")
@@ -91,7 +88,7 @@ libgodot = None
 if env["library_type"] != "executable":
     libgodot = {}
     conf_env = env.Clone()
-    # We use IDBFS. Since Emscripten 1.39.1 it needs to be linked explicitly.
+    # 2dog: library bundles link IDBFS explicitly.
     conf_env.Append(LIBS=["idbfs.js"])
     if env["library_type"] == "shared_library":
         conf_env["CCFLAGS"].remove("-sSIDE_MODULE=2")
@@ -127,7 +124,7 @@ if env["library_type"] == "static_library":
 elif env["library_type"] == "shared_library":
     if len(env["EXPORTED_FUNCTIONS_SHARED"]):
         env.Append(LINKFLAGS=[env.Literal("-sEXPORTED_FUNCTIONS=" + ",".join(env["EXPORTED_FUNCTIONS_SHARED"]))])
-    # The side library, containing all Godot code.
+        # 2dog: emit Godot as a side library.
     side_wasm = env.add_program("#bin/godot.side${PROGSUFFIX}.wasm", web_files)[0]
 elif env["dlink_enabled"]:
     # Reset libraries. The main runtime will only link emscripten libraries, not godot ones.
@@ -178,7 +175,5 @@ js_wrapped = env.NoCache(
 )
 
 # 0 - unwrapped js file (use wrapped one instead)
-# 1 - wasm file (when libgodot is disabled).
-# 2 - wasm side (when dlink is enabled or shared libgodot is used).
-# 3 - libgodot bundle.
+# 2dog: outputs are the main wasm, optional side wasm, and optional libgodot bundle.
 env.CreateTemplateZip(js_wrapped, main_wasm, side_wasm, libgodot)

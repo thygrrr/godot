@@ -157,8 +157,7 @@ private:
 		String exe_dir = OS::get_singleton()->get_executable_path().get_base_dir();
 		String res_dir = OS::get_singleton()->get_bundle_resource_dir();
 
-		// Check GODOTSHARP_DIR env var first (highest priority).
-		// If set and contains GodotPlugins.dll, use it as the API assemblies directory.
+		// 2dog: GODOTSHARP_DIR takes priority when it contains GodotPlugins.dll.
 		String godotsharp_dir_env = OS::get_singleton()->get_environment("GODOTSHARP_DIR");
 		if (!godotsharp_dir_env.is_empty()) {
 			String plugins_dll = godotsharp_dir_env.path_join("GodotPlugins.dll");
@@ -169,7 +168,7 @@ private:
 
 #if defined(TOOLS_ENABLED) || defined(LIBGODOT_HOSTFXR)
 #ifdef TOOLS_ENABLED
-		// Editor builds use nested GodotSharp/Api/<Config> structure
+		// 2dog: editor builds use the nested GodotSharp/Api/<Config> layout.
 		String data_dir_root = exe_dir.path_join("GodotSharp");
 		data_editor_tools_dir = data_dir_root.path_join("Tools");
 		build_logs_dir = mono_user_dir.path_join("build_logs");
@@ -182,9 +181,7 @@ private:
 			api_assemblies_base_dir = res_dir.path_join("GodotSharp").path_join("Api");
 		}
 #endif
-		// GODOT_TOOLS_DIR env var overrides the editor tools directory
-		// (mirrors GODOTSHARP_DIR above). Needed by libgodot hosts whose
-		// executable directory does not contain GodotSharp/Tools.
+		// 2dog: GODOT_TOOLS_DIR supports hosts without GodotSharp/Tools beside the executable.
 		String godot_tools_dir_env = OS::get_singleton()->get_environment("GODOT_TOOLS_DIR");
 		if (!godot_tools_dir_env.is_empty() && FileAccess::exists(godot_tools_dir_env.path_join("GodotTools.dll"))) {
 			data_editor_tools_dir = godot_tools_dir_env;
@@ -193,7 +190,7 @@ private:
 			api_assemblies_dir = api_assemblies_base_dir.path_join(GDMono::get_expected_api_build_config());
 		}
 #else // LIBGODOT_HOSTFXR only (not TOOLS_ENABLED)
-		// Libgodot shared library builds use flat structure - assemblies directly in exe_dir
+		// 2dog: non-editor libgodot builds place assemblies directly beside the executable.
 		if (api_assemblies_dir.is_empty()) {
 			api_assemblies_dir = exe_dir;
 		}

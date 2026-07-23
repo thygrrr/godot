@@ -28,7 +28,7 @@ namespace GodotTools.ProjectEditor
 
             mainGroup.AddProperty("EnableDynamicLoading", "true");
 
-            // Disable dynamic loading when building for web.
+            // 2dog: web builds cannot dynamically load managed assemblies.
             var dynLoad = mainGroup.AddProperty("EnableDynamicLoading", "false");
             dynLoad.Condition = " '$(GodotTargetPlatform)' == 'web' ";
 

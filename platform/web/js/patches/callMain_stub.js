@@ -1,7 +1,5 @@
-// 2dog: non-mono library builds. Exporting "callMain" via
-// EXPORTED_RUNTIME_METHODS requires the symbol to exist, but emscripten only
-// generates it when it detects a C main (the library build has none).
-// Twin of modules/mono/web/callMain_stub.js, which covers mono builds.
+// 2dog: non-mono library builds have no C main, but Emscripten requires this
+// exported runtime symbol. Mono builds use modules/mono/web/callMain_stub.js.
 const callMain = function (_args) { // eslint-disable-line no-unused-vars
 	throw new Error('"callMain" is not implemented.');
 };

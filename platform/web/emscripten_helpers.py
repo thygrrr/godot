@@ -46,7 +46,7 @@ def create_template_zip(env, js, wasm, side, libgodot):
     if wasm is not None:
         in_files.append(wasm)  # Wasm (contains the actual Godot code).
         out_files.append(zip_dir.File(binary_name + ".wasm"))
-    # Dynamic linking specific.
+    # 2dog: include the optional dynamic side module.
     if side is not None:
         in_files.append(side)  # Side wasm (contains the actual Godot code).
         out_files.append(zip_dir.File(binary_name + ".side.wasm"))

@@ -21,8 +21,7 @@ namespace Godot.NativeInterop
         // ReSharper disable once ParameterOnlyUsedForPreconditionCheck.Global
         public static void Initialize(IntPtr unmanagedCallbacks, int unmanagedCallbacksSize)
         {
-            // May be called again when the engine is reinitialized in the same
-            // process (libgodot restart); refresh the callback table.
+            // 2dog: refresh callbacks when the engine is reinitialized in-process.
             if (unmanagedCallbacksSize != sizeof(UnmanagedCallbacks))
                 throw new ArgumentException("Unmanaged callbacks size mismatch.", nameof(unmanagedCallbacksSize));
 

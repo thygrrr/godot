@@ -248,8 +248,7 @@ namespace Godot.NativeInterop
             return CreateFromPackedColorArray(nativePackedArray);
         }
 
-        // 2dog: a null array implicitly converts to a default span; this distinguishes it from a
-        // genuinely empty array (CA2265-clean replacement for the previous `span == null` checks).
+        // 2dog: distinguish a default span converted from null from a genuinely empty array.
         private static bool IsSpanFromNullArray<T>(scoped Span<T> span) =>
             span.IsEmpty && Unsafe.IsNullRef(ref MemoryMarshal.GetReference(span));
 

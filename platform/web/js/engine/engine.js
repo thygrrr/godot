@@ -173,11 +173,16 @@ const Engine = (function () {
 						}
 						preloader.preloadedFiles.length = 0; // Clear memory
 
-						// Adds optional support for custom async 'callMain'.
-						Promise.resolve(me.rtenv['callMain'](me.config.args)).then(function () {
+						// 2dog: support custom asynchronous callMain implementations.
+						Promise.resolve().then(function () {
+							return me.rtenv['callMain'](me.config.args);
+						}).then(function () {
 							initPromise = null;
 							me.installServiceWorker();
 							resolve();
+						}, function (err) {
+							initPromise = null;
+							reject(err);
 						});
 					});
 				});

@@ -225,10 +225,11 @@ int AudioDriverManager::get_driver_count() {
 }
 
 void AudioDriverManager::reset() {
-	// Drop all registered drivers (they are owned by the OS instance, which is
-	// destroyed on engine reinitialization) and restore the initial state with
-	// only the dummy driver.
+	// 2dog: discard OS-owned drivers before an engine restart, retaining only the dummy driver.
 	drivers[0] = &AudioDriverManager::dummy_driver;
+	for (int i = 1; i < MAX_DRIVERS; i++) {
+		drivers[i] = nullptr;
+	}
 	driver_count = 1;
 }
 
@@ -1663,12 +1664,7 @@ void AudioServer::finish() {
 		AudioDriverManager::get_driver(i)->finish();
 	}
 
-	// 2dog: streams still playing at quit sit in playback_list holding refs to
-	// their AudioStreamPlayback (and through it the stream resource); their
-	// deferred deletion needs mix steps that will never run again, so they
-	// leak past ObjectDB::cleanup. Drivers are finished (no mix thread), so
-	// drain the list now. _cleanup_lists twice: the bus-details graveyard
-	// frees one call behind.
+	// 2dog: after drivers stop, drain deferred playback deletion and both graveyard generations.
 	for (AudioStreamPlaybackListNode *playback : playback_list) {
 		_delete_stream_playback_list_node(playback);
 	}

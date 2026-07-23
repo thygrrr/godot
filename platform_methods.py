@@ -186,22 +186,24 @@ def combine_libs_ar(target, source, env):
             paths.append(lib)
 
     with tempfile.NamedTemporaryFile(mode="w", suffix=".mri", delete_on_close=False) as fp:
-        fp.write(f"create {lib_path}\n")
+        fp.write(f'create "{lib_path}"\n')
         for path in paths:
-            fp.write(f"addlib {path}\n")
+            fp.write(f'addlib "{path}"\n')
         fp.write("save\n")
         fp.write("end")
         fp.close()
 
-        env.Execute(f"$AR -M <{fp.name}")
+        result = env.Execute(f'$AR -M < "{fp.name}"')
+        if result:
+            return result
 
-    # Doesn't work on web https://github.com/llvm/llvm-project/issues/50623 ,
-    # but looks like web doesn't need it? Maybe it is because it's still mono on web
+    # 2dog: LLVM objcopy cannot rewrite wasm archives (llvm-project#50623).
     if env["platform"] != "web" and env["module_mono_enabled"]:
-        # Fix duplicate vtables for Object
-        env.Execute(f'$OBJCOPY --redefine-sym _ZTV6Object=_ZTV6_godot_Object "{lib_path}"')
+        result = env.Execute(f'$OBJCOPY --redefine-sym _ZTV6Object=_ZTV6_godot_Object "{lib_path}"')
+        if result:
+            return result
 
-    env.Execute(f'$RANLIB "{lib_path}"')
+    return env.Execute(f'$RANLIB "{lib_path}"')
 
 
 def combine_libs_apple_embedded(target, source, env):

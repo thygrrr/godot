@@ -81,7 +81,7 @@ void libgodot_destroy_godot_instance(GDExtensionObjectPtr p_godot_instance) {
 
 int libgodot_import_project(const char *p_project_path, int p_extra_argc, const char *p_extra_argv[]) {
 #ifndef TOOLS_ENABLED
-	return -1; // Editor builds only.
+	return -1;
 #else
 	ERR_FAIL_NULL_V(p_project_path, EXIT_FAILURE);
 	ERR_FAIL_COND_V_MSG(instance != nullptr || os != nullptr, EXIT_FAILURE,
@@ -98,7 +98,7 @@ int libgodot_import_project(const char *p_project_path, int p_extra_argc, const 
 		argv.push_back(const_cast<char *>(p_extra_argv[i]));
 	}
 
-	// Run the headless editor lifecycle.
+	// 2dog: run the headless editor lifecycle in-process.
 	Error err = Main::setup("libgodot", argv.size(), argv.ptrw());
 	if (err != OK) {
 		return (err == ERR_HELP) ? EXIT_SUCCESS : EXIT_FAILURE;
@@ -117,7 +117,7 @@ int libgodot_import_project(const char *p_project_path, int p_extra_argc, const 
 
 int libgodot_export_pack(const char *p_project_path, const char *p_preset, const char *p_output_path, int p_extra_argc, const char *p_extra_argv[]) {
 #ifndef TOOLS_ENABLED
-	return -1; // Editor builds only.
+	return -1;
 #else
 	ERR_FAIL_NULL_V(p_project_path, EXIT_FAILURE);
 	ERR_FAIL_NULL_V(p_preset, EXIT_FAILURE);
@@ -138,7 +138,7 @@ int libgodot_export_pack(const char *p_project_path, const char *p_preset, const
 		argv.push_back(const_cast<char *>(p_extra_argv[i]));
 	}
 
-	// Run the headless editor lifecycle.
+	// 2dog: run the headless editor lifecycle in-process.
 	Error err = Main::setup("libgodot", argv.size(), argv.ptrw());
 	if (err != OK) {
 		return (err == ERR_HELP) ? EXIT_SUCCESS : EXIT_FAILURE;

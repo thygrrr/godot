@@ -53,7 +53,7 @@ namespace Godot
             {
                 if (item.TryGetTarget(out IDisposable? self))
                 {
-                    // Native StringNames survive only libgodot restart cleanup.
+                    // 2dog: native StringNames survive libgodot restart cleanup.
                     if (preserveStringNames && self is StringName)
                         continue;
 

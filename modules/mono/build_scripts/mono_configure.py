@@ -21,14 +21,10 @@ def configure(env, env_mono):
             raise RuntimeError("This module does not currently support building for this platform for editor builds.")
         env_mono.Append(CPPDEFINES=["GD_MONO_HOT_RELOAD"])
 
-# Enable system hostfxr discovery for shared library builds (libgodot).
-    # This allows libgodot to use the host application's .NET runtime via hostfxr
-    # instead of trying to load a bundled coreclr (which would conflict).
+    # 2dog: shared libgodot uses the host application's runtime instead of loading another CoreCLR.
     if env.get("library_type", "") == "shared_library":
         env_mono.Append(CPPDEFINES=["LIBGODOT_HOSTFXR"])
 
-    # Any library build (shared or static) may have the host register the
-    # GodotPlugins initialize function pointer directly (set_load_from_executable_fn)
-    # instead of loading GodotPlugins.dll from disk. Required on web, optional elsewhere.
+    # 2dog: library hosts may register GodotPlugins directly instead of loading it from disk.
     if env.get("library_type", "executable") != "executable":
         env_mono.AppendUnique(CPPDEFINES=["GD_MONO_LIBGODOT_ENABLED"])

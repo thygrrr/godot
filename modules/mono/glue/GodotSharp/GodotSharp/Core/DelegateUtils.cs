@@ -140,8 +140,7 @@ namespace Godot
             return false;
         }
 
-        // 2dog: delegate (de)serialization reflects over delegate targets: user script classes and
-        // compiler-generated closures, all living in game assemblies.
+        // 2dog: delegate serialization reflects over rooted game types and closures.
         [UnconditionalSuppressMessage("Trimming", "IL2075",
             Justification = TrimJustifications.ScriptTypesAreRooted)]
         private static bool TrySerializeSingleDelegate(Delegate @delegate, [MaybeNullWhen(false)] out byte[] buffer)
@@ -811,8 +810,7 @@ namespace Godot
                     [typeof(Variant)] = (in godot_variant variant) => VariantUtils.ConvertTo<Variant>(variant),
                 };
 
-            // 2dog: the reflected constructors are Godot.Collections.Dictionary<,>/Array<> instantiations
-            // (defined in this assembly) and array types of GodotObject-derived classes.
+            // 2dog: reflected collection and GodotObject array constructors are rooted.
             [UnconditionalSuppressMessage("Trimming", "IL2070",
                 Justification = TrimJustifications.NativeClassesAreRooted)]
             public static object? ConvertToObjectOfType(in godot_variant variant, Type type)

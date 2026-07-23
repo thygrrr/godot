@@ -45,9 +45,7 @@ namespace GodotPlugins
             }
         }
 
-        // 2dog: GodotPlugins only runs in untrimmed desktop/editor deployments - trimmed
-        // publishes (browser-wasm) never ship it; plugin init flows through a registered
-        // function pointer instead (see 2dog.browser-wasm.targets).
+        // 2dog: GodotPlugins ships only in untrimmed desktop/editor deployments.
         [UnconditionalSuppressMessage("Trimming", "IL2026",
             Justification = "Plugin assemblies are loaded from disk in untrimmed deployments only.")]
         protected override Assembly? Load(AssemblyName assemblyName)
@@ -55,9 +53,7 @@ namespace GodotPlugins
             if (assemblyName.Name == null)
                 return null;
 
-            // Check if an assembly with this name is already loaded in the Default context.
-            // This prevents double-loading when a LibGodot host application has already loaded
-            // the game assembly, which would cause type casting issues between contexts.
+            // 2dog: reuse host-loaded assemblies to preserve type identity across load contexts.
             Assembly? existingAssembly = AssemblyLoadContext.Default.Assemblies
                 .FirstOrDefault(a => string.Equals(a.GetName().Name, assemblyName.Name, StringComparison.OrdinalIgnoreCase));
 

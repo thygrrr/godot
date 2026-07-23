@@ -85,13 +85,13 @@ public:
 
 	static void add_writer(MovieWriter *p_writer);
 	static MovieWriter *find_writer_for_file(const String &p_file);
-	// 2dog: project settings registration, re-run per engine instance (restart support).
+	// 2dog: register project settings for each engine instance.
 	static void register_settings();
 
 	void begin(const Size2i &p_movie_size, uint32_t p_fps, const String &p_base_path);
 	void add_frame();
 
-	// 2dog: writers are recreated on every engine restart; drop the static registration on death.
+	// 2dog: remove each writer's process-static registration on destruction.
 	~MovieWriter();
 
 	static void set_extensions_hint();

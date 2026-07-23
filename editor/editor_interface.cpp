@@ -959,8 +959,7 @@ void EditorInterface::create() {
 void EditorInterface::free() {
 	ERR_FAIL_NULL(singleton);
 	memdelete(singleton);
-	// Null the static so a reinitialized engine (libgodot restart) can create
-	// a fresh instance instead of double-freeing this one on its own cleanup.
+	// 2dog: let a reinitialized engine create and free its own interface instance.
 	singleton = nullptr;
 }
 
