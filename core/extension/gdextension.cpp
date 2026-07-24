@@ -31,7 +31,6 @@
 #include "gdextension.h"
 #include "gdextension.compat.inc"
 
-#include "core/config/engine.h"
 #include "core/config/project_settings.h"
 #include "core/extension/gdextension_library_loader.h"
 #include "core/object/callable_mp.h"
@@ -511,9 +510,7 @@ void GDExtension::_register_extension_class_internal(GDExtensionClassLibraryPtr 
 	extension->gdextension.library = self;
 	extension->gdextension.parent_class_name = parent_class_name;
 	extension->gdextension.class_name = class_name;
-	// 2dog: embedded hosts may register runtime classes after editor-level initialization.
-	// Only mark them editor-only when an editor is actually running.
-	extension->gdextension.editor_class = self->level_initialized == INITIALIZATION_LEVEL_EDITOR && Engine::get_singleton()->is_editor_hint();
+	extension->gdextension.editor_class = self->level_initialized == INITIALIZATION_LEVEL_EDITOR;
 	extension->gdextension.is_virtual = p_extension_funcs->is_virtual;
 	extension->gdextension.is_abstract = p_extension_funcs->is_abstract;
 	extension->gdextension.is_exposed = p_extension_funcs->is_exposed;
