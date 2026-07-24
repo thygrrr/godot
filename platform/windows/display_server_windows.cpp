@@ -40,7 +40,6 @@
 
 #include "core/config/engine.h"
 #include "core/config/project_settings.h"
-#include "core/core_globals.h"
 #include "core/input/input.h"
 #include "core/io/dir_access.h"
 #include "core/io/file_access.h"
@@ -5378,24 +5377,6 @@ LRESULT DisplayServerWindows::_handle_early_window_message(HWND hWnd, UINT uMsg,
 	return DefWindowProcW(hWnd, uMsg, wParam, lParam);
 }
 
-// 2dog: suffix embedded window classes with their module base so concurrent libgodot
-// copies never dispatch through another module's WndProc.
-static const WCHAR *_get_engine_window_class_name() {
-	static WCHAR class_name[32] = L"Engine";
-	static bool initialized = false;
-	if (!initialized) {
-		initialized = true;
-		if (CoreGlobals::engine_reinit_enabled) {
-			HMODULE self = nullptr;
-			if (GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-						(LPCWSTR)&_get_engine_window_class_name, &self)) {
-				_snwprintf_s(class_name, _countof(class_name), _TRUNCATE, L"Engine.%p", (void *)self);
-			}
-		}
-	}
-	return class_name;
-}
-
 // The window procedure for our window class "Engine", used to handle processing of window-related system messages/events.
 // See: https://docs.microsoft.com/en-us/windows/win32/winmsg/window-procedures
 LRESULT DisplayServerWindows::WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -7104,7 +7085,7 @@ Error DisplayServerWindows::_create_window(DisplayServerEnums::WindowID p_window
 		wd.id = id;
 		wd.hWnd = CreateWindowExW(
 				dwExStyle,
-				_get_engine_window_class_name(), L"",
+				L"Engine", L"",
 				dwStyle,
 				WindowRect.left,
 				WindowRect.top,
@@ -7815,7 +7796,7 @@ DisplayServerWindows::DisplayServerWindows(const String &p_rendering_driver, Dis
 	wc.hCursor = nullptr;
 	wc.hbrBackground = nullptr;
 	wc.lpszMenuName = nullptr;
-	wc.lpszClassName = _get_engine_window_class_name();
+	wc.lpszClassName = L"Engine";
 
 	// 2dog: retain the class across restarts; unregistering leaves dangling TSF/CoreMessaging state.
 	if (!RegisterClassExW(&wc)) {

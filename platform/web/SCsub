@@ -58,11 +58,6 @@ sys_env.AddJSPost([
     "js/patches/patch_em_gl.js",
 ])
 
-# 2dog: non-mono libraries share the .NET wasm bridge and callMain stub used by mono builds.
-if env["library_type"] != "executable" and not env["module_mono_enabled"]:
-    sys_env.AddJSPre(["js/patches/callMain_stub.js"])
-    env["CUSTOM_GODOT_JS"] = env.File("#modules/mono/web/mono_bridge.js")
-
 if env["javascript_eval"]:
     sys_env.AddJSLibraries(["js/libs/library_godot_javascript_singleton.js"])
 
