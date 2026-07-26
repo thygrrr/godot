@@ -1,6 +1,19 @@
 // SPDX-License-Identifier: MIT
 // 2dog: this file is part of https://2dog.dev
 
+// 2dog: .NET resource names are file names, but its default URLs do not escape
+// URL delimiters such as '#' before fetch interprets them.
+const encodeDotnetResourceUrl = (defaultUri, name) => {
+	const uriName = encodeURI(name);
+	const matchedName = defaultUri.includes(name) ? name : uriName;
+	const nameIndex = defaultUri.lastIndexOf(matchedName);
+	if (nameIndex < 0) {
+		return defaultUri;
+	}
+	const encodedName = name.split('/').map(encodeURIComponent).join('/');
+	return `${defaultUri.slice(0, nameIndex)}${encodedName}${defaultUri.slice(nameIndex + matchedName.length)}`;
+};
+
 // Wrap the .NET runtime module as Godot's Emscripten module.
 const Godot = async (moduleConfig) => { // eslint-disable-line no-unused-vars
 	// Required for JSImport, JSExport, and multithreading.
@@ -35,8 +48,9 @@ const Godot = async (moduleConfig) => { // eslint-disable-line no-unused-vars
 				// Fall back to the resolved wasm path.
 				return loadPath;
 			}
-			// Use the default path.
-			return null;
+			const resourceUrl = encodeDotnetResourceUrl(_defaultUri, name);
+			// Preserve the default loader path unless the resource name needed escaping.
+			return resourceUrl === _defaultUri ? null : resourceUrl;
 		});
 
 	await dotnet.download();
