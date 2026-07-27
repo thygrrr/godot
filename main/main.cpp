@@ -1781,6 +1781,10 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 					OS::get_singleton()->print("Invalid project path specified: \"%s\", aborting.\n", p.utf8().get_data());
 					goto error;
 				}
+				// 2dog: record the project path explicitly; ProjectSettings must not
+				// re-derive it from the process CWD (racy with in-process multi-instance).
+				String resolved = p.simplify_path();
+				project_path = resolved.is_absolute_path() ? resolved : OS::get_singleton()->get_cwd();
 				N = N->next();
 			} else {
 				OS::get_singleton()->print("Missing relative or absolute path, aborting.\n");
@@ -1816,7 +1820,9 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 				path = file.substr(0, sep);
 			}
 			if (OS::get_singleton()->set_cwd(path) == OK) {
-				// path already specified, don't override
+				// 2dog: record the resolved project path (see --path above).
+				String resolved = path.simplify_path();
+				project_path = resolved.is_absolute_path() ? resolved : OS::get_singleton()->get_cwd();
 			} else {
 				project_path = path;
 			}
