@@ -6,8 +6,8 @@ namespace GodotPlugins.Game
     internal static partial class Initializer
     {
         // Generate web trampolines.
-        // C# doesn't automatically generate them if delegate is of type 'delegate* unmanaged<[contains long or ulong]>'.
-        // Should be updated when new function pointers with long or ulong argument type are added.
+        // C# doesn't automatically generate them for 'delegate* unmanaged' calli, so every distinct
+        // NativeFuncs signature shape must be declared here (2dog: verified by WebTrampolineCoverageTests).
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         private delegate IntPtr classdb_get_method_bind_sig(IntPtr _1, IntPtr _2, long _3);
@@ -41,5 +41,36 @@ namespace GodotPlugins.Game
         public delegate Godot.Error godotsharp_stack_info_vector_resize_sig(IntPtr _0, int _1);
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate Godot.Error godotsharp_internal_signal_awaiter_connect_sig(IntPtr _0, IntPtr _1, IntPtr _3, IntPtr _4);
+
+        // 2dog: pointer/int32-only shapes, previously covered only by unrelated DllImport scans.
+        // Named by wasm signature cookie: return type first ('i' ptr/int32, 'v' void), then args.
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr sig_i();
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void sig_v();
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr sig_ii(IntPtr _0);
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void sig_vi(IntPtr _0);
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void sig_vii(IntPtr _0, IntPtr _1);
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr sig_iii(IntPtr _0, IntPtr _1);
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr sig_iiii(IntPtr _0, IntPtr _1, IntPtr _2);
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr sig_iiiii(IntPtr _0, IntPtr _1, IntPtr _2, IntPtr _3);
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void sig_viii(IntPtr _0, IntPtr _1, IntPtr _2);
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void sig_viiii(IntPtr _0, IntPtr _1, IntPtr _2, IntPtr _3);
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr sig_iiiiii(IntPtr _0, IntPtr _1, IntPtr _2, IntPtr _3, IntPtr _4);
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void sig_viiiii(IntPtr _0, IntPtr _1, IntPtr _2, IntPtr _3, IntPtr _4);
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void sig_viiiiii(IntPtr _0, IntPtr _1, IntPtr _2, IntPtr _3, IntPtr _4, IntPtr _5);
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate void sig_viiiiiii(IntPtr _0, IntPtr _1, IntPtr _2, IntPtr _3, IntPtr _4, IntPtr _5, IntPtr _6);
     }
 }
