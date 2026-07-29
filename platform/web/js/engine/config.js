@@ -152,6 +152,28 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
 		 */
 		dotnetModuleImports: null,
 		/**
+		 * 2dog: when set (e.g. ``'.gz'``), engine and runtime downloads first
+		 * try the precompressed sibling file (``<name>.gz``, written by the
+		 * 2dog publish) and inflate it in the page via ``DecompressionStream``.
+		 * For hosts that serve everything uncompressed; falls back to the
+		 * plain file per resource.
+		 *
+		 * @memberof EngineConfig
+		 * @type {string}
+		 * @default
+		 */
+		precompressedSuffix: '',
+		/**
+		 * 2dog: a callback receiving the cumulative number of bytes the .NET
+		 * runtime loader has downloaded (``_framework/*``). These files are
+		 * not covered by ``onProgress``.
+		 *
+		 * @memberof EngineConfig
+		 * @type {?function(number)}
+		 * @default
+		 */
+		onDotnetProgress: null,
+		/**
 		 * A callback function for handling Godot's ``OS.execute`` calls.
 		 *
 		 * This is for example used in the Web Editor template to switch between project manager and editor, and for running the game.
@@ -264,6 +286,8 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
 		this.onPrint = parse('onPrint', this.onPrint);
 		this.onProgress = parse('onProgress', this.onProgress);
 		this.dotnetModuleImports = parse('dotnetModuleImports', this.dotnetModuleImports);
+		this.precompressedSuffix = parse('precompressedSuffix', this.precompressedSuffix);
+		this.onDotnetProgress = parse('onDotnetProgress', this.onDotnetProgress);
 
 		// Godot config
 		this.canvas = parse('canvas', this.canvas);
@@ -346,6 +370,8 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
 				return tempResponse;
 			},
 			'godotSharpImports': this.dotnetModuleImports,
+			'godotPrecompressedSuffix': this.precompressedSuffix,
+			'godotOnDotnetProgress': this.onDotnetProgress,
 		};
 	};
 
