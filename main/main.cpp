@@ -651,6 +651,7 @@ void Main::print_help(const char *p_binary) {
 	print_help_option("--xr-mode <mode>", "Select XR (Extended Reality) mode [\"default\", \"off\", \"on\"].\n");
 #endif
 	print_help_option("--wid <window_id>", "Request parented to window.\n");
+	print_help_option("--hidden-window", "Never show the main window; rendering continues off-screen (2dog embedding hosts).\n");
 	print_help_option("--accessibility <mode>", "Select accessibility mode ['auto' (when screen reader is running, default), 'always', 'disabled'].\n");
 	print_help_option("--accessibility-driver <driver>", "Select accessibility driver ['accesskit', 'dummy'].\n");
 
@@ -2063,6 +2064,11 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 				goto error;
 			}
 #endif // TOOLS_ENABLED
+		} else if (arg == "--hidden-window") {
+			// 2dog: embedding hosts composite the viewport themselves; keep the OS window
+			// unmapped. The OS flag is the single source of truth (a fresh OS instance per
+			// engine run keeps it restart-safe).
+			OS::get_singleton()->_hidden_window = true;
 		} else if (arg == "--wid") {
 			if (N) {
 				init_embed_parent_window_id = N->get().to_int();
@@ -3471,7 +3477,7 @@ Error Main::setup2(bool p_show_boot_logo) {
 			}
 		}
 #endif
-		if (display_server->has_feature(DisplayServerEnums::FEATURE_SUBWINDOWS)) {
+		if (display_server->has_feature(DisplayServerEnums::FEATURE_SUBWINDOWS) && !OS::get_singleton()->is_hidden_window()) { // 2dog: --hidden-window skips the show.
 			display_server->show_window(DisplayServerEnums::MAIN_WINDOW_ID);
 		}
 

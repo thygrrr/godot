@@ -589,7 +589,13 @@ Error RenderingDeviceDriverVulkan::_initialize_device_extensions() {
 
 	// We don't actually use this extension, but some runtime components on some platforms
 	// can and will fill the validation layers with useless info otherwise if not enabled.
+	// 2dog: external_texture_create also exports opaque fds through it on POSIX platforms.
 	_register_requested_device_extension(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME, false);
+
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
+	// 2dog: import host-created D3D11 shared textures (external_texture_create).
+	_register_requested_device_extension(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME, false);
+#endif
 
 	if (Engine::get_singleton()->is_generate_spirv_debug_info_enabled()) {
 		_register_requested_device_extension(VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME, true);
@@ -2599,8 +2605,218 @@ void RenderingDeviceDriverVulkan::texture_free(TextureID p_texture) {
 			vkDestroyImage(vk_device, tex_info->vk_image, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_BUFFER));
 			vmaFreeMemory(allocator, tex_info->allocation.handle);
 		}
+	} else if (tex_info->external_memory != VK_NULL_HANDLE) {
+		// 2dog: external textures use a dedicated allocation outside VMA.
+		vkDestroyImage(vk_device, tex_info->vk_image, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_IMAGE));
+		vkFreeMemory(vk_device, tex_info->external_memory, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_DEVICE_MEMORY));
 	}
 	VersatileResource::free(resources_allocator, tex_info);
+}
+
+// 2dog: external texture sharing - shareable images a host compositor can import.
+
+uint32_t RenderingDeviceDriverVulkan::external_texture_supported_handle_types() {
+	if (physical_device_properties.apiVersion < VK_API_VERSION_1_1) {
+		return 0;
+	}
+	uint32_t types = 0;
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
+	if (enabled_device_extension_names.has(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME)) {
+		types |= 1u << EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_D3D11_KMT_KEYED_MUTEX;
+	}
+#else
+	if (enabled_device_extension_names.has(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME)) {
+		types |= 1u << EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_OPAQUE_FD;
+	}
+#endif
+	return types;
+}
+
+RDD::TextureID RenderingDeviceDriverVulkan::external_texture_create(ExternalTextureShareHandleType p_handle_type, DataFormat p_format, uint32_t p_width, uint32_t p_height, uint64_t p_import_handle, uint64_t *r_export_handle) {
+	if (!(external_texture_supported_handle_types() & (1u << p_handle_type))) {
+		return TextureID();
+	}
+
+	VkExternalMemoryHandleTypeFlagBits vk_handle_type;
+	bool importing = false;
+	switch (p_handle_type) {
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
+		case EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_D3D11_KMT_KEYED_MUTEX: {
+			vk_handle_type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT;
+			importing = true;
+		} break;
+#else
+		case EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_OPAQUE_FD: {
+			vk_handle_type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
+		} break;
+#endif
+		default: {
+			return TextureID();
+		}
+	}
+
+	const VkImageUsageFlags vk_usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+
+	// The device must support an importable/exportable optimal-tiling image of this format.
+	VkPhysicalDeviceExternalImageFormatInfo external_format_info = {};
+	external_format_info.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO;
+	external_format_info.handleType = vk_handle_type;
+	VkPhysicalDeviceImageFormatInfo2 format_info = {};
+	format_info.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2;
+	format_info.pNext = &external_format_info;
+	format_info.format = RD_TO_VK_FORMAT[p_format];
+	format_info.type = VK_IMAGE_TYPE_2D;
+	format_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+	format_info.usage = vk_usage;
+	VkExternalImageFormatProperties external_format_props = {};
+	external_format_props.sType = VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES;
+	VkImageFormatProperties2 format_props = {};
+	format_props.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2;
+	format_props.pNext = &external_format_props;
+	VkResult err = vkGetPhysicalDeviceImageFormatProperties2(physical_device, &format_info, &format_props);
+	if (err != VK_SUCCESS) {
+		return TextureID();
+	}
+	VkExternalMemoryFeatureFlags features = external_format_props.externalMemoryProperties.externalMemoryFeatures;
+	if (importing ? !(features & VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT) : !(features & VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT)) {
+		return TextureID();
+	}
+
+	VkExternalMemoryImageCreateInfo external_image_info = {};
+	external_image_info.sType = VK_STRUCTURE_TYPE_EXTERNAL_MEMORY_IMAGE_CREATE_INFO;
+	external_image_info.handleTypes = vk_handle_type;
+
+	VkImageCreateInfo create_info = {};
+	create_info.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
+	create_info.pNext = &external_image_info;
+	create_info.imageType = VK_IMAGE_TYPE_2D;
+	create_info.format = RD_TO_VK_FORMAT[p_format];
+	create_info.extent.width = p_width;
+	create_info.extent.height = p_height;
+	create_info.extent.depth = 1;
+	create_info.mipLevels = 1;
+	create_info.arrayLayers = 1;
+	create_info.samples = VK_SAMPLE_COUNT_1_BIT;
+	create_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+	create_info.usage = vk_usage;
+	create_info.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
+	create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+
+	VkImage vk_image = VK_NULL_HANDLE;
+	err = vkCreateImage(vk_device, &create_info, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_IMAGE), &vk_image);
+	ERR_FAIL_COND_V_MSG(err, TextureID(), vformat("Couldn't create Vulkan external image (VkResult error %d).", err));
+
+	// Dedicated allocation outside VMA (external memory wants its own VkDeviceMemory).
+	VkMemoryDedicatedRequirements dedicated_reqs = {};
+	dedicated_reqs.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS;
+	VkMemoryRequirements2 mem_reqs = {};
+	mem_reqs.sType = VK_STRUCTURE_TYPE_MEMORY_REQUIREMENTS_2;
+	mem_reqs.pNext = &dedicated_reqs;
+	VkImageMemoryRequirementsInfo2 mem_reqs_info = {};
+	mem_reqs_info.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_REQUIREMENTS_INFO_2;
+	mem_reqs_info.image = vk_image;
+	vkGetImageMemoryRequirements2(vk_device, &mem_reqs_info, &mem_reqs);
+
+	// The allocation itself stays outside VMA (external memory wants a dedicated
+	// VkDeviceMemory), but VMA still picks the memory type.
+	VmaAllocationCreateInfo type_lookup = {};
+	type_lookup.preferredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+	uint32_t memory_type_index = 0;
+	err = vmaFindMemoryTypeIndex(allocator, mem_reqs.memoryRequirements.memoryTypeBits, &type_lookup, &memory_type_index);
+	if (err != VK_SUCCESS) {
+		vkDestroyImage(vk_device, vk_image, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_IMAGE));
+		ERR_FAIL_V_MSG(TextureID(), "No suitable memory type for external texture.");
+	}
+
+	VkMemoryDedicatedAllocateInfo dedicated_info = {};
+	dedicated_info.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO;
+	dedicated_info.image = vk_image;
+
+	VkMemoryAllocateInfo alloc_info = {};
+	alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
+	alloc_info.pNext = &dedicated_info;
+	alloc_info.allocationSize = mem_reqs.memoryRequirements.size;
+	alloc_info.memoryTypeIndex = memory_type_index;
+
+#if defined(VK_USE_PLATFORM_WIN32_KHR)
+	VkImportMemoryWin32HandleInfoKHR import_info = {};
+	if (importing) {
+		import_info.sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_KHR;
+		import_info.pNext = &dedicated_info;
+		import_info.handleType = vk_handle_type;
+		import_info.handle = (HANDLE)p_import_handle;
+		alloc_info.pNext = &import_info;
+	}
+#else
+	VkExportMemoryAllocateInfo export_info = {};
+	export_info.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
+	export_info.pNext = &dedicated_info;
+	export_info.handleTypes = vk_handle_type;
+	alloc_info.pNext = &export_info;
+#endif
+
+	VkDeviceMemory memory = VK_NULL_HANDLE;
+	err = vkAllocateMemory(vk_device, &alloc_info, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_DEVICE_MEMORY), &memory);
+	if (err != VK_SUCCESS) {
+		vkDestroyImage(vk_device, vk_image, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_IMAGE));
+		ERR_FAIL_V_MSG(TextureID(), vformat("Couldn't allocate external texture memory (VkResult error %d).", err));
+	}
+
+	err = vkBindImageMemory(vk_device, vk_image, memory, 0);
+	if (err != VK_SUCCESS) {
+		vkDestroyImage(vk_device, vk_image, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_IMAGE));
+		vkFreeMemory(vk_device, memory, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_DEVICE_MEMORY));
+		ERR_FAIL_V_MSG(TextureID(), vformat("Couldn't bind external texture memory (VkResult error %d).", err));
+	}
+
+	// Import-style handles round-trip: the caller's handle is also the share handle.
+	uint64_t export_handle = importing ? p_import_handle : 0;
+#if !defined(VK_USE_PLATFORM_WIN32_KHR)
+	{
+		VkMemoryGetFdInfoKHR get_fd_info = {};
+		get_fd_info.sType = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR;
+		get_fd_info.memory = memory;
+		get_fd_info.handleType = vk_handle_type;
+		int fd = -1;
+		err = vkGetMemoryFdKHR(vk_device, &get_fd_info, &fd);
+		if (err != VK_SUCCESS) {
+			vkDestroyImage(vk_device, vk_image, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_IMAGE));
+			vkFreeMemory(vk_device, memory, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_DEVICE_MEMORY));
+			ERR_FAIL_V_MSG(TextureID(), vformat("Couldn't export external texture fd (VkResult error %d).", err));
+		}
+		export_handle = (uint64_t)fd;
+	}
+#endif
+
+	VkImageViewCreateInfo view_create_info = {};
+	view_create_info.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	view_create_info.image = vk_image;
+	view_create_info.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	view_create_info.format = create_info.format;
+	view_create_info.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+	view_create_info.subresourceRange.levelCount = 1;
+	view_create_info.subresourceRange.layerCount = 1;
+
+	VkImageView vk_image_view = VK_NULL_HANDLE;
+	err = vkCreateImageView(vk_device, &view_create_info, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_IMAGE_VIEW), &vk_image_view);
+	if (err != VK_SUCCESS) {
+		vkDestroyImage(vk_device, vk_image, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_IMAGE));
+		vkFreeMemory(vk_device, memory, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_DEVICE_MEMORY));
+		ERR_FAIL_V_MSG(TextureID(), vformat("Couldn't create external texture view (VkResult error %d).", err));
+	}
+
+	TextureInfo *tex_info = VersatileResource::allocate<TextureInfo>(resources_allocator);
+	create_info.pNext = nullptr; // Stored for metadata only; the chain lives on this stack.
+	tex_info->vk_image = vk_image;
+	tex_info->vk_view = vk_image_view;
+	tex_info->rd_format = p_format;
+	tex_info->vk_create_info = create_info;
+	tex_info->vk_view_create_info = view_create_info;
+	tex_info->external_memory = memory;
+	if (r_export_handle != nullptr) {
+		*r_export_handle = export_handle;
+	}
+	return TextureID(tex_info);
 }
 
 uint64_t RenderingDeviceDriverVulkan::texture_get_allocation_size(TextureID p_texture) {

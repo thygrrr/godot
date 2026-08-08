@@ -74,6 +74,11 @@ bool GodotInstance::start() {
 		if (OS::get_singleton()->get_main_loop()) {
 			OS::get_singleton()->get_main_loop()->initialize();
 		}
+		// 2dog: with --hidden-window some display servers report no drawable window;
+		// registering as an additional output keeps the render loop presenting.
+		if (OS::get_singleton()->is_hidden_window() && DisplayServer::get_singleton()) {
+			DisplayServer::get_singleton()->register_additional_output(this);
+		}
 	}
 	return started;
 }
@@ -90,6 +95,10 @@ bool GodotInstance::iteration() {
 void GodotInstance::stop() {
 	print_verbose("GodotInstance::stop()");
 	if (started) {
+		// 2dog: paired with the --hidden-window registration in start().
+		if (OS::get_singleton()->is_hidden_window() && DisplayServer::get_singleton()) {
+			DisplayServer::get_singleton()->unregister_additional_output(this);
+		}
 		if (OS::get_singleton()->get_main_loop()) {
 			OS::get_singleton()->get_main_loop()->finalize();
 		}
