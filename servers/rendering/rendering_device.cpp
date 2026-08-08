@@ -1893,6 +1893,78 @@ RID RenderingDevice::texture_create_from_extension(TextureType p_type, DataForma
 	return id;
 }
 
+// 2dog: external texture sharing - a shareable copy target a host compositor can import.
+
+uint32_t RenderingDevice::external_texture_get_supported_handle_types() {
+	return driver->external_texture_supported_handle_types();
+}
+
+RID RenderingDevice::external_texture_create(ExternalTextureShareHandleType p_handle_type, DataFormat p_format, uint32_t p_width, uint32_t p_height, uint64_t p_import_handle) {
+	ERR_RENDER_THREAD_GUARD_V(RID());
+	ERR_FAIL_COND_V(p_width == 0 || p_height == 0, RID());
+	ERR_FAIL_COND_V_MSG(!(driver->external_texture_supported_handle_types() & (1u << p_handle_type)), RID(),
+			"The rendering driver does not support this external texture handle type.");
+
+	uint64_t export_handle = 0;
+	RDD::TextureID driver_id = driver->external_texture_create(p_handle_type, p_format, p_width, p_height, p_import_handle, &export_handle);
+	ERR_FAIL_COND_V(!driver_id, RID());
+
+	Texture texture;
+	texture.type = TEXTURE_TYPE_2D;
+	texture.format = p_format;
+	texture.samples = TEXTURE_SAMPLES_1;
+	texture.width = p_width;
+	texture.height = p_height;
+	texture.depth = 1;
+	texture.layers = 1;
+	texture.mipmaps = 1;
+	texture.usage_flags = TEXTURE_USAGE_SAMPLING_BIT | TEXTURE_USAGE_CAN_COPY_TO_BIT | TEXTURE_USAGE_CAN_COPY_FROM_BIT;
+	texture.base_mipmap = 0;
+	texture.base_layer = 0;
+	texture.read_aspect_flags.set_flag(RDD::TEXTURE_ASPECT_COLOR_BIT);
+	texture.barrier_aspect_flags.set_flag(RDD::TEXTURE_ASPECT_COLOR_BIT);
+	texture.external_share_handle_type = p_handle_type;
+	texture.external_share_handle = export_handle; // Drivers echo import-style handles back.
+	texture.driver_id = driver_id;
+
+	_texture_make_mutable(&texture, RID());
+
+	RID id = texture_owner.make_rid(texture);
+#ifdef DEV_ENABLED
+	set_resource_name(id, "RID:" + itos(id.get_id()));
+#endif
+	return id;
+}
+
+uint64_t RenderingDevice::external_texture_get_handle(RID p_texture) {
+	Texture *tex = texture_owner.get_or_null(p_texture);
+	ERR_FAIL_NULL_V(tex, 0);
+	return tex->external_share_handle;
+}
+
+Error RenderingDevice::external_texture_present(RID p_from_texture, RID p_to_external_texture) {
+	ERR_RENDER_THREAD_GUARD_V(ERR_UNAVAILABLE);
+
+	Texture *to = texture_owner.get_or_null(p_to_external_texture);
+	ERR_FAIL_NULL_V(to, ERR_INVALID_PARAMETER);
+	ERR_FAIL_COND_V_MSG(to->external_share_handle_type == EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_NONE, ERR_INVALID_PARAMETER,
+			"The destination is not an external texture (see external_texture_create).");
+	Texture *from = texture_owner.get_or_null(p_from_texture);
+	ERR_FAIL_NULL_V(from, ERR_INVALID_PARAMETER);
+
+	Error err = texture_copy(p_from_texture, p_to_external_texture, Vector3(), Vector3(),
+			Vector3(MIN(from->width, to->width), MIN(from->height, to->height), 1), 0, 0, 0, 0);
+	if (err != OK) {
+		return err;
+	}
+
+	// Complete all buffered frames so the copy has executed before the host hands the
+	// texture to its compositor; the host provides cross-API ordering (e.g. a D3D11
+	// keyed mutex held around this call). Coarse but correct.
+	_flush_and_stall_for_all_frames();
+	return OK;
+}
+
 RID RenderingDevice::texture_create_shared_from_slice(const TextureView &p_view, RID p_with_texture, uint32_t p_layer, uint32_t p_mipmap, uint32_t p_mipmaps, TextureSliceType p_slice_type, uint32_t p_layers) {
 	Texture *src_texture = texture_owner.get_or_null(p_with_texture);
 	ERR_FAIL_NULL_V(src_texture, RID());
@@ -9076,6 +9148,12 @@ void RenderingDevice::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("texture_get_native_handle", "texture"), &RenderingDevice::texture_get_native_handle);
 #endif
 
+	// 2dog: external texture sharing.
+	ClassDB::bind_method(D_METHOD("external_texture_get_supported_handle_types"), &RenderingDevice::external_texture_get_supported_handle_types);
+	ClassDB::bind_method(D_METHOD("external_texture_create", "handle_type", "format", "width", "height", "import_handle"), &RenderingDevice::external_texture_create, DEFVAL(0));
+	ClassDB::bind_method(D_METHOD("external_texture_get_handle", "texture"), &RenderingDevice::external_texture_get_handle);
+	ClassDB::bind_method(D_METHOD("external_texture_present", "from_texture", "to_external_texture"), &RenderingDevice::external_texture_present);
+
 	ClassDB::bind_method(D_METHOD("framebuffer_format_create", "attachments", "view_count"), &RenderingDevice::_framebuffer_format_create, DEFVAL(1));
 	ClassDB::bind_method(D_METHOD("framebuffer_format_create_multipass", "attachments", "passes", "view_count"), &RenderingDevice::_framebuffer_format_create_multipass, DEFVAL(1));
 	ClassDB::bind_method(D_METHOD("framebuffer_format_create_empty", "samples"), &RenderingDevice::framebuffer_format_create_empty, DEFVAL(TEXTURE_SAMPLES_1));
@@ -9274,6 +9352,12 @@ void RenderingDevice::_bind_methods() {
 	BIND_ENUM_CONSTANT(DRIVER_RESOURCE_VULKAN_COMPUTE_PIPELINE);
 	BIND_ENUM_CONSTANT(DRIVER_RESOURCE_VULKAN_RENDER_PIPELINE);
 #endif
+
+	// 2dog: external texture sharing.
+	BIND_ENUM_CONSTANT(EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_NONE);
+	BIND_ENUM_CONSTANT(EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_D3D11_KMT_KEYED_MUTEX);
+	BIND_ENUM_CONSTANT(EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_OPAQUE_FD);
+	BIND_ENUM_CONSTANT(EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_IOSURFACE);
 
 	BIND_ENUM_CONSTANT(DATA_FORMAT_R4G4_UNORM_PACK8);
 	BIND_ENUM_CONSTANT(DATA_FORMAT_R4G4B4A4_UNORM_PACK16);
