@@ -2813,6 +2813,7 @@ RDD::TextureID RenderingDeviceDriverVulkan::external_texture_create(ExternalText
 	tex_info->vk_create_info = create_info;
 	tex_info->vk_view_create_info = view_create_info;
 	tex_info->external_memory = memory;
+	tex_info->external_memory_size = mem_reqs.memoryRequirements.size;
 	if (r_export_handle != nullptr) {
 		*r_export_handle = export_handle;
 	}
@@ -2821,6 +2822,9 @@ RDD::TextureID RenderingDeviceDriverVulkan::external_texture_create(ExternalText
 
 uint64_t RenderingDeviceDriverVulkan::texture_get_allocation_size(TextureID p_texture) {
 	const TextureInfo *tex_info = (const TextureInfo *)p_texture.id;
+	if (tex_info->external_memory != VK_NULL_HANDLE) { // 2dog: dedicated allocations live outside VMA.
+		return tex_info->external_memory_size;
+	}
 	return tex_info->allocation.info.size;
 }
 
