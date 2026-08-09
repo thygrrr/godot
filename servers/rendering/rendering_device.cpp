@@ -1942,6 +1942,13 @@ uint64_t RenderingDevice::external_texture_get_handle(RID p_texture) {
 	return tex->external_share_handle;
 }
 
+uint64_t RenderingDevice::external_texture_get_memory_size(RID p_texture) {
+	Texture *tex = texture_owner.get_or_null(p_texture);
+	ERR_FAIL_NULL_V(tex, 0);
+	ERR_FAIL_COND_V(tex->external_share_handle_type == EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_NONE, 0);
+	return driver->texture_get_allocation_size(tex->driver_id);
+}
+
 Error RenderingDevice::external_texture_present(RID p_from_texture, RID p_to_external_texture) {
 	ERR_RENDER_THREAD_GUARD_V(ERR_UNAVAILABLE);
 
@@ -9152,6 +9159,7 @@ void RenderingDevice::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("external_texture_get_supported_handle_types"), &RenderingDevice::external_texture_get_supported_handle_types);
 	ClassDB::bind_method(D_METHOD("external_texture_create", "handle_type", "format", "width", "height", "import_handle"), &RenderingDevice::external_texture_create, DEFVAL(0));
 	ClassDB::bind_method(D_METHOD("external_texture_get_handle", "texture"), &RenderingDevice::external_texture_get_handle);
+	ClassDB::bind_method(D_METHOD("external_texture_get_memory_size", "texture"), &RenderingDevice::external_texture_get_memory_size);
 	ClassDB::bind_method(D_METHOD("external_texture_present", "from_texture", "to_external_texture"), &RenderingDevice::external_texture_present);
 
 	ClassDB::bind_method(D_METHOD("framebuffer_format_create", "attachments", "view_count"), &RenderingDevice::_framebuffer_format_create, DEFVAL(1));

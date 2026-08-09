@@ -285,6 +285,7 @@ public:
 		} allocation; // All 0/null if just a view.
 		// 2dog: dedicated non-VMA allocation backing an external (shareable) texture.
 		VkDeviceMemory external_memory = VK_NULL_HANDLE;
+		uint64_t external_memory_size = 0;
 		bool is_subsampled = false;
 #ifdef DEBUG_ENABLED
 		bool created_from_extension = false;

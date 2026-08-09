@@ -472,6 +472,7 @@ public:
 	uint32_t external_texture_get_supported_handle_types();
 	RID external_texture_create(ExternalTextureShareHandleType p_handle_type, DataFormat p_format, uint32_t p_width, uint32_t p_height, uint64_t p_import_handle = 0);
 	uint64_t external_texture_get_handle(RID p_texture);
+	uint64_t external_texture_get_memory_size(RID p_texture);
 	Error external_texture_present(RID p_from_texture, RID p_to_external_texture);
 	RID texture_create_shared_from_slice(const TextureView &p_view, RID p_with_texture, uint32_t p_layer, uint32_t p_mipmap, uint32_t p_mipmaps = 1, TextureSliceType p_slice_type = TEXTURE_SLICE_2D, uint32_t p_layers = 0);
 	Error texture_update(RID p_texture, uint32_t p_layer, const Vector<uint8_t> &p_data);

@@ -454,6 +454,13 @@
 				2dog: The native share handle of a texture created by [method external_texture_create] (the imported handle for import-style types, the exported one otherwise).
 			</description>
 		</method>
+		<method name="external_texture_get_memory_size">
+			<return type="int" />
+			<param index="0" name="texture" type="RID" />
+			<description>
+				2dog: The allocation size backing a texture created by [method external_texture_create] - importers of exported memory (e.g. Vulkan opaque fds) need it.
+			</description>
+		</method>
 		<method name="external_texture_get_supported_handle_types">
 			<return type="int" />
 			<description>
