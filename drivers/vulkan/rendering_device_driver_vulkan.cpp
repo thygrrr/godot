@@ -2624,7 +2624,7 @@ uint32_t RenderingDeviceDriverVulkan::external_texture_supported_handle_types() 
 	if (enabled_device_extension_names.has(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME)) {
 		types |= 1u << EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_D3D11_KMT_KEYED_MUTEX;
 	}
-#else
+#elif defined(LINUXBSD_ENABLED) || defined(ANDROID_ENABLED)
 	if (enabled_device_extension_names.has(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME)) {
 		types |= 1u << EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_OPAQUE_FD;
 	}
@@ -2645,7 +2645,7 @@ RDD::TextureID RenderingDeviceDriverVulkan::external_texture_create(ExternalText
 			vk_handle_type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT;
 			importing = true;
 		} break;
-#else
+#elif defined(LINUXBSD_ENABLED) || defined(ANDROID_ENABLED)
 		case EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_OPAQUE_FD: {
 			vk_handle_type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
 		} break;
@@ -2747,7 +2747,7 @@ RDD::TextureID RenderingDeviceDriverVulkan::external_texture_create(ExternalText
 		import_info.handle = (HANDLE)p_import_handle;
 		alloc_info.pNext = &import_info;
 	}
-#else
+#elif defined(LINUXBSD_ENABLED) || defined(ANDROID_ENABLED)
 	VkExportMemoryAllocateInfo export_info = {};
 	export_info.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
 	export_info.pNext = &dedicated_info;
@@ -2771,7 +2771,7 @@ RDD::TextureID RenderingDeviceDriverVulkan::external_texture_create(ExternalText
 
 	// Import-style handles round-trip: the caller's handle is also the share handle.
 	uint64_t export_handle = importing ? p_import_handle : 0;
-#if !defined(VK_USE_PLATFORM_WIN32_KHR)
+#if defined(LINUXBSD_ENABLED) || defined(ANDROID_ENABLED)
 	{
 		VkMemoryGetFdInfoKHR get_fd_info = {};
 		get_fd_info.sType = VK_STRUCTURE_TYPE_MEMORY_GET_FD_INFO_KHR;
