@@ -2728,13 +2728,20 @@ RDD::TextureID RenderingDeviceDriverVulkan::external_texture_create(ExternalText
 		ERR_FAIL_V_MSG(TextureID(), "No suitable memory type for external texture.");
 	}
 
+	// Dedicated allocation only when the driver demands it: importers that cannot mark
+	// the memory as dedicated (OpenGL's GL_EXT_memory_object has GL_DEDICATED_MEMORY_OBJECT_EXT,
+	// but e.g. Avalonia's importer never sets it) get undefined contents from a dedicated
+	// export, so a plain exportable allocation is the compatible default.
+	// D3D11 interop handles always import as dedicated.
 	VkMemoryDedicatedAllocateInfo dedicated_info = {};
 	dedicated_info.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO;
 	dedicated_info.image = vk_image;
+	const bool use_dedicated = importing || dedicated_reqs.requiresDedicatedAllocation;
+	void *alloc_next = use_dedicated ? (void *)&dedicated_info : nullptr;
 
 	VkMemoryAllocateInfo alloc_info = {};
 	alloc_info.sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO;
-	alloc_info.pNext = &dedicated_info;
+	alloc_info.pNext = alloc_next;
 	alloc_info.allocationSize = mem_reqs.memoryRequirements.size;
 	alloc_info.memoryTypeIndex = memory_type_index;
 
@@ -2742,7 +2749,7 @@ RDD::TextureID RenderingDeviceDriverVulkan::external_texture_create(ExternalText
 	VkImportMemoryWin32HandleInfoKHR import_info = {};
 	if (importing) {
 		import_info.sType = VK_STRUCTURE_TYPE_IMPORT_MEMORY_WIN32_HANDLE_INFO_KHR;
-		import_info.pNext = &dedicated_info;
+		import_info.pNext = alloc_next;
 		import_info.handleType = vk_handle_type;
 		import_info.handle = (HANDLE)p_import_handle;
 		alloc_info.pNext = &import_info;
@@ -2750,7 +2757,7 @@ RDD::TextureID RenderingDeviceDriverVulkan::external_texture_create(ExternalText
 #elif defined(LINUXBSD_ENABLED) || defined(ANDROID_ENABLED)
 	VkExportMemoryAllocateInfo export_info = {};
 	export_info.sType = VK_STRUCTURE_TYPE_EXPORT_MEMORY_ALLOCATE_INFO;
-	export_info.pNext = &dedicated_info;
+	export_info.pNext = alloc_next;
 	export_info.handleTypes = vk_handle_type;
 	alloc_info.pNext = &export_info;
 #endif
