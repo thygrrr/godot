@@ -1909,6 +1909,10 @@ RID RenderingDevice::external_texture_create(ExternalTextureShareHandleType p_ha
 	RDD::TextureID driver_id = driver->external_texture_create(p_handle_type, p_format, p_width, p_height, p_import_handle, &export_handle);
 	ERR_FAIL_COND_V(!driver_id, RID());
 
+	// The shared free path subtracts every texture's allocation size; without the matching
+	// increment here, freeing an external texture wraps texture_memory around.
+	texture_memory += driver->texture_get_allocation_size(driver_id);
+
 	Texture texture;
 	texture.type = TEXTURE_TYPE_2D;
 	texture.format = p_format;
