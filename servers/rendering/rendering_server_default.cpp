@@ -271,6 +271,24 @@ void RenderingServerDefault::_finish() {
 	memdelete(RSG::rasterizer);
 	memdelete(RSG::scene);
 	memdelete(RSG::camera_attributes);
+
+	// 2dog: reinit safety - null every RSG static, or they dangle into the next
+	// engine instance. A restarted instance probes has_os_feature() (GLOBAL_DEF
+	// feature overrides) before its rasterizer assigns them.
+	RSG::canvas = nullptr;
+	RSG::viewport = nullptr;
+	RSG::rasterizer = nullptr;
+	RSG::scene = nullptr;
+	RSG::camera_attributes = nullptr;
+	RSG::utilities = nullptr;
+	RSG::light_storage = nullptr;
+	RSG::material_storage = nullptr;
+	RSG::mesh_storage = nullptr;
+	RSG::particles_storage = nullptr;
+	RSG::texture_storage = nullptr;
+	RSG::gi = nullptr;
+	RSG::fog = nullptr;
+	RSG::canvas_render = nullptr;
 }
 
 void RenderingServerDefault::init() {
