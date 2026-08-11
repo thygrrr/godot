@@ -3,11 +3,8 @@ def can_build(env, platform):
         # WebXR is incompatible with proxy_to_pthread.
         return False
 
-    if platform == "web" and env["module_mono_enabled"]:
-        # NOTE: Remove when C# emscripten updates from 3.1.56.
-        # Single-threaded build should support it.
-        return False
-
+    # 2dog: web+mono is allowed; library_godot_webxr.js is backported to the emscripten 3.1.56
+    # Browser API used by the .NET runtime pack.
     return env["opengl3"] and not env["disable_xr"]
 
 

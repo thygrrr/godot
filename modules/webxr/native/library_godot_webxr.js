@@ -29,7 +29,9 @@
 /**************************************************************************/
 
 const GodotWebXR = {
-	$GodotWebXR__deps: ['$MainLoop', '$GL', '$GodotRuntime', '$runtimeKeepalivePush', '$runtimeKeepalivePop'],
+	// 2dog: uses the emscripten 3.1.56 Browser API (inverse of upstream 793258919b, which moved to the
+	// 4.x $MainLoop API); revert when the .NET runtime pack's emscripten reaches 4.x.
+	$GodotWebXR__deps: ['$Browser', '$GL', '$GodotRuntime', '$runtimeKeepalivePush', '$runtimeKeepalivePop'],
 	$GodotWebXR: {
 		gl: null,
 
@@ -64,9 +66,9 @@ const GodotWebXR = {
 		},
 		monkeyPatchRequestAnimationFrame: (enable) => {
 			if (GodotWebXR.orig_requestAnimationFrame === null) {
-				GodotWebXR.orig_requestAnimationFrame = MainLoop.requestAnimationFrame;
+				GodotWebXR.orig_requestAnimationFrame = Browser.requestAnimationFrame;
 			}
-			MainLoop.requestAnimationFrame = enable
+			Browser.requestAnimationFrame = enable
 				? GodotWebXR.requestAnimationFrame
 				: GodotWebXR.orig_requestAnimationFrame;
 		},
@@ -76,11 +78,11 @@ const GodotWebXR = {
 			// enabled or disabled. When using the WebXR API Emulator, this
 			// gets picked up automatically, however, in the Oculus Browser
 			// on the Quest, we need to pause and resume the main loop.
-			MainLoop.pause();
+			Browser.mainLoop.pause();
 			runtimeKeepalivePush();
 			window.setTimeout(function () {
 				runtimeKeepalivePop();
-				MainLoop.resume();
+				Browser.mainLoop.resume();
 			}, 0);
 		},
 
