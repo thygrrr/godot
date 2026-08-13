@@ -861,6 +861,25 @@ Error RenderingContextDriverVulkan::_initialize_devices() {
 		driver_device.vendor = props.vendorID;
 		driver_device.type = DeviceType(props.deviceType);
 
+		// 2dog: adapter LUID for --gpu-luid. VkPhysicalDeviceIDProperties needs 1.1 on both ends.
+		if (instance_api_version >= VK_API_VERSION_1_1 && props.apiVersion >= VK_API_VERSION_1_1) {
+			VkPhysicalDeviceIDProperties id_props = {};
+			id_props.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ID_PROPERTIES;
+			VkPhysicalDeviceProperties2 props2 = {};
+			props2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2;
+			props2.pNext = &id_props;
+			vkGetPhysicalDeviceProperties2(physical_devices[i], &props2);
+			if (id_props.deviceLUIDValid) {
+				// Decode little-endian: yields (HighPart << 32) | LowPart, as D3D hosts compose it.
+				uint64_t luid = 0;
+				for (int32_t b = VK_LUID_SIZE - 1; b >= 0; b--) {
+					luid = (luid << 8) | id_props.deviceLUID[b];
+				}
+				driver_device.luid = luid;
+				driver_device.luid_valid = true;
+			}
+		}
+
 		uint32_t queue_family_properties_count = 0;
 		vkGetPhysicalDeviceQueueFamilyProperties(physical_devices[i], &queue_family_properties_count, nullptr);
 

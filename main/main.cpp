@@ -628,6 +628,7 @@ void Main::print_help(const char *p_binary) {
 	print_help_option("--rendering-method <renderer>", "Renderer name. Requires driver support.\n");
 	print_help_option("--rendering-driver <driver>", "Rendering driver (depends on display driver).\n");
 	print_help_option("--gpu-index <device_index>", "Use a specific GPU (only available on the Forward+/Mobile renderers; run with --verbose to get a list of available devices).\n");
+	print_help_option("--gpu-luid <adapter_luid>", "Prefer the GPU whose OS adapter LUID matches (hexadecimal; Windows). Ignored when --gpu-index is set; falls back to automatic selection when no device matches.\n"); // 2dog
 	print_help_option("--text-driver <driver>", "Text driver (used for font rendering, bidirectional support and shaping).\n");
 	print_help_option("--tablet-driver <driver>", "Pen tablet input driver.\n");
 	print_help_option("--headless", "Enable headless mode (--display-driver headless --audio-driver Dummy). Useful for servers and with --script.\n");
@@ -1206,7 +1207,7 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 			}
 		}
 		// If gpu is specified, both editor and debug instances started from editor will inherit.
-		if (arg == "--gpu-index") {
+		if (arg == "--gpu-index" || arg == "--gpu-luid") { // 2dog: also forward --gpu-luid.
 			if (N) {
 				const String &next_arg = N->get();
 				forwardable_cli_arguments[CLI_SCOPE_TOOL].push_back(arg);
@@ -1361,6 +1362,14 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 				N = N->next();
 			} else {
 				OS::get_singleton()->print("Missing GPU index argument, aborting.\n");
+				goto error;
+			}
+		} else if (arg == "--gpu-luid") { // 2dog
+			if (N) {
+				Engine::singleton->gpu_luid = (uint64_t)N->get().hex_to_int();
+				N = N->next();
+			} else {
+				OS::get_singleton()->print("Missing GPU LUID argument, aborting.\n");
 				goto error;
 			}
 		} else if (arg == "--gpu-validation") {

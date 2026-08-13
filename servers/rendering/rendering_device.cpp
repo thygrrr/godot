@@ -8417,6 +8417,8 @@ Error RenderingDevice::initialize(RenderingContextDriver *p_context, DisplayServ
 
 	print_verbose("Devices:");
 	int32_t device_index = Engine::get_singleton()->get_gpu_index();
+	// 2dog: shared textures cannot cross adapters, so hosts pass their compositor's LUID.
+	const uint64_t target_luid = Engine::get_singleton()->get_gpu_luid();
 	const uint32_t device_count = context->device_get_count();
 	const bool device_index_out_of_range = (device_index >= int32_t(device_count));
 	const bool detect_device = (device_index < 0) || device_index_out_of_range;
@@ -8432,16 +8434,26 @@ Error RenderingDevice::initialize(RenderingContextDriver *p_context, DisplayServ
 		String vendor = _get_device_vendor_name(device_option);
 		String type = _get_device_type_name(device_option);
 		bool present_supported = main_surface != 0 ? context->device_supports_present(i, main_surface) : false;
-		print_verbose("  #" + itos(i) + ": " + vendor + " " + name + " - " + (present_supported ? "Supported" : "Unsupported") + ", " + type);
+		String luid_suffix = device_option.luid_valid ? " - LUID 0x" + String::num_uint64(device_option.luid, 16) : String(); // 2dog
+		print_verbose("  #" + itos(i) + ": " + vendor + " " + name + " - " + (present_supported ? "Supported" : "Unsupported") + ", " + type + luid_suffix);
 		if (detect_device && (present_supported || main_surface == 0)) {
 			// If a window was specified, present must be supported by the device to be available as an option.
 			// Assign a score for each type of device and prefer the device with the higher score.
 			uint32_t option_score = _get_device_type_score(device_option);
+			// 2dog: a LUID match outranks any type preference.
+			if (target_luid != 0 && device_option.luid_valid && device_option.luid == target_luid) {
+				option_score = UINT32_MAX;
+			}
 			if (option_score > device_type_score) {
 				device_index = i;
 				device_type_score = option_score;
 			}
 		}
+	}
+
+	// 2dog
+	if (detect_device && target_luid != 0 && device_type_score != UINT32_MAX) {
+		WARN_PRINT(vformat("No usable GPU matches the requested adapter LUID 0x%s; falling back to automatic device selection.", String::num_uint64(target_luid, 16)));
 	}
 
 	ERR_FAIL_COND_V_MSG((device_index < 0) || (device_index >= int32_t(device_count)), ERR_CANT_CREATE, "None of the devices supports both graphics and present queues.");
