@@ -982,6 +982,10 @@ public:
 		EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_OPAQUE_FD = 2,
 		// Export: the driver allocates an IOSurface-backed texture and returns the IOSurfaceRef.
 		EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_IOSURFACE = 3,
+		// Import: like D3D11_KMT_KEYED_MUTEX but from an NT handle
+		// (IDXGIResource1::CreateSharedHandle). Some drivers (older Intel) import only
+		// NT handles, never KMT ones.
+		EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_D3D11_NT_KEYED_MUTEX = 4,
 	};
 
 	enum Limit {

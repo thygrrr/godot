@@ -299,6 +299,7 @@ public:
 	virtual TextureID texture_create(const TextureFormat &p_format, const TextureView &p_view) override final;
 
 	// 2dog: external texture sharing.
+	VkExternalMemoryFeatureFlags _external_texture_features(VkExternalMemoryHandleTypeFlagBits p_handle_type, VkFormat p_format, VkImageUsageFlags p_usage) const;
 	virtual uint32_t external_texture_supported_handle_types() override final;
 	virtual TextureID external_texture_create(ExternalTextureShareHandleType p_handle_type, DataFormat p_format, uint32_t p_width, uint32_t p_height, uint64_t p_import_handle, uint64_t *r_export_handle) override final;
 	virtual TextureID texture_create_from_extension(uint64_t p_native_texture, TextureType p_type, DataFormat p_format, uint32_t p_array_layers, bool p_depth_stencil, uint32_t p_mipmaps) override final;

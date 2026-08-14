@@ -2615,6 +2615,34 @@ void RenderingDeviceDriverVulkan::texture_free(TextureID p_texture) {
 
 // 2dog: external texture sharing - shareable images a host compositor can import.
 
+// The external memory features (importable/exportable/...) of an optimal-tiling 2D image
+// of this format, usage and handle type; 0 when the driver rejects the combination.
+VkExternalMemoryFeatureFlags RenderingDeviceDriverVulkan::_external_texture_features(VkExternalMemoryHandleTypeFlagBits p_handle_type, VkFormat p_format, VkImageUsageFlags p_usage) const {
+	VkPhysicalDeviceExternalImageFormatInfo external_format_info = {};
+	external_format_info.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO;
+	external_format_info.handleType = p_handle_type;
+	VkPhysicalDeviceImageFormatInfo2 format_info = {};
+	format_info.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2;
+	format_info.pNext = &external_format_info;
+	format_info.format = p_format;
+	format_info.type = VK_IMAGE_TYPE_2D;
+	format_info.tiling = VK_IMAGE_TILING_OPTIMAL;
+	format_info.usage = p_usage;
+	VkExternalImageFormatProperties external_format_props = {};
+	external_format_props.sType = VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES;
+	VkImageFormatProperties2 format_props = {};
+	format_props.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2;
+	format_props.pNext = &external_format_props;
+	if (vkGetPhysicalDeviceImageFormatProperties2(physical_device, &format_info, &format_props) != VK_SUCCESS) {
+		return 0;
+	}
+	return external_format_props.externalMemoryProperties.externalMemoryFeatures;
+}
+
+// The usage every external texture is created with (the engine copies into it, compositors
+// sample it); capability probes must ask about the same combination creation will use.
+static const VkImageUsageFlags EXTERNAL_TEXTURE_USAGE = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+
 uint32_t RenderingDeviceDriverVulkan::external_texture_supported_handle_types() {
 	if (physical_device_properties.apiVersion < VK_API_VERSION_1_1) {
 		return 0;
@@ -2622,11 +2650,21 @@ uint32_t RenderingDeviceDriverVulkan::external_texture_supported_handle_types() 
 	uint32_t types = 0;
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
 	if (enabled_device_extension_names.has(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME)) {
-		types |= 1u << EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_D3D11_KMT_KEYED_MUTEX;
+		// Extension presence is not importability: older Intel drivers expose the extension
+		// yet reject D3D11 KMT handles outright (while accepting NT handles), so probe each
+		// handle type against the canonical shared format.
+		if (_external_texture_features(VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT, VK_FORMAT_R8G8B8A8_UNORM, EXTERNAL_TEXTURE_USAGE) & VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT) {
+			types |= 1u << EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_D3D11_KMT_KEYED_MUTEX;
+		}
+		if (_external_texture_features(VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT, VK_FORMAT_R8G8B8A8_UNORM, EXTERNAL_TEXTURE_USAGE) & VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT) {
+			types |= 1u << EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_D3D11_NT_KEYED_MUTEX;
+		}
 	}
 #elif defined(LINUXBSD_ENABLED) || defined(ANDROID_ENABLED)
 	if (enabled_device_extension_names.has(VK_KHR_EXTERNAL_MEMORY_FD_EXTENSION_NAME)) {
-		types |= 1u << EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_OPAQUE_FD;
+		if (_external_texture_features(VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT, VK_FORMAT_R8G8B8A8_UNORM, EXTERNAL_TEXTURE_USAGE) & VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT) {
+			types |= 1u << EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_OPAQUE_FD;
+		}
 	}
 #endif
 	return types;
@@ -2645,6 +2683,10 @@ RDD::TextureID RenderingDeviceDriverVulkan::external_texture_create(ExternalText
 			vk_handle_type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT;
 			importing = true;
 		} break;
+		case EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_D3D11_NT_KEYED_MUTEX: {
+			vk_handle_type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_BIT;
+			importing = true;
+		} break;
 #elif defined(LINUXBSD_ENABLED) || defined(ANDROID_ENABLED)
 		case EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_OPAQUE_FD: {
 			vk_handle_type = VK_EXTERNAL_MEMORY_HANDLE_TYPE_OPAQUE_FD_BIT;
@@ -2655,31 +2697,12 @@ RDD::TextureID RenderingDeviceDriverVulkan::external_texture_create(ExternalText
 		}
 	}
 
-	const VkImageUsageFlags vk_usage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
+	const VkImageUsageFlags vk_usage = EXTERNAL_TEXTURE_USAGE;
 
 	// The device must support an importable/exportable optimal-tiling image of this format.
-	VkPhysicalDeviceExternalImageFormatInfo external_format_info = {};
-	external_format_info.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO;
-	external_format_info.handleType = vk_handle_type;
-	VkPhysicalDeviceImageFormatInfo2 format_info = {};
-	format_info.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2;
-	format_info.pNext = &external_format_info;
-	format_info.format = RD_TO_VK_FORMAT[p_format];
-	format_info.type = VK_IMAGE_TYPE_2D;
-	format_info.tiling = VK_IMAGE_TILING_OPTIMAL;
-	format_info.usage = vk_usage;
-	VkExternalImageFormatProperties external_format_props = {};
-	external_format_props.sType = VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES;
-	VkImageFormatProperties2 format_props = {};
-	format_props.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2;
-	format_props.pNext = &external_format_props;
-	VkResult err = vkGetPhysicalDeviceImageFormatProperties2(physical_device, &format_info, &format_props);
-	if (err != VK_SUCCESS) {
-		return TextureID();
-	}
-	VkExternalMemoryFeatureFlags features = external_format_props.externalMemoryProperties.externalMemoryFeatures;
+	VkExternalMemoryFeatureFlags features = _external_texture_features(vk_handle_type, RD_TO_VK_FORMAT[p_format], vk_usage);
 	if (importing ? !(features & VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT) : !(features & VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT)) {
-		return TextureID();
+		ERR_FAIL_V_MSG(TextureID(), vformat("The driver cannot %s an external image of this format for handle type %d.", importing ? "import" : "export", (int)p_handle_type));
 	}
 
 	VkExternalMemoryImageCreateInfo external_image_info = {};
@@ -2703,7 +2726,7 @@ RDD::TextureID RenderingDeviceDriverVulkan::external_texture_create(ExternalText
 	create_info.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 
 	VkImage vk_image = VK_NULL_HANDLE;
-	err = vkCreateImage(vk_device, &create_info, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_IMAGE), &vk_image);
+	VkResult err = vkCreateImage(vk_device, &create_info, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_IMAGE), &vk_image);
 	ERR_FAIL_COND_V_MSG(err, TextureID(), vformat("Couldn't create Vulkan external image (VkResult error %d).", err));
 
 	// Dedicated allocation outside VMA (external memory wants its own VkDeviceMemory).

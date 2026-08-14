@@ -1520,6 +1520,9 @@
 		<constant name="EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_IOSURFACE" value="3" enum="ExternalTextureShareHandleType">
 			2dog: Back the texture with an IOSurface and export its [code]IOSurfaceRef[/code].
 		</constant>
+		<constant name="EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_D3D11_NT_KEYED_MUTEX" value="4" enum="ExternalTextureShareHandleType">
+			2dog: Like [constant EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_D3D11_KMT_KEYED_MUTEX], but the handle is an NT handle ([code]IDXGIResource1::CreateSharedHandle[/code]). Some drivers import only NT handles.
+		</constant>
 		<constant name="DATA_FORMAT_R4G4_UNORM_PACK8" value="0" enum="DataFormat">
 			4-bit-per-channel red/green channel data format, packed into 8 bits. Values are in the [code][0.0, 1.0][/code] range.
 			[b]Note:[/b] More information on all data formats can be found on the [url=https://registry.khronos.org/vulkan/specs/1.1/html/vkspec.html#_identification_of_formats]Identification of formats[/url] section of the Vulkan specification, as well as the [url=https://registry.khronos.org/vulkan/specs/1.3-extensions/man/html/VkFormat.html]VkFormat[/url] enum.
