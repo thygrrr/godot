@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -114,6 +115,8 @@ namespace Godot
         }
 
         [UnmanagedCallersOnly]
+        [UnconditionalSuppressMessage("Trimming", "IL2026",
+            Justification = "Diagnostics only: a frame whose method metadata was trimmed degrades to an incomplete stack trace entry, nothing functional depends on it.")]
         internal static unsafe void GetCurrentStackInfo(void* destVector)
         {
             try
@@ -167,6 +170,8 @@ namespace Godot
             }
         }
 
+        [UnconditionalSuppressMessage("Trimming", "IL2026",
+            Justification = "Diagnostics only: a frame whose method metadata was trimmed degrades to an incomplete stack trace entry, nothing functional depends on it.")]
         internal static void GetStackFrameMethodDecl(StackFrame frame, out string methodDecl)
         {
             MethodBase? methodBase = frame.GetMethod();

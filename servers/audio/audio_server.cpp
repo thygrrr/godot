@@ -1434,6 +1434,13 @@ void AudioServer::finish() {
 		AudioDriverManager::get_driver(i)->finish();
 	}
 
+	// 2dog: after drivers stop, drain deferred playback deletion and both graveyard generations.
+	for (AudioStreamPlaybackListNode *playback : playback_list) {
+		_delete_stream_playback_list_node(playback);
+	}
+	_cleanup_lists();
+	_cleanup_lists();
+
 	for (int i = 0; i < buses.size(); i++) {
 		memdelete(buses[i]);
 	}

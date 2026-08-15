@@ -10,11 +10,11 @@ namespace Godot
     internal static class DisposablesTracker
     {
         [UnmanagedCallersOnly]
-        internal static void OnGodotShuttingDown()
+        internal static void OnGodotShuttingDown(godot_bool preserveStringNames)
         {
             try
             {
-                OnGodotShuttingDownImpl();
+                OnGodotShuttingDownImpl(preserveStringNames.ToBool());
             }
             catch (Exception e)
             {
@@ -22,7 +22,7 @@ namespace Godot
             }
         }
 
-        private static void OnGodotShuttingDownImpl()
+        private static void OnGodotShuttingDownImpl(bool preserveStringNames)
         {
             bool isStdoutVerbose;
 
@@ -52,7 +52,13 @@ namespace Godot
             foreach (WeakReference<IDisposable> item in OtherInstances.Keys)
             {
                 if (item.TryGetTarget(out IDisposable? self))
+                {
+                    // 2dog: native StringNames survive libgodot restart cleanup.
+                    if (preserveStringNames && self is StringName)
+                        continue;
+
                     self.Dispose();
+                }
             }
 
             if (isStdoutVerbose)

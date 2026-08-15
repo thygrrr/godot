@@ -430,3 +430,7 @@ ResourceUID::ResourceUID() {
 	ERR_FAIL_COND(singleton != nullptr);
 	singleton = this;
 }
+// 2dog: reset the singleton for engine restart support.
+ResourceUID::~ResourceUID() {
+	singleton = nullptr;
+}

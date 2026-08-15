@@ -58,6 +58,11 @@ class RendererSceneRenderRD : public RendererSceneRender, public RenderingShader
 	friend RendererRD::SkyRD;
 	friend RendererRD::GI;
 
+	// 2dog: reset the singleton after other members finish teardown, when shader destructors need it.
+	struct SingletonReset {
+		~SingletonReset();
+	} singleton_reset;
+
 protected:
 	RendererRD::ForwardIDStorage *forward_id_storage = nullptr;
 	RendererRD::BokehDOF *bokeh_dof = nullptr;

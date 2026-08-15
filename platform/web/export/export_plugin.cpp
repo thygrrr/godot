@@ -90,7 +90,17 @@ Error EditorExportPlatformWeb::_extract_template(const String &p_template, const
 		unzCloseCurrentFile(pkg);
 
 		//write
-		String dst = p_dir.path_join(file.replace("godot", p_name));
+		String dst = p_dir.path_join(file.begins_with("libgodot/") ? file : file.replace("godot", p_name));
+		String dst_dir = dst.get_base_dir();
+		if (!DirAccess::exists(dst_dir)) {
+			Error err = DirAccess::make_dir_recursive_absolute(dst_dir);
+			if (err != OK) {
+				add_message(EXPORT_MESSAGE_ERROR, TTR("Prepare Templates"), vformat(TTR("Could not create directory: \"%s\"."), dst_dir));
+				unzClose(pkg);
+				return err;
+			}
+		}
+
 		Ref<FileAccess> f = FileAccess::open(dst, FileAccess::WRITE);
 		if (f.is_null()) {
 			add_message(EXPORT_MESSAGE_ERROR, TTR("Prepare Templates"), vformat(TTR("Could not write file: \"%s\"."), dst));
@@ -422,17 +432,19 @@ Ref<Texture2D> EditorExportPlatformWeb::get_logo() const {
 }
 
 bool EditorExportPlatformWeb::has_valid_export_configuration(const Ref<EditorExportPreset> &p_preset, String &r_error, bool &r_missing_templates, bool p_debug) const {
-#ifdef MODULE_MONO_ENABLED
-	// Don't check for additional errors, as this particular error cannot be resolved.
-	r_error += TTR("Exporting to Web is currently not supported in Godot 4 when using C#/.NET. Use Godot 3 to target Web with C#/Mono instead.") + "\n";
-	r_error += TTR("If this project does not use C#, use a non-C# editor build to export the project.") + "\n";
-	return false;
-#else
-
 	String err;
 	bool valid = false;
 	bool extensions = (bool)p_preset->get("variant/extensions_support");
 	bool thread_support = (bool)p_preset->get("variant/thread_support");
+
+#ifdef MODULE_MONO_ENABLED
+	// 2dog: .NET web export remains experimental.
+	err += TTR("Exporting to Web when using C#/.NET is experimental.") + "\n";
+	if (extensions) {
+		r_error += TTR("Exporting C#/.NET with GDExtensions is currently not supported.") + "\n";
+		return false;
+	}
+#endif
 
 	// Look for export templates (first official, and if defined custom templates).
 	bool dvalid = exists_export_template(_get_template_name(extensions, thread_support, true), &err);
@@ -459,7 +471,6 @@ bool EditorExportPlatformWeb::has_valid_export_configuration(const Ref<EditorExp
 	}
 
 	return valid;
-#endif // !MODULE_MONO_ENABLED
 }
 
 bool EditorExportPlatformWeb::has_valid_project_configuration(const Ref<EditorExportPreset> &p_preset, String &r_error) const {
@@ -491,8 +502,6 @@ List<String> EditorExportPlatformWeb::get_binary_extensions(const Ref<EditorExpo
 }
 
 Error EditorExportPlatformWeb::export_project(const Ref<EditorExportPreset> &p_preset, bool p_debug, const String &p_path, BitField<EditorExportPlatform::DebugFlags> p_flags, bool p_notify) {
-	ExportNotifier notifier(*this, p_preset, p_debug, p_path, p_flags, p_notify);
-
 	const String custom_debug = p_preset->get("custom_template/debug");
 	const String custom_release = p_preset->get("custom_template/release");
 	const String custom_html = p_preset->get("html/custom_html_shell");
@@ -522,10 +531,24 @@ Error EditorExportPlatformWeb::export_project(const Ref<EditorExportPreset> &p_p
 		return ERR_FILE_NOT_FOUND;
 	}
 
+	// Extract templates.
+	Error error = _extract_template(template_path, base_dir, base_name, pwa);
+	if (error) {
+		// Message is supplied by the subroutine method.
+		return error;
+	}
+
+	ExportNotifier notifier(*this, p_preset, p_debug, p_path, p_flags, p_notify);
+
+	// Check if any export plugin failed.
+	if (get_worst_message_type() == EXPORT_MESSAGE_ERROR) {
+		return ERR_SCRIPT_FAILED;
+	}
+
 	// Export pck and shared objects
 	Vector<SharedObject> shared_objects;
 	String pck_path = base_path + ".pck";
-	Error error = save_pack(p_preset, p_debug, pck_path, &shared_objects);
+	error = save_pack(p_preset, p_debug, pck_path, &shared_objects);
 	if (error != OK) {
 		add_message(EXPORT_MESSAGE_ERROR, TTR("Export"), vformat(TTR("Could not write file: \"%s\"."), pck_path));
 		return error;
@@ -541,13 +564,6 @@ Error EditorExportPlatformWeb::export_project(const Ref<EditorExportPreset> &p_p
 				return error;
 			}
 		}
-	}
-
-	// Extract templates.
-	error = _extract_template(template_path, base_dir, base_name, pwa);
-	if (error) {
-		// Message is supplied by the subroutine method.
-		return error;
 	}
 
 	// Parse generated file sizes (pck and wasm, to help show a meaningful loading bar).
@@ -613,6 +629,23 @@ Error EditorExportPlatformWeb::export_project(const Ref<EditorExportPreset> &p_p
 		if (err != OK) {
 			// Message is supplied by the subroutine method.
 			return err;
+		}
+	}
+
+	// 2dog: libgodot inputs are build-only and must not ship in the export.
+	String libgodot_dir = base_dir.path_join("libgodot");
+	if (DirAccess::exists(libgodot_dir)) {
+		Ref<DirAccess> libgodot_dir_da = DirAccess::open(libgodot_dir);
+		if (libgodot_dir_da.is_null()) {
+			return ERR_CANT_OPEN;
+		}
+		Error cleanup_error = libgodot_dir_da->erase_contents_recursive();
+		if (cleanup_error != OK) {
+			return cleanup_error;
+		}
+		cleanup_error = DirAccess::remove_absolute(libgodot_dir);
+		if (cleanup_error != OK) {
+			return cleanup_error;
 		}
 	}
 
@@ -854,18 +887,12 @@ Error EditorExportPlatformWeb::_export_project(const Ref<EditorExportPreset> &p_
 	Error err = export_project(p_preset, true, basepath + ".html", p_debug_flags);
 	if (err != OK) {
 		// Export generates several files, clean them up on failure.
-		DirAccess::remove_file_or_error(basepath + ".html");
-		DirAccess::remove_file_or_error(basepath + ".offline.html");
-		DirAccess::remove_file_or_error(basepath + ".js");
-		DirAccess::remove_file_or_error(basepath + ".audio.worklet.js");
-		DirAccess::remove_file_or_error(basepath + ".audio.position.worklet.js");
-		DirAccess::remove_file_or_error(basepath + ".service.worker.js");
-		DirAccess::remove_file_or_error(basepath + ".pck");
-		DirAccess::remove_file_or_error(basepath + ".png");
-		DirAccess::remove_file_or_error(basepath + ".side.wasm");
-		DirAccess::remove_file_or_error(basepath + ".wasm");
-		DirAccess::remove_file_or_error(basepath + ".icon.png");
-		DirAccess::remove_file_or_error(basepath + ".apple-touch-icon.png");
+		if (DirAccess::exists(dest)) {
+			Ref<DirAccess> dest_da = DirAccess::open(dest);
+			if (dest_da.is_valid() && dest_da->erase_contents_recursive() != OK) {
+				add_message(EXPORT_MESSAGE_WARNING, TTR("Run"), vformat(TTR("Could not clean HTTP server directory: %s."), dest));
+			}
+		}
 	}
 	return err;
 }

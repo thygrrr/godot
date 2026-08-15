@@ -368,6 +368,10 @@ public:
 		bool has_initial_data = false;
 		bool pending_clear = false;
 
+		// 2dog: set for textures created by external_texture_create.
+		ExternalTextureShareHandleType external_share_handle_type = EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_NONE;
+		uint64_t external_share_handle = 0;
+
 		BitField<RDD::TextureAspectBits> read_aspect_flags = {};
 		BitField<RDD::TextureAspectBits> barrier_aspect_flags = {};
 		bool bound = false; // Bound to framebuffer.
@@ -464,6 +468,13 @@ public:
 	RID texture_create(const TextureFormat &p_format, const TextureView &p_view, const Vector<Vector<uint8_t>> &p_data = Vector<Vector<uint8_t>>());
 	RID texture_create_shared(const TextureView &p_view, RID p_with_texture);
 	RID texture_create_from_extension(TextureType p_type, DataFormat p_format, TextureSamples p_samples, BitField<RenderingDevice::TextureUsageBits> p_usage, uint64_t p_image, uint64_t p_width, uint64_t p_height, uint64_t p_depth, uint64_t p_layers, uint64_t p_mipmaps = 1);
+
+	// 2dog: external texture sharing - a shareable copy target a host compositor can import.
+	uint32_t external_texture_get_supported_handle_types();
+	RID external_texture_create(ExternalTextureShareHandleType p_handle_type, DataFormat p_format, uint32_t p_width, uint32_t p_height, uint64_t p_import_handle = 0);
+	uint64_t external_texture_get_handle(RID p_texture);
+	uint64_t external_texture_get_memory_size(RID p_texture);
+	Error external_texture_present(RID p_from_texture, RID p_to_external_texture);
 	RID texture_create_shared_from_slice(const TextureView &p_view, RID p_with_texture, uint32_t p_layer, uint32_t p_mipmap, uint32_t p_mipmaps = 1, TextureSliceType p_slice_type = TEXTURE_SLICE_2D, uint32_t p_layers = 0);
 	Error texture_update(RID p_texture, uint32_t p_layer, const Vector<uint8_t> &p_data);
 	Vector<uint8_t> texture_get_data(RID p_texture, uint32_t p_layer); // CPU textures will return immediately, while GPU textures will most likely force a flush
@@ -2025,6 +2036,7 @@ private:
 
 VARIANT_ENUM_CAST_EXT(RenderingDeviceEnums::DeviceType, RenderingDevice::DeviceType)
 VARIANT_ENUM_CAST(RenderingDevice::DriverResource)
+VARIANT_ENUM_CAST(RenderingDevice::ExternalTextureShareHandleType) // 2dog
 VARIANT_ENUM_CAST(RenderingDevice::ShaderStage)
 VARIANT_ENUM_CAST(RenderingDevice::ShaderLanguage)
 VARIANT_ENUM_CAST(RenderingDevice::CompareOperator)

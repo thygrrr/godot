@@ -284,6 +284,13 @@ public:
 	virtual TextureID texture_create_shared_from_slice(TextureID p_original_texture, const TextureView &p_view, TextureSliceType p_slice_type, uint32_t p_layer, uint32_t p_layers, uint32_t p_mipmap, uint32_t p_mipmaps) = 0;
 	virtual void texture_free(TextureID p_texture) = 0;
 	virtual uint64_t texture_get_allocation_size(TextureID p_texture) = 0;
+
+	// 2dog: external texture sharing with a host compositor. Defaults report no support;
+	// drivers opt in per handle type (bitmask of 1 << ExternalTextureShareHandleType).
+	// r_export_handle is always the share handle: exported for export-style types,
+	// echoed back for import-style ones.
+	virtual uint32_t external_texture_supported_handle_types() { return 0; }
+	virtual TextureID external_texture_create(ExternalTextureShareHandleType p_handle_type, DataFormat p_format, uint32_t p_width, uint32_t p_height, uint64_t p_import_handle, uint64_t *r_export_handle) { return TextureID(); }
 	// Returns a texture layout for buffer <-> texture copies. If you are copying multiple texture subresources to/from the same buffer,
 	// you are responsible for correctly aligning the start offset for every buffer region. See API_TRAIT_TEXTURE_TRANSFER_ALIGNMENT.
 	virtual void texture_get_copyable_layout(TextureID p_texture, const TextureSubresource &p_subresource, TextureCopyableLayout *r_layout) = 0;

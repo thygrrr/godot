@@ -70,6 +70,42 @@ LIBGODOT_API GDExtensionObjectPtr libgodot_create_godot_instance(int p_argc, cha
  */
 LIBGODOT_API void libgodot_destroy_godot_instance(GDExtensionObjectPtr p_godot_instance);
 
+/**
+ * @name libgodot_import_project
+ * @since 4.6
+ *
+ * Runs the editor import lifecycle for p_project_path. Requires an editor
+ * build; template builds return -1. Do not call while an instance exists.
+ *
+ * @param p_project_path Path to the directory containing project.godot.
+ * @param p_extra_argc   Number of extra command line arguments.
+ * @param p_extra_argv   Extra arguments appended after the built-in
+ *                       ["--headless", "--import", "--path", p_project_path].
+ *
+ * @return Process-style exit code: 0 on success, non-zero on failure,
+ *         -1 if this build has no editor.
+ */
+LIBGODOT_API int libgodot_import_project(const char *p_project_path, int p_extra_argc, const char *p_extra_argv[]);
+
+/**
+ * @name libgodot_export_pack
+ * @since 4.7
+ *
+ * Runs the editor pack export lifecycle. The project must already be
+ * imported. Requires an editor build; template builds return -1. Do not call
+ * while an instance exists.
+ *
+ * @param p_project_path Path to the directory containing project.godot.
+ * @param p_preset       Name of the export preset (from export_presets.cfg).
+ * @param p_output_path  Path of the .pck (or .zip) file to write.
+ * @param p_extra_argc   Number of extra command line arguments.
+ * @param p_extra_argv   Extra arguments appended after the built-in argument list.
+ *
+ * @return Process-style exit code: 0 on success, non-zero on failure,
+ *         -1 if this build has no editor.
+ */
+LIBGODOT_API int libgodot_export_pack(const char *p_project_path, const char *p_preset, const char *p_output_path, int p_extra_argc, const char *p_extra_argv[]);
+
 #ifdef __cplusplus
 }
 #endif // __cplusplus

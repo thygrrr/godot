@@ -18,15 +18,10 @@ namespace Godot.NativeInterop
     [GenerateUnmanagedCallbacks(typeof(UnmanagedCallbacks))]
     public static unsafe partial class NativeFuncs
     {
-        private static bool initialized;
-
         // ReSharper disable once ParameterOnlyUsedForPreconditionCheck.Global
         public static void Initialize(IntPtr unmanagedCallbacks, int unmanagedCallbacksSize)
         {
-            if (initialized)
-                throw new InvalidOperationException("Already initialized.");
-            initialized = true;
-
+            // 2dog: refresh callbacks when the engine is reinitialized in-process.
             if (unmanagedCallbacksSize != sizeof(UnmanagedCallbacks))
                 throw new ArgumentException("Unmanaged callbacks size mismatch.", nameof(unmanagedCallbacksSize));
 
@@ -245,7 +240,7 @@ namespace Godot.NativeInterop
 
         public static partial double godotsharp_variant_as_float(scoped in godot_variant p_self);
 
-        public static partial godot_string godotsharp_variant_as_string(scoped in godot_variant p_self);
+        public static partial void godotsharp_variant_as_string(scoped in godot_variant p_self, out godot_string r_dest);
 
         public static partial Vector2 godotsharp_variant_as_vector2(scoped in godot_variant p_self);
 
@@ -279,11 +274,11 @@ namespace Godot.NativeInterop
 
         public static partial Color godotsharp_variant_as_color(scoped in godot_variant p_self);
 
-        public static partial godot_string_name godotsharp_variant_as_string_name(scoped in godot_variant p_self);
+        public static partial void godotsharp_variant_as_string_name(scoped in godot_variant p_self, out godot_string_name r_dest);
 
-        public static partial godot_node_path godotsharp_variant_as_node_path(scoped in godot_variant p_self);
+        public static partial void godotsharp_variant_as_node_path(scoped in godot_variant p_self, out godot_node_path r_dest);
 
-        public static partial Rid godotsharp_variant_as_rid(scoped in godot_variant p_self);
+        public static partial void godotsharp_variant_as_rid(scoped in godot_variant p_self, out Rid r_dest);
 
         public static partial godot_callable godotsharp_variant_as_callable(scoped in godot_variant p_self);
 

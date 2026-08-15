@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -75,6 +76,7 @@ namespace GodotPlugins
         private static readonly List<AssemblyName> SharedAssemblies = new();
         private static readonly Assembly CoreApiAssembly = typeof(global::Godot.GodotObject).Assembly;
         private static Assembly? _editorApiAssembly;
+        private static Assembly? _projectAssembly;
         private static PluginLoadContextWrapper? _projectLoadContext;
         private static bool _editorHint = false;
 
@@ -83,6 +85,7 @@ namespace GodotPlugins
             AssemblyLoadContext.Default;
 
         private static DllImportResolver? _dllImportResolver;
+        private static bool _initializedFromEngine;
 
         // Right now we do it this way for simplicity as hot-reload is disabled. It will need to be changed later.
         [UnmanagedCallersOnly]
@@ -95,15 +98,25 @@ namespace GodotPlugins
             {
                 _editorHint = editorHint.ToBool();
 
-                _dllImportResolver = new GodotDllImportResolver(godotDllHandle).OnResolveDllImport;
+                if (_initializedFromEngine)
+                {
+                    // 2dog: discard script bridge state from the previous engine instance.
+                    ScriptManagerBridge.ResetForEngineReinitialization();
+                }
+                _initializedFromEngine = true;
 
-                SharedAssemblies.Add(CoreApiAssembly.GetName());
-                NativeLibrary.SetDllImportResolver(CoreApiAssembly, _dllImportResolver);
+                // 2dog: resolvers register once; the native library stays loaded across restarts.
+                if (_dllImportResolver == null)
+                {
+                    _dllImportResolver = new GodotDllImportResolver(godotDllHandle).OnResolveDllImport;
+                    SharedAssemblies.Add(CoreApiAssembly.GetName());
+                    NativeLibrary.SetDllImportResolver(CoreApiAssembly, _dllImportResolver);
+                }
 
                 AlcReloadCfg.Configure(alcReloadEnabled: _editorHint);
                 NativeFuncs.Initialize(unmanagedCallbacks, unmanagedCallbacksSize);
 
-                if (_editorHint)
+                if (_editorHint && _editorApiAssembly == null)
                 {
                     _editorApiAssembly = Assembly.Load("GodotSharpEditor");
                     SharedAssemblies.Add(_editorApiAssembly.GetName());
@@ -142,16 +155,21 @@ namespace GodotPlugins
             try
             {
                 if (_projectLoadContext != null)
-                    return godot_bool.True; // Already loaded
+                {
+                    // 2dog: repopulate script lookups after an engine restart reset the bridge.
+                    if (_projectAssembly != null)
+                        ScriptManagerBridge.LookupScriptsInAssembly(_projectAssembly);
+                    return godot_bool.True;
+                }
 
                 string assemblyPath = new(nAssemblyPath);
 
-                (var projectAssembly, _projectLoadContext) = LoadPlugin(assemblyPath, isCollectible: _editorHint);
+                (_projectAssembly, _projectLoadContext) = LoadPlugin(assemblyPath, isCollectible: _editorHint);
 
                 string loadedAssemblyPath = _projectLoadContext.AssemblyLoadedPath ?? assemblyPath;
                 *outLoadedAssemblyPath = Marshaling.ConvertStringToNative(loadedAssemblyPath);
 
-                ScriptManagerBridge.LookupScriptsInAssembly(projectAssembly);
+                ScriptManagerBridge.LookupScriptsInAssembly(_projectAssembly);
 
                 return godot_bool.True;
             }
@@ -163,6 +181,7 @@ namespace GodotPlugins
         }
 
         [UnmanagedCallersOnly]
+        [RequiresUnreferencedCode("Calls System.Reflection.Assembly.GetType(String)")]
         private static unsafe IntPtr LoadToolsAssembly(char* nAssemblyPath,
             IntPtr unmanagedCallbacks, int unmanagedCallbacksSize)
         {
@@ -220,6 +239,9 @@ namespace GodotPlugins
         {
             try
             {
+                // 2dog: release the Assembly reference before unloading its collectible context.
+                if (_projectLoadContext?.IsCollectible == true)
+                    _projectAssembly = null;
                 return UnloadPlugin(ref _projectLoadContext).ToGodotBool();
             }
             catch (Exception e)

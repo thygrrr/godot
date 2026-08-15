@@ -350,6 +350,13 @@ static Vector<String> get_files_with_extension(const String &p_root, const Strin
 #endif
 
 void finalize_display() {
+	// 2dog: release cached cursor textures before RenderingServer shutdown.
+	if (display_server) {
+		for (int i = 0; i < DisplayServerEnums::CURSOR_MAX; i++) {
+			display_server->cursor_set_custom_image(Ref<Resource>(), (DisplayServerEnums::CursorShape)i);
+		}
+	}
+
 	rendering_server->finish();
 	memdelete(rendering_server);
 
@@ -583,6 +590,7 @@ void Main::print_help(const char *p_binary) {
 	print_help_option("--xr-mode <mode>", "Select XR (Extended Reality) mode [\"default\", \"off\", \"on\"].\n");
 #endif
 	print_help_option("--wid <window_id>", "Request parented to window.\n");
+	print_help_option("--hidden-window", "Never show the main window; rendering continues off-screen (2dog embedding hosts).\n");
 	print_help_option("--accessibility <mode>", "Select accessibility mode ['auto' (when screen reader is running, default), 'always', 'disabled'].\n");
 	print_help_option("--accessibility-driver <driver>", "Select accessibility driver ['accesskit', 'dummy'].\n");
 
@@ -732,6 +740,7 @@ Error Main::test_setup() {
 	register_early_core_singletons();
 	initialize_modules(MODULE_INITIALIZATION_LEVEL_CORE);
 	register_core_extensions();
+	gd_extension_load_extensions(); // 2dog: load non-embedded GDExtensions.
 
 	register_core_singletons();
 
@@ -1714,6 +1723,10 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 					OS::get_singleton()->print("Invalid project path specified: \"%s\", aborting.\n", p.utf8().get_data());
 					goto error;
 				}
+				// 2dog: record the project path explicitly; ProjectSettings must not
+				// re-derive it from the process CWD (racy with in-process multi-instance).
+				String resolved = p.simplify_path();
+				project_path = resolved.is_absolute_path() ? resolved : OS::get_singleton()->get_cwd();
 				N = N->next();
 			} else {
 				OS::get_singleton()->print("Missing relative or absolute path, aborting.\n");
@@ -1749,7 +1762,9 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 				path = file.substr(0, sep);
 			}
 			if (OS::get_singleton()->set_cwd(path) == OK) {
-				// path already specified, don't override
+				// 2dog: record the resolved project path (see --path above).
+				String resolved = path.simplify_path();
+				project_path = resolved.is_absolute_path() ? resolved : OS::get_singleton()->get_cwd();
 			} else {
 				project_path = path;
 			}
@@ -2000,6 +2015,11 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 				goto error;
 			}
 #endif // TOOLS_ENABLED
+		} else if (arg == "--hidden-window") {
+			// 2dog: embedding hosts composite the viewport themselves; keep the OS window
+			// unmapped. The OS flag is the single source of truth (a fresh OS instance per
+			// engine run keeps it restart-safe).
+			OS::get_singleton()->_hidden_window = true;
 		} else if (arg == "--wid") {
 			if (N) {
 				init_embed_parent_window_id = N->get().to_int();
@@ -2053,6 +2073,10 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 		}
 	}
 #endif // defined(DEBUG_ENABLED) || defined (TOOLS_ENABLED)
+
+	register_early_core_singletons();
+	initialize_modules(MODULE_INITIALIZATION_LEVEL_CORE);
+	register_core_extensions(); // 2dog: embedded extensions can override project settings.
 
 	OS::get_singleton()->_in_editor = editor;
 	if (globals->setup(project_path, main_pack, false, editor) == OK) {
@@ -2235,9 +2259,7 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 		OS::get_singleton()->_verbose_stdout = GLOBAL_GET("debug/settings/stdout/verbose_stdout");
 	}
 
-	register_early_core_singletons();
-	initialize_modules(MODULE_INITIALIZATION_LEVEL_CORE);
-	register_core_extensions(); // core extensions must be registered after globals setup and before display
+	gd_extension_load_extensions(); // 2dog: load non-embedded GDExtensions.
 
 	if (!editor) {
 		ResourceUID::get_singleton()->enable_reverse_cache();
@@ -3410,7 +3432,7 @@ Error Main::setup2(bool p_show_boot_logo) {
 			}
 		}
 #endif
-		if (display_server->has_feature(DisplayServerEnums::FEATURE_SUBWINDOWS)) {
+		if (display_server->has_feature(DisplayServerEnums::FEATURE_SUBWINDOWS) && !OS::get_singleton()->is_hidden_window()) { // 2dog: --hidden-window skips the show.
 			display_server->show_window(DisplayServerEnums::MAIN_WINDOW_ID);
 		}
 
@@ -4708,7 +4730,9 @@ int Main::start() {
 			// Load SSL Certificates from Project Settings (or builtin).
 			Crypto::load_default_certificates(GLOBAL_GET("network/tls/certificate_bundle_override"));
 
-			if (!game_path.is_empty()) {
+			if (CoreGlobals::run_global_world_init_function()) {
+				// 2dog: the libgodot host initialized the world, so skip scene loading.
+			} else if (!game_path.is_empty()) {
 				Node *scene = nullptr;
 				Ref<PackedScene> scenedata = ResourceLoader::load(local_game_path);
 				if (scenedata.is_valid()) {
@@ -5327,6 +5351,11 @@ void Main::cleanup(bool p_force) {
 	memdelete(engine);
 
 	unregister_core_types();
+
+	if (CoreGlobals::engine_reinit_enabled) {
+		// 2dog: OS-owned audio drivers must be re-registered by the next engine instance.
+		AudioDriverManager::reset();
+	}
 
 	OS::get_singleton()->benchmark_end_measure("Shutdown", "Main::Cleanup");
 	OS::get_singleton()->benchmark_dump();

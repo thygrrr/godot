@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
+using System.Linq;
 using System.Reflection;
 using System.Runtime.Loader;
 
@@ -43,10 +45,20 @@ namespace GodotPlugins
             }
         }
 
+        // 2dog: GodotPlugins ships only in untrimmed desktop/editor deployments.
+        [UnconditionalSuppressMessage("Trimming", "IL2026",
+            Justification = "Plugin assemblies are loaded from disk in untrimmed deployments only.")]
         protected override Assembly? Load(AssemblyName assemblyName)
         {
             if (assemblyName.Name == null)
                 return null;
+
+            // 2dog: reuse host-loaded assemblies to preserve type identity across load contexts.
+            Assembly? existingAssembly = AssemblyLoadContext.Default.Assemblies
+                .FirstOrDefault(a => string.Equals(a.GetName().Name, assemblyName.Name, StringComparison.OrdinalIgnoreCase));
+
+            if (existingAssembly != null)
+                return existingAssembly;
 
             if (_sharedAssemblies.Contains(assemblyName.Name))
                 return _mainLoadContext.LoadFromAssemblyName(assemblyName);

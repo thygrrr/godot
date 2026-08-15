@@ -6693,6 +6693,9 @@ bool EditorNode::is_cmdline_mode() {
 
 void EditorNode::cleanup() {
 	_init_callbacks.clear();
+	// 2dog: reset add-only plugin counters before an engine restart.
+	build_callback_count = 0;
+	plugin_init_callback_count = 0;
 }
 
 void EditorNode::_update_layouts_menu() {

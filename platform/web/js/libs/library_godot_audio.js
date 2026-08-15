@@ -748,6 +748,10 @@ class SampleNode {
 		if (!this.isStarted) {
 			return;
 		}
+		// The audio context was closed or the node was already cleared.
+		if (GodotAudio.ctx == null || this._source == null) {
+			return;
+		}
 		this.isPaused = true;
 		this.pauseTime = (GodotAudio.ctx.currentTime - this._sourceStartTime) / this.getPlaybackRate();
 		this._source.stop();
@@ -1331,6 +1335,14 @@ const _GodotAudio = {
 				resolve();
 				return;
 			}
+			// Stop live sample playbacks so that late engine calls (e.g. pausing
+			// samples during exit) find no stale nodes referencing the closed
+			// context. Skip finished callbacks into the exiting engine.
+			GodotAudio.sampleFinishedCallback = null;
+			for (const sampleNode of GodotAudio.sampleNodes.values()) {
+				sampleNode.clear();
+			}
+			GodotAudio.sampleNodes.clear();
 			// Remove latency callback
 			if (GodotAudio.interval) {
 				clearInterval(GodotAudio.interval);
@@ -1372,6 +1384,10 @@ const _GodotAudio = {
 			busIndex,
 			startOptions
 		) {
+			// Ignore samples started after the audio context was closed.
+			if (GodotAudio.ctx == null) {
+				return;
+			}
 			GodotAudio.SampleNode.stopSampleNode(playbackObjectId);
 			GodotAudio.SampleNode.create(
 				{

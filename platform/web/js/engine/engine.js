@@ -40,10 +40,13 @@ const Engine = (function () {
 	 *
 	 * @function Engine.load
 	 */
-	Engine.load = function (basePath, size) {
+	Engine.load = function (basePath, size, compressedSuffix) {
 		if (loadPromise == null) {
 			loadPath = basePath;
-			loadPromise = preloader.loadPromise(`${loadPath}.wasm`, size, true);
+			if (typeof performance !== 'undefined') {
+				performance.mark('2dog:wasm-fetch');
+			}
+			loadPromise = preloader.loadPromise(`${loadPath}.wasm`, size, true, compressedSuffix || '');
 			requestAnimationFrame(preloader.animateProgress);
 		}
 		return loadPromise;
@@ -83,7 +86,7 @@ const Engine = (function () {
 						initPromise = Promise.reject(new Error('A base path must be provided when calling `init` and the engine is not loaded.'));
 						return initPromise;
 					}
-					Engine.load(basePath, this.config.fileSizes[`${basePath}.wasm`]);
+					Engine.load(basePath, this.config.fileSizes[`${basePath}.wasm`], this.config.precompressedSuffix);
 				}
 				const me = this;
 				function doInit(promise) {
@@ -94,8 +97,14 @@ const Engine = (function () {
 						promise.then(function (response) {
 							const cloned = new Response(response.clone().body, { 'headers': [['content-type', 'application/wasm']] });
 							Godot(me.config.getModuleConfig(loadPath, cloned)).then(function (module) {
+								if (typeof performance !== 'undefined') {
+									performance.mark('2dog:runtime-created');
+								}
 								const paths = me.config.persistentPaths;
 								module['initFS'](paths).then(function (err) {
+									if (typeof performance !== 'undefined') {
+										performance.mark('2dog:fs-ready');
+									}
 									me.rtenv = module;
 									if (me.config.unloadAfterInit) {
 										Engine.unload();
@@ -128,7 +137,7 @@ const Engine = (function () {
 			 * @returns {Promise} A Promise that resolves once the file is loaded.
 			 */
 			preloadFile: function (file, path) {
-				return preloader.preload(file, path, this.config.fileSizes[file]);
+				return preloader.preload(file, path, this.config.fileSizes[file], this.config.precompressedSuffix);
 			},
 
 			/**
@@ -172,10 +181,21 @@ const Engine = (function () {
 							me.rtenv['copyToFS'](file.path, file.buffer);
 						}
 						preloader.preloadedFiles.length = 0; // Clear memory
-						me.rtenv['callMain'](me.config.args);
-						initPromise = null;
-						me.installServiceWorker();
-						resolve();
+
+						// 2dog: support custom asynchronous callMain implementations.
+						if (typeof performance !== 'undefined') {
+							performance.mark('2dog:call-main');
+						}
+						Promise.resolve().then(function () {
+							return me.rtenv['callMain'](me.config.args);
+						}).then(function () {
+							initPromise = null;
+							me.installServiceWorker();
+							resolve();
+						}, function (err) {
+							initPromise = null;
+							reject(err);
+						});
 					});
 				});
 			},
@@ -249,6 +269,18 @@ const Engine = (function () {
 				}
 				return Promise.resolve();
 			},
+
+			/**
+			 * Get [JsExport] methods.
+			 *
+			 * @returns {Promise} The exports promise.
+			 */
+			getDotnetExports: function () {
+				if (this.rtenv && this.rtenv['getGodotSharpExports']) {
+					return this.rtenv['getGodotSharpExports']();
+				}
+				return Promise.resolve();
+			},
 		};
 
 		Engine.prototype = proto;
@@ -260,6 +292,7 @@ const Engine = (function () {
 		Engine.prototype['copyToFS'] = Engine.prototype.copyToFS;
 		Engine.prototype['requestQuit'] = Engine.prototype.requestQuit;
 		Engine.prototype['installServiceWorker'] = Engine.prototype.installServiceWorker;
+		Engine.prototype['getDotnetExports'] = Engine.prototype.getDotnetExports;
 		// Also expose static methods as instance methods
 		Engine.prototype['load'] = Engine.load;
 		Engine.prototype['unload'] = Engine.unload;

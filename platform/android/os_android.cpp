@@ -64,6 +64,12 @@
 #include <stdlib.h>
 #include <sys/system_properties.h>
 
+extern "C" {
+LIBGODOT_API void libgodot_register_function(GDExtensionInitializationFunction p_init_func) {
+	CoreGlobals::global_init_func_libgodot = p_init_func;
+}
+}
+
 const char *OS_Android::ANDROID_EXEC_PATH = "apk";
 
 String _remove_symlink(const String &dir) {

@@ -3391,7 +3391,8 @@ void DisplayServerWindows::cursor_set_shape(DisplayServerEnums::CursorShape p_sh
 	if (cursors_cache.has(p_shape)) {
 		SetCursor(cursors[p_shape]);
 	} else {
-		SetCursor(LoadCursor(hInstance, win_cursors[p_shape]));
+		// 2dog: predefined IDC_* cursors require a null module handle in embedded hosts.
+		SetCursor(LoadCursor(nullptr, win_cursors[p_shape]));
 	}
 
 	cursor_shape = p_shape;
@@ -8035,9 +8036,14 @@ DisplayServerWindows::DisplayServerWindows(const String &p_rendering_driver, Dis
 	wc.lpszMenuName = nullptr;
 	wc.lpszClassName = L"Engine";
 
+	// 2dog: retain the class across restarts; unregistering leaves dangling TSF/CoreMessaging state.
 	if (!RegisterClassExW(&wc)) {
-		r_error = ERR_UNAVAILABLE;
-		return;
+		WNDCLASSEXW existing = {};
+		existing.cbSize = sizeof(WNDCLASSEXW);
+		if (GetLastError() != ERROR_CLASS_ALREADY_EXISTS || !GetClassInfoExW(wc.hInstance, wc.lpszClassName, &existing) || existing.lpfnWndProc != wc.lpfnWndProc) {
+			r_error = ERR_UNAVAILABLE;
+			return;
+		}
 	}
 
 	_register_raw_input_devices(DisplayServerEnums::INVALID_WINDOW_ID);
@@ -8638,4 +8644,6 @@ DisplayServerWindows::~DisplayServerWindows() {
 	memdelete(tts);
 
 	OleUninitialize();
+
+	// 2dog: keep the window class registered to preserve TSF/CoreMessaging state.
 }

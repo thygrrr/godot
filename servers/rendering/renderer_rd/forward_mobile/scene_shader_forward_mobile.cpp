@@ -1021,4 +1021,5 @@ SceneShaderForwardMobile::~SceneShaderForwardMobile() {
 	material_storage->material_free(overdraw_material);
 	material_storage->material_free(default_material);
 	material_storage->material_free(debug_shadow_splits_material);
+	singleton = nullptr;
 }

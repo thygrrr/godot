@@ -972,6 +972,18 @@ public:
 #endif
 	};
 
+	// 2dog: how an external texture is shared with a host compositor (see external_texture_*).
+	enum ExternalTextureShareHandleType {
+		EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_NONE = 0,
+		// Import: the host created a D3D11 keyed-mutex shared texture and passes its
+		// IDXGIResource::GetSharedHandle KMT handle; the host owns the keyed mutex dance.
+		EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_D3D11_KMT_KEYED_MUTEX = 1,
+		// Export: the driver allocates exportable memory and returns an opaque POSIX fd.
+		EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_OPAQUE_FD = 2,
+		// Export: the driver allocates an IOSurface-backed texture and returns the IOSurfaceRef.
+		EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_IOSURFACE = 3,
+	};
+
 	enum Limit {
 		LIMIT_MAX_BOUND_UNIFORM_SETS,
 		LIMIT_MAX_FRAMEBUFFER_COLOR_ATTACHMENTS,
