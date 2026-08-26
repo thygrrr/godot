@@ -50,6 +50,13 @@
 #undef CRASH_HANDLER_ENABLED
 #endif
 
+// 2dog: a library build shares the process with a host runtime that owns SIGSEGV/SIGFPE/SIGILL/SIGTRAP
+// (.NET translates them into exceptions and emits dumps); installing signal() handlers here
+// displaces it, and disable() resetting to SIG_DFL kills the host on its next benign fault.
+#ifdef LIBGODOT_ENABLED
+#undef CRASH_HANDLER_ENABLED
+#endif
+
 #ifdef CRASH_HANDLER_ENABLED
 #include <cxxabi.h>
 #include <dlfcn.h>
