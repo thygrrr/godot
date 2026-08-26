@@ -185,6 +185,9 @@ class OS_MacOS_NSApp : public OS_MacOS {
 	id delegate = nullptr;
 	bool should_terminate = false;
 	bool main_started = false;
+	// 2dog: true when a host runtime already owned NSApplication before the engine came up
+	// (library builds only); the application-level setup is then left untouched.
+	bool hosted = false;
 
 	CFRunLoopObserverRef pre_wait_observer = nil;
 
@@ -194,6 +197,7 @@ public:
 	void start_main(); // Initializes and runs Godot main loop.
 	void cleanup();
 	bool os_should_terminate() const { return should_terminate; }
+	bool is_hosted() const { return hosted; }
 	int get_cmd_argc() const { return argc; }
 
 	virtual void run() override;

@@ -475,20 +475,43 @@ void DisplayServerMacOSBase::screen_set_keep_on(bool p_enable) {
 	}
 }
 
+// 2dog: the application delegate is Godot's own only when the engine owns NSApplication; a
+// library build hosted by another runtime (its delegate stays installed) queries the
+// workspace directly instead of the cached delegate state.
+static GodotApplicationDelegate *_godot_app_delegate() {
+	id delegate = [[NSApplication sharedApplication] delegate];
+	if (delegate && [delegate isKindOfClass:[GodotApplicationDelegate class]]) {
+		return (GodotApplicationDelegate *)delegate;
+	}
+	return nil;
+}
+
 int DisplayServerMacOSBase::accessibility_should_increase_contrast() const {
-	return [(GodotApplicationDelegate *)[[NSApplication sharedApplication] delegate] getHighContrast];
+	if (GodotApplicationDelegate *delegate = _godot_app_delegate()) {
+		return [delegate getHighContrast];
+	}
+	return [[NSWorkspace sharedWorkspace] accessibilityDisplayShouldIncreaseContrast];
 }
 
 int DisplayServerMacOSBase::accessibility_should_reduce_animation() const {
-	return [(GodotApplicationDelegate *)[[NSApplication sharedApplication] delegate] getReduceMotion];
+	if (GodotApplicationDelegate *delegate = _godot_app_delegate()) {
+		return [delegate getReduceMotion];
+	}
+	return [[NSWorkspace sharedWorkspace] accessibilityDisplayShouldReduceMotion];
 }
 
 int DisplayServerMacOSBase::accessibility_should_reduce_transparency() const {
-	return [(GodotApplicationDelegate *)[[NSApplication sharedApplication] delegate] getReduceTransparency];
+	if (GodotApplicationDelegate *delegate = _godot_app_delegate()) {
+		return [delegate getReduceTransparency];
+	}
+	return [[NSWorkspace sharedWorkspace] accessibilityDisplayShouldReduceTransparency];
 }
 
 int DisplayServerMacOSBase::accessibility_screen_reader_active() const {
-	return [(GodotApplicationDelegate *)[[NSApplication sharedApplication] delegate] getVoiceOver];
+	if (GodotApplicationDelegate *delegate = _godot_app_delegate()) {
+		return [delegate getVoiceOver];
+	}
+	return [[NSWorkspace sharedWorkspace] isVoiceOverEnabled];
 }
 
 void DisplayServerMacOSBase::update_im_text(const Point2i &p_selection, const String &p_text) {
