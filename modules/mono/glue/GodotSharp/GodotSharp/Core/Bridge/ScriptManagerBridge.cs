@@ -88,7 +88,13 @@ namespace Godot.Bridge
             _scriptTypeBiMap = new();
             _pathTypeBiMap = new();
             _scriptDataForReload = new();
+            // 2dog: hosts that cannot re-run the game's initializer (statically linked web) rely on the replay.
+            foreach (var assembly in _scriptAssemblies)
+                LookupScriptsInAssembly(assembly);
         }
+
+        // 2dog: every assembly whose scripts were registered, for ResetForEngineReinitialization().
+        private static readonly HashSet<Assembly> _scriptAssemblies = new();
 
         [UnmanagedCallersOnly]
         internal static void FrameCallback()
@@ -315,6 +321,8 @@ namespace Godot.Bridge
             Justification = "Assembly.GetTypes() only runs for assemblies carrying AssemblyHasScriptsAttribute. " + TrimJustifications.ScriptTypesAreRooted)]
         public static void LookupScriptsInAssembly(Assembly assembly)
         {
+            _scriptAssemblies.Add(assembly);
+
             [UnconditionalSuppressMessage("Trimming", "IL2067",
                 Justification = "Types reaching this boundary come from AssemblyHasScriptsAttribute or Assembly.GetTypes(). " + TrimJustifications.ScriptTypesAreRooted)]
             static void LookupScriptForClass(Type type)

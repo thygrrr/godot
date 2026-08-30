@@ -102,6 +102,9 @@ void OS_Web::finalize() {
 		memdelete(driver);
 	}
 	audio_drivers.clear();
+	// 2dog: the callbacks reach this instance's IDB sync state; the next lifetime installs its own.
+	FileAccessUnix::close_notification_func = nullptr;
+	DirAccessUnix::remove_notification_func = nullptr;
 }
 
 // Miscellaneous

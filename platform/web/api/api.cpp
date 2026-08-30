@@ -46,6 +46,7 @@ void register_web_api() {
 
 void unregister_web_api() {
 	memdelete(javascript_bridge_singleton);
+	javascript_bridge_singleton = nullptr; // 2dog: engine restarts register a new one.
 }
 
 JavaScriptBridge *JavaScriptBridge::singleton = nullptr;

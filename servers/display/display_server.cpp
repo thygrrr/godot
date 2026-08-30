@@ -28,6 +28,8 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
+#include <cstring>
+
 #include "display_server.h"
 #include "display_server.compat.inc"
 
@@ -2025,6 +2027,14 @@ Ref<Image> DisplayServer::_get_cursor_image_from_resource(const Ref<Resource> &p
 }
 
 void DisplayServer::register_create_function(const char *p_name, CreateFunction p_function, GetRenderingDriversFunction p_get_drivers) {
+	// 2dog: OS::initialize() registers its driver once per engine lifetime; replace instead of appending.
+	for (int i = 0; i < server_create_count; i++) {
+		if (strcmp(server_create_functions[i].name, p_name) == 0) {
+			server_create_functions[i].create_function = p_function;
+			server_create_functions[i].get_rendering_drivers_function = p_get_drivers;
+			return;
+		}
+	}
 	ERR_FAIL_COND(server_create_count == MAX_SERVERS);
 	// Headless display server is always last
 	server_create_functions[server_create_count] = server_create_functions[server_create_count - 1];

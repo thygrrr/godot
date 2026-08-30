@@ -24,7 +24,6 @@
 static OS_Web *os = nullptr;
 
 static GodotInstance *instance = nullptr;
-static bool engine_used = false;
 #ifndef PROXY_TO_PTHREAD_ENABLED
 uint64_t target_ticks = 0;
 #endif
@@ -47,12 +46,17 @@ static void print_web_header() {
 }
 
 GDExtensionObjectPtr libgodot_create_godot_instance(int p_argc, char *p_argv[], GDExtensionInitializationFunction p_init_func) {
-	ERR_FAIL_COND_V_MSG(instance != nullptr || engine_used, nullptr, "Web libgodot supports one engine lifetime per page.");
+	ERR_FAIL_COND_V_MSG(instance != nullptr, nullptr, "Only one Godot instance may be created at a time.");
 
 	godot_init_profiler();
 
-	// 2dog: the statically linked web engine supports one lifetime per page.
+	// 2dog: like desktop libgodot, process-lifetime metadata (ClassDB, StringName, audio driver registry) survives
+	// engine restarts; the host hands each lifetime a fresh canvas (the browser reuses one WebGL context per element).
 	CoreGlobals::global_init_func_libgodot = p_init_func;
+	CoreGlobals::engine_reinit_enabled = true;
+#ifndef PROXY_TO_PTHREAD_ENABLED
+	target_ticks = 0;
+#endif
 
 	os = new OS_Web();
 
@@ -74,7 +78,6 @@ GDExtensionObjectPtr libgodot_create_godot_instance(int p_argc, char *p_argv[], 
 		godot_cleanup_profiler();
 		return nullptr;
 	}
-	engine_used = true;
 
 	print_web_header();
 
@@ -94,6 +97,9 @@ void libgodot_destroy_godot_instance(GDExtensionObjectPtr p_godot_instance) {
 		delete os;
 		os = nullptr;
 		godot_cleanup_profiler();
+#ifndef PROXY_TO_PTHREAD_ENABLED
+		target_ticks = 0;
+#endif
 	}
 }
 

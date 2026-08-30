@@ -255,7 +255,10 @@ const GodotOS = {
 		finish_async: function (callback) {
 			GodotOS._fs_sync_promise.then(function (err) {
 				const promises = [];
-				GodotOS._async_cbs.forEach(function (cb) {
+				// 2dog: each engine lifetime registers its own callbacks; do not replay these on the next shutdown.
+				const cbs = GodotOS._async_cbs;
+				GodotOS._async_cbs = [];
+				cbs.forEach(function (cb) {
 					promises.push(new Promise(cb));
 				});
 				return Promise.all(promises);

@@ -31,7 +31,10 @@
 const GodotWebXR = {
 	// 2dog: uses the emscripten 3.1.56 Browser API (inverse of upstream 793258919b, which moved to the
 	// 4.x $MainLoop API); revert when the .NET runtime pack's emscripten reaches 4.x.
-	$GodotWebXR__deps: ['$Browser', '$GL', '$GodotRuntime', '$runtimeKeepalivePush', '$runtimeKeepalivePop'],
+	$GodotWebXR__deps: ['$Browser', '$GL', '$GodotRuntime', '$GodotOS', '$runtimeKeepalivePush', '$runtimeKeepalivePop'],
+	// 2dog: an engine shutdown without an explicit uninitialize must not leave the session or the
+	// monkey-patched requestAnimationFrame behind for the next engine lifetime.
+	$GodotWebXR__postset: 'GodotOS.atexit(function(resolve, reject) { GodotWebXR.reset(); resolve(); });',
 	$GodotWebXR: {
 		gl: null,
 
@@ -71,6 +74,29 @@ const GodotWebXR = {
 			Browser.requestAnimationFrame = enable
 				? GodotWebXR.requestAnimationFrame
 				: GodotWebXR.orig_requestAnimationFrame;
+		},
+		reset: () => {
+			if (GodotWebXR.session) {
+				GodotWebXR.session.end()
+					// Prevent exception when session has already ended.
+					.catch((e) => { });
+			}
+
+			GodotWebXR.session = null;
+			GodotWebXR.gl_binding = null;
+			GodotWebXR.layer = null;
+			GodotWebXR.space = null;
+			GodotWebXR.frame = null;
+			GodotWebXR.pose = null;
+			GodotWebXR.view_count = 1;
+			GodotWebXR.input_sources = new Array(16);
+			GodotWebXR.touches = new Array(5);
+			GodotWebXR.onsimpleevent = null;
+
+			// Disable the monkey-patched window.requestAnimationFrame() and
+			// pause/restart the main loop to activate it on all platforms.
+			GodotWebXR.monkeyPatchRequestAnimationFrame(false);
+			GodotWebXR.pauseResumeMainLoop();
 		},
 		pauseResumeMainLoop: () => {
 			// Once both GodotWebXR.session and GodotWebXR.space are set or
@@ -385,27 +411,7 @@ const GodotWebXR = {
 	godot_webxr_uninitialize__proxy: 'sync',
 	godot_webxr_uninitialize__sig: 'v',
 	godot_webxr_uninitialize: function () {
-		if (GodotWebXR.session) {
-			GodotWebXR.session.end()
-				// Prevent exception when session has already ended.
-				.catch((e) => { });
-		}
-
-		GodotWebXR.session = null;
-		GodotWebXR.gl_binding = null;
-		GodotWebXR.layer = null;
-		GodotWebXR.space = null;
-		GodotWebXR.frame = null;
-		GodotWebXR.pose = null;
-		GodotWebXR.view_count = 1;
-		GodotWebXR.input_sources = new Array(16);
-		GodotWebXR.touches = new Array(5);
-		GodotWebXR.onsimpleevent = null;
-
-		// Disable the monkey-patched window.requestAnimationFrame() and
-		// pause/restart the main loop to activate it on all platforms.
-		GodotWebXR.monkeyPatchRequestAnimationFrame(false);
-		GodotWebXR.pauseResumeMainLoop();
+		GodotWebXR.reset();
 	},
 
 	godot_webxr_get_view_count__proxy: 'sync',
