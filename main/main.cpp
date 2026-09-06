@@ -196,8 +196,10 @@ static PhysicsServer3D *physics_server_3d = nullptr;
 #ifndef XR_DISABLED
 static XRServer *xr_server = nullptr;
 #endif // XR_DISABLED
-// We error out if setup2() doesn't turn this true
+// Track the two setup phases separately so delayed setup2() failures can roll phase one back safely.
+static bool _setup_success = false;
 static bool _start_success = false;
+static bool _core_modules_initialized = false;
 
 // Drivers
 
@@ -308,6 +310,165 @@ static const int OPTION_COLUMN_LENGTH = 32;
 
 /* Helper methods */
 
+static void reset_command_line_state() {
+	CoreGlobals::print_line_enabled = true;
+	CoreGlobals::print_error_enabled = true;
+
+	display_driver = "";
+	tablet_driver = "";
+	text_driver = "";
+	text_driver_idx = -1;
+	audio_driver_idx = -1;
+
+	accessibility_mode = AccessibilityServerEnums::AccessibilityMode::ACCESSIBILITY_AUTO;
+	accessibility_driver_name = "";
+	accessibility_mode_set = false;
+	single_window = false;
+	editor = false;
+	project_manager = false;
+	cmdline_tool = false;
+	locale = "";
+	log_file = "";
+	show_help = false;
+	quit_after = 0;
+	editor_pid = 0;
+#ifdef TOOLS_ENABLED
+	found_project = false;
+	recovery_mode = false;
+	auto_build_solutions = false;
+	debug_server_uri = "";
+	wait_for_import = false;
+	restore_editor_window_layout = true;
+#ifndef DISABLE_DEPRECATED
+	converter_max_kb_file = 4 * 1024;
+	converter_max_line_length = 100000;
+#endif // DISABLE_DEPRECATED
+	forwardable_cli_arguments.clear();
+#endif // TOOLS_ENABLED
+	single_threaded_scene = false;
+
+	window_mode = DisplayServerEnums::WINDOW_MODE_WINDOWED;
+	window_orientation = DisplayServerEnums::SCREEN_LANDSCAPE;
+	window_vsync_mode = DisplayServerEnums::VSYNC_ENABLED;
+	window_flags = 0;
+	window_size = Size2i(1152, 648);
+	init_screen = DisplayServerEnums::SCREEN_PRIMARY;
+	init_fullscreen = false;
+	init_maximized = false;
+	init_windowed = false;
+	init_always_on_top = false;
+	init_use_custom_pos = false;
+	init_use_custom_screen = false;
+	init_custom_pos = Vector2();
+	init_embed_parent_window_id = 0;
+#ifdef TOOLS_ENABLED
+	init_display_scale_found = false;
+	init_display_scale = 0;
+	init_custom_scale_found = false;
+	init_custom_scale = 1.0;
+	init_expand_to_title = false;
+	init_expand_to_title_found = false;
+#endif // TOOLS_ENABLED
+	use_custom_res = true;
+	force_res = false;
+
+	use_debug_profiler = false;
+#ifdef DEBUG_ENABLED
+	debug_collisions = false;
+	debug_paths = false;
+	debug_navigation = false;
+	debug_avoidance = false;
+	debug_canvas_item_redraw = false;
+	debug_mute_audio = false;
+#endif // DEBUG_ENABLED
+	max_fps = -1;
+	frame_delay = 0;
+	audio_output_latency = 0;
+	disable_render_loop = false;
+	fixed_fps = -1;
+	disable_vsync = false;
+	print_fps = false;
+#ifdef TOOLS_ENABLED
+	editor_pseudolocalization = false;
+	dump_gdextension_interface = false;
+	dump_gdextension_interface_header = false;
+	dump_extension_api = false;
+	include_docs_in_extension_api_dump = false;
+	validate_extension_api = false;
+	validate_extension_api_file = "";
+#endif // TOOLS_ENABLED
+	profile_gpu = false;
+}
+
+void Main::cleanup_setup_phase() {
+	EngineDebugger::deinitialize();
+
+#ifdef TOOLS_ENABLED
+	if (EditorPaths::get_singleton()) {
+		EditorPaths::free();
+	}
+#endif
+
+	if (performance) {
+		memdelete(performance);
+		performance = nullptr;
+	}
+	if (input_map) {
+		memdelete(input_map);
+		input_map = nullptr;
+	}
+	if (translation_server) {
+		memdelete(translation_server);
+		translation_server = nullptr;
+	}
+	if (globals) {
+		memdelete(globals);
+		globals = nullptr;
+	}
+	if (packed_data) {
+		memdelete(packed_data);
+		packed_data = nullptr;
+	}
+
+	unregister_core_driver_types();
+	if (_core_modules_initialized) {
+		unregister_core_extensions();
+		uninitialize_modules(MODULE_INITIALIZATION_LEVEL_CORE);
+		_core_modules_initialized = false;
+	}
+
+	if (engine) {
+		memdelete(engine);
+		engine = nullptr;
+	}
+
+	unregister_core_types();
+
+	OS::get_singleton()->_cmdline.clear();
+	OS::get_singleton()->_user_args.clear();
+
+	if (message_queue) {
+		memdelete(message_queue);
+		message_queue = nullptr;
+	}
+
+#if defined(STEAMAPI_ENABLED)
+	if (steam_tracker) {
+		memdelete(steam_tracker);
+		steam_tracker = nullptr;
+	}
+#endif
+
+	if (CoreGlobals::engine_reinit_enabled) {
+		AudioDriverManager::reset();
+	}
+
+	OS::get_singleton()->finalize_core();
+	_setup_success = false;
+	_start_success = false;
+	Thread::release_main_thread();
+}
+
 bool Main::is_cmdline_tool() {
 	return cmdline_tool;
 }
@@ -412,17 +573,83 @@ void finalize_physics() {
 
 void finalize_display() {
 	// 2dog: release cached cursor textures before RenderingServer shutdown.
-	if (display_server) {
+	if (display_server && rendering_server) {
 		for (int i = 0; i < DisplayServerEnums::CURSOR_MAX; i++) {
 			display_server->cursor_set_custom_image(Ref<Resource>(), (DisplayServerEnums::CursorShape)i);
 		}
 	}
 
-	rendering_server->finish();
-	memdelete(rendering_server);
+	if (rendering_server) {
+		rendering_server->finish();
+		memdelete(rendering_server);
+		rendering_server = nullptr;
+	}
 
-	memdelete(display_server);
-	memdelete(accessibility_server);
+	if (display_server) {
+		memdelete(display_server);
+		display_server = nullptr;
+	}
+	if (accessibility_server) {
+		memdelete(accessibility_server);
+		accessibility_server = nullptr;
+	}
+}
+
+// Roll back setup2() after server modules have initialized, but before scene types,
+// navigation servers and physics have initialized. Phase one is cleaned up by the caller.
+void Main::cleanup_servers_phase() {
+	ResourceLoader::clear_thread_load_tasks();
+	ResourceLoader::clear_translation_remaps();
+
+#ifndef NAVIGATION_2D_DISABLED
+	NavigationServer2DManager::finalize_server_manager();
+#endif // NAVIGATION_2D_DISABLED
+#ifndef NAVIGATION_3D_DISABLED
+	NavigationServer3DManager::finalize_server_manager();
+#endif // NAVIGATION_3D_DISABLED
+
+	GDExtensionManager::get_singleton()->deinitialize_extensions(GDExtension::INITIALIZATION_LEVEL_SERVERS);
+	uninitialize_modules(MODULE_INITIALIZATION_LEVEL_SERVERS);
+	unregister_server_types();
+	EngineDebugger::deinitialize();
+
+#ifndef XR_DISABLED
+	if (xr_server) {
+		memdelete(xr_server);
+		xr_server = nullptr;
+	}
+#endif // XR_DISABLED
+	if (audio_server) {
+		audio_server->finish();
+		memdelete(audio_server);
+		audio_server = nullptr;
+	}
+
+	// OS-owned joypads can access Input during destruction. This must precede
+	// deleting Input, just as it does during normal Main::cleanup().
+	OS::get_singleton()->finalize();
+	finalize_display();
+
+	if (input) {
+		memdelete(input);
+		input = nullptr;
+	}
+	if (tsman) {
+		memdelete(tsman);
+		tsman = nullptr;
+	}
+#ifndef PHYSICS_3D_DISABLED
+	if (physics_server_3d_manager) {
+		memdelete(physics_server_3d_manager);
+		physics_server_3d_manager = nullptr;
+	}
+#endif // PHYSICS_3D_DISABLED
+#ifndef PHYSICS_2D_DISABLED
+	if (physics_server_2d_manager) {
+		memdelete(physics_server_2d_manager);
+		physics_server_2d_manager = nullptr;
+	}
+#endif // PHYSICS_2D_DISABLED
 }
 
 void initialize_theme_db() {
@@ -1048,6 +1275,7 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 	set_current_thread_safe_for_nodes(true);
 
 	OS::get_singleton()->initialize();
+	reset_command_line_state();
 
 	CoreGlobals::print_ready = true;
 
@@ -2134,6 +2362,7 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 
 	register_early_core_singletons();
 	initialize_modules(MODULE_INITIALIZATION_LEVEL_CORE);
+	_core_modules_initialized = true;
 	register_core_extensions(); // 2dog: embedded extensions can override project settings.
 
 	OS::get_singleton()->_in_editor = editor;
@@ -2962,6 +3191,7 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 #endif
 
 	OS::get_singleton()->benchmark_end_measure("Startup", "Main::Setup");
+	_setup_success = true;
 
 	if (p_second_phase) {
 		exit_err = setup2();
@@ -2992,52 +3222,8 @@ error:
 		OS::get_singleton()->remove_lock_file();
 	}
 
-	EngineDebugger::deinitialize();
-
-	if (performance) {
-		memdelete(performance);
-	}
-	if (input_map) {
-		memdelete(input_map);
-	}
-	if (translation_server) {
-		memdelete(translation_server);
-	}
-	if (globals) {
-		memdelete(globals);
-	}
-	if (packed_data) {
-		memdelete(packed_data);
-	}
-
-	unregister_core_driver_types();
-	unregister_core_extensions();
-
-	if (engine) {
-		memdelete(engine);
-	}
-
-	unregister_core_types();
-
-	OS::get_singleton()->_cmdline.clear();
-	OS::get_singleton()->_user_args.clear();
-
-	if (message_queue) {
-		memdelete(message_queue);
-	}
-
 	OS::get_singleton()->benchmark_end_measure("Startup", "Main::Setup");
-
-#if defined(STEAMAPI_ENABLED)
-	if (steam_tracker) {
-		memdelete(steam_tracker);
-	}
-#endif
-
-	OS::get_singleton()->finalize_core();
-	locale = String();
-
-	Thread::release_main_thread();
+	cleanup_setup_phase();
 
 	return exit_err;
 }
@@ -3420,32 +3606,8 @@ Error Main::setup2(bool p_show_boot_logo) {
 		if (err != OK || display_server == nullptr) {
 			ERR_PRINT("Unable to create DisplayServer, all display drivers failed.\nUse \"--headless\" command line argument to run the engine in headless mode if this is desired (e.g. for continuous integration).");
 
-			if (display_server) {
-				memdelete(display_server);
-			}
-
-			GDExtensionManager::get_singleton()->deinitialize_extensions(GDExtension::INITIALIZATION_LEVEL_SERVERS);
-			uninitialize_modules(MODULE_INITIALIZATION_LEVEL_SERVERS);
-			unregister_server_types();
-
-			if (input) {
-				memdelete(input);
-			}
-			if (tsman) {
-				memdelete(tsman);
-			}
-#ifndef PHYSICS_3D_DISABLED
-			if (physics_server_3d_manager) {
-				memdelete(physics_server_3d_manager);
-			}
-#endif // PHYSICS_3D_DISABLED
-#ifndef PHYSICS_2D_DISABLED
-			if (physics_server_2d_manager) {
-				memdelete(physics_server_2d_manager);
-			}
-#endif // PHYSICS_2D_DISABLED
-
-			return err;
+			cleanup_servers_phase();
+			return err != OK ? err : ERR_CANT_CREATE;
 		}
 
 #ifdef TOOLS_ENABLED
@@ -3780,14 +3942,15 @@ Error Main::setup2(bool p_show_boot_logo) {
 				}
 			}
 		}
-		if (text_driver_idx >= 0) {
-			Ref<TextServer> ts = TextServerManager::get_singleton()->get_interface(text_driver_idx);
-			TextServerManager::get_singleton()->set_primary_interface(ts);
-			if (ts->has_feature(TextServer::FEATURE_USE_SUPPORT_DATA)) {
-				ts->load_support_data("res://" + ts->get_support_data_filename());
-			}
-		} else {
+		if (text_driver_idx < 0) {
+			OS::get_singleton()->benchmark_end_measure("Startup", "Text Server");
+			cleanup_servers_phase();
 			ERR_FAIL_V_MSG(ERR_CANT_CREATE, "TextServer: Unable to create TextServer interface.");
+		}
+		Ref<TextServer> ts = TextServerManager::get_singleton()->get_interface(text_driver_idx);
+		TextServerManager::get_singleton()->set_primary_interface(ts);
+		if (ts->has_feature(TextServer::FEATURE_USE_SUPPORT_DATA)) {
+			ts->load_support_data("res://" + ts->get_support_data_filename());
 		}
 
 		OS::get_singleton()->benchmark_end_measure("Startup", "Text Server");
@@ -5252,7 +5415,12 @@ void Main::cleanup(bool p_force) {
 	GodotProfileZone("cleanup");
 	OS::get_singleton()->benchmark_begin_measure("Shutdown", "Main::Cleanup");
 	if (!p_force) {
-		ERR_FAIL_COND(!_start_success);
+		ERR_FAIL_COND(!_setup_success);
+		if (!_start_success) {
+			OS::get_singleton()->benchmark_end_measure("Shutdown", "Main::Cleanup");
+			cleanup_setup_phase();
+			return;
+		}
 	}
 
 	// Printing in the usual way can become problematic during/after cleanup.
@@ -5272,6 +5440,7 @@ void Main::cleanup(bool p_force) {
 
 	if (movie_writer) {
 		movie_writer->end();
+		movie_writer = nullptr;
 	}
 
 	ResourceLoader::clear_thread_load_tasks();
@@ -5354,16 +5523,19 @@ void Main::cleanup(bool p_force) {
 #ifndef XR_DISABLED
 	if (xr_server) {
 		memdelete(xr_server);
+		xr_server = nullptr;
 	}
 #endif // XR_DISABLED
 
 	if (audio_server) {
 		audio_server->finish();
 		memdelete(audio_server);
+		audio_server = nullptr;
 	}
 
 	if (camera_server) {
 		memdelete(camera_server);
+		camera_server = nullptr;
 	}
 
 	OS::get_singleton()->finalize();
@@ -5372,35 +5544,44 @@ void Main::cleanup(bool p_force) {
 
 	if (input) {
 		memdelete(input);
+		input = nullptr;
 	}
 
 	if (packed_data) {
 		memdelete(packed_data);
+		packed_data = nullptr;
 	}
 	if (performance) {
 		memdelete(performance);
+		performance = nullptr;
 	}
 	if (input_map) {
 		memdelete(input_map);
+		input_map = nullptr;
 	}
 	if (translation_server) {
 		memdelete(translation_server);
+		translation_server = nullptr;
 	}
 	if (tsman) {
 		memdelete(tsman);
+		tsman = nullptr;
 	}
 #ifndef PHYSICS_3D_DISABLED
 	if (physics_server_3d_manager) {
 		memdelete(physics_server_3d_manager);
+		physics_server_3d_manager = nullptr;
 	}
 #endif // PHYSICS_3D_DISABLED
 #ifndef PHYSICS_2D_DISABLED
 	if (physics_server_2d_manager) {
 		memdelete(physics_server_2d_manager);
+		physics_server_2d_manager = nullptr;
 	}
 #endif // PHYSICS_2D_DISABLED
 	if (globals) {
 		memdelete(globals);
+		globals = nullptr;
 	}
 
 	if (OS::get_singleton()->is_restart_on_exit_set()) {
@@ -5413,19 +5594,23 @@ void Main::cleanup(bool p_force) {
 	// Now should be safe to delete MessageQueue (famous last words).
 	message_queue->flush();
 	memdelete(message_queue);
+	message_queue = nullptr;
 
 #if defined(STEAMAPI_ENABLED)
 	if (steam_tracker) {
 		memdelete(steam_tracker);
+		steam_tracker = nullptr;
 	}
 #endif
 
 	unregister_core_driver_types();
 	unregister_core_extensions();
 	uninitialize_modules(MODULE_INITIALIZATION_LEVEL_CORE);
+	_core_modules_initialized = false;
 
 	if (engine) {
 		memdelete(engine);
+		engine = nullptr;
 	}
 
 	unregister_core_types();
@@ -5439,6 +5624,19 @@ void Main::cleanup(bool p_force) {
 	OS::get_singleton()->benchmark_dump();
 
 	OS::get_singleton()->finalize_core();
+
+	_start_success = false;
+	_setup_success = false;
+	last_ticks = 0;
+	frames = 0;
+	hide_print_fps_attempts = 3;
+	frame = 0;
+	force_redraw_requested = false;
+	iterating = 0;
+	physics_process_max = 0;
+	process_max = 0;
+	navigation_process_max = 0;
+	main_timer_sync = MainTimerSync();
 
 	Thread::release_main_thread();
 }

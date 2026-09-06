@@ -98,11 +98,7 @@ namespace GodotPlugins
             {
                 _editorHint = editorHint.ToBool();
 
-                if (_initializedFromEngine)
-                {
-                    // 2dog: discard script bridge state from the previous engine instance.
-                    ScriptManagerBridge.ResetForEngineReinitialization();
-                }
+                bool reinitializing = _initializedFromEngine;
                 _initializedFromEngine = true;
 
                 // 2dog: resolvers register once; the native library stays loaded across restarts.
@@ -115,6 +111,11 @@ namespace GodotPlugins
 
                 AlcReloadCfg.Configure(alcReloadEnabled: _editorHint);
                 NativeFuncs.Initialize(unmanagedCallbacks, unmanagedCallbacksSize);
+                if (reinitializing)
+                {
+                    // 2dog: discard script bridge state from the previous engine instance.
+                    ScriptManagerBridge.ResetForEngineReinitialization();
+                }
 
                 if (_editorHint && _editorApiAssembly == null)
                 {
@@ -156,9 +157,6 @@ namespace GodotPlugins
             {
                 if (_projectLoadContext != null)
                 {
-                    // 2dog: repopulate script lookups after an engine restart reset the bridge.
-                    if (_projectAssembly != null)
-                        ScriptManagerBridge.LookupScriptsInAssembly(_projectAssembly);
                     return godot_bool.True;
                 }
 

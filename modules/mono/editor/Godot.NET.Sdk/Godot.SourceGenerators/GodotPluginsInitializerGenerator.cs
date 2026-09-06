@@ -26,6 +26,9 @@ namespace GodotPlugins.Game
 {
     internal static partial class Main
     {
+        private static bool _resolverRegistered;
+        private static bool _scriptsRegistered;
+
         [UnmanagedCallersOnly(EntryPoint = ""godotsharp_game_main_init"")]
         private static godot_bool InitializeFromGameProject(IntPtr godotDllHandle, IntPtr outManagedCallbacks,
             IntPtr unmanagedCallbacks, int unmanagedCallbacksSize)
@@ -36,13 +39,23 @@ namespace GodotPlugins.Game
 
                 var coreApiAssembly = typeof(global::Godot.GodotObject).Assembly;
 
-                NativeLibrary.SetDllImportResolver(coreApiAssembly, dllImportResolver);
+                if (!_resolverRegistered)
+                {
+                    NativeLibrary.SetDllImportResolver(coreApiAssembly, dllImportResolver);
+                    _resolverRegistered = true;
+                }
 
                 NativeFuncs.Initialize(unmanagedCallbacks, unmanagedCallbacksSize);
 
                 ManagedCallbacks.Create(outManagedCallbacks);
 
-                ScriptManagerBridge.LookupScriptsInAssembly(typeof(global::GodotPlugins.Game.Main).Assembly);
+                // Register once. The host replays script registrations on restart after
+                // this initializer has refreshed the native and managed callbacks.
+                if (!_scriptsRegistered)
+                {
+                    ScriptManagerBridge.LookupScriptsInAssembly(typeof(global::GodotPlugins.Game.Main).Assembly);
+                    _scriptsRegistered = true;
+                }
 
                 return godot_bool.True;
             }

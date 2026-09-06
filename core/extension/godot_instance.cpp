@@ -65,6 +65,9 @@ bool GodotInstance::initialize() {
 
 bool GodotInstance::start() {
 	print_verbose("GodotInstance::start()");
+	ERR_FAIL_COND_V_MSG(start_attempted, false, "GodotInstance may only be started once.");
+	start_attempted = true;
+
 	Error err = Main::setup2();
 	if (err != OK) {
 		return false;
@@ -88,6 +91,8 @@ bool GodotInstance::is_started() {
 }
 
 bool GodotInstance::iteration() {
+	ERR_FAIL_COND_V_MSG(!started, true, "GodotInstance must be started before iteration.");
+
 	DisplayServer::get_singleton()->process_events();
 	return Main::iteration();
 }

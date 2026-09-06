@@ -80,15 +80,15 @@ namespace Godot.Bridge
         /// Drops all cached script bridge state. Must be called when the engine
         /// is reinitialized in the same process (libgodot restart): the cached
         /// entries reference native script objects owned by the previous engine
-        /// instance and are no longer valid. Lookup tables are repopulated when
-        /// the project assembly is (re)loaded by the new instance.
+        /// instance and are no longer valid. Call after refreshing NativeFuncs;
+        /// script registrations are replayed using the new engine callbacks.
         /// </summary>
         public static void ResetForEngineReinitialization()
         {
             _scriptTypeBiMap = new();
             _pathTypeBiMap = new();
             _scriptDataForReload = new();
-            // 2dog: hosts that cannot re-run the game's initializer (statically linked web) rely on the replay.
+            // Managed assemblies survive native lifetimes, so replay their registrations.
             foreach (var assembly in _scriptAssemblies)
                 LookupScriptsInAssembly(assembly);
         }
