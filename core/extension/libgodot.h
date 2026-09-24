@@ -106,6 +106,13 @@ LIBGODOT_API int libgodot_import_project(const char *p_project_path, int p_extra
  */
 LIBGODOT_API int libgodot_export_pack(const char *p_project_path, const char *p_preset, const char *p_output_path, int p_extra_argc, const char *p_extra_argv[]);
 
+// 2dog: receives every error and warning on the reporting thread, under Godot's error lock; must not call into Godot.
+// 2dog: p_type is an ErrorHandlerType (0 error, 1 warning, 2 script, 3 shader).
+typedef void (*libgodot_error_callback)(void *p_userdata, const char *p_function, const char *p_file, int p_line, const char *p_error, const char *p_message, bool p_editor_notify, int p_type);
+
+// 2dog: replaces the process-wide error callback (nullptr unregisters); the old one is not running once this returns.
+LIBGODOT_API void libgodot_set_error_callback(libgodot_error_callback p_callback, void *p_userdata);
+
 #ifdef __cplusplus
 }
 #endif // __cplusplus
