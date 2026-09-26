@@ -120,7 +120,12 @@ namespace Godot
 
             _disposed = true;
 
-            if (NativePtr != IntPtr.Zero)
+            // 2dog: unregistered means the wrapper outlived its engine. Its native object is freed or leaked, and
+            // releasing it now would run against the next engine's ObjectDB and bindings.
+            bool ownedByRunningEngine = _weakReferenceToSelf == null ||
+                DisposablesTracker.UnregisterGodotObject(this, _weakReferenceToSelf);
+
+            if (NativePtr != IntPtr.Zero && ownedByRunningEngine)
             {
                 IntPtr gcHandleToFree = NativeFuncs.godotsharp_internal_object_get_associated_gchandle(NativePtr);
 
@@ -142,14 +147,9 @@ namespace Godot
                 {
                     NativeFuncs.godotsharp_internal_object_disposed(NativePtr, gcHandleToFree);
                 }
-
-                NativePtr = IntPtr.Zero;
             }
 
-            if (_weakReferenceToSelf != null)
-            {
-                DisposablesTracker.UnregisterGodotObject(this, _weakReferenceToSelf);
-            }
+            NativePtr = IntPtr.Zero;
         }
 
         /// <summary>

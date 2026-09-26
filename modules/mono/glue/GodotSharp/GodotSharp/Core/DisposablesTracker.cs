@@ -39,30 +39,60 @@ namespace Godot
             if (isStdoutVerbose)
                 GD.Print("Unloading: Disposing tracked instances...");
 
-            // Dispose Godot Objects first, and only then dispose other disposables
-            // like StringName, NodePath, Godot.Collections.Array/Dictionary, etc.
-            // The Godot Object Dispose() method may need any of the later instances.
+            // 2dog: finalize what the GC already found unreachable while the engine is alive. Their weak references
+            // are dead, so the loops below would miss them, and a later engine may reuse the memory they release.
+            GC.Collect();
+            GC.WaitForPendingFinalizers();
 
-            foreach (WeakReference<GodotObject> item in GodotObjectInstances.Keys)
+            try
             {
-                if (item.TryGetTarget(out GodotObject? self))
-                    self.Dispose();
-            }
+                // Dispose Godot Objects first, and only then dispose other disposables
+                // like StringName, NodePath, Godot.Collections.Array/Dictionary, etc.
+                // The Godot Object Dispose() method may need any of the later instances.
 
-            foreach (WeakReference<IDisposable> item in OtherInstances.Keys)
-            {
-                if (item.TryGetTarget(out IDisposable? self))
+                foreach (WeakReference<GodotObject> item in GodotObjectInstances.Keys)
                 {
-                    // 2dog: native StringNames survive libgodot restart cleanup.
-                    if (preserveStringNames && self is StringName)
-                        continue;
-
-                    self.Dispose();
+                    if (item.TryGetTarget(out GodotObject? self))
+                        self.Dispose();
                 }
+
+                foreach (WeakReference<IDisposable> item in OtherInstances.Keys)
+                {
+                    if (item.TryGetTarget(out IDisposable? self))
+                    {
+                        // 2dog: native StringNames survive libgodot restart cleanup.
+                        if (preserveStringNames && self is StringName)
+                            continue;
+
+                        self.Dispose();
+                    }
+                }
+            }
+            finally
+            {
+                EndEngineLifetime(preserveStringNames);
             }
 
             if (isStdoutVerbose)
                 GD.Print("Unloading: Finished disposing tracked instances.");
+        }
+
+        // 2dog: registration means the running engine owns the native side. Whatever the loops above missed (collected
+        // meanwhile, or skipped after a throwing Dispose) is dropped, so its later release is skipped; the wait lets
+        // finalizers that unregistered before this cut-off finish while the engine is still alive.
+        private static void EndEngineLifetime(bool preserveStringNames)
+        {
+            GodotObjectInstances.Clear();
+
+            foreach (WeakReference<IDisposable> item in OtherInstances.Keys)
+            {
+                if (preserveStringNames && item.TryGetTarget(out IDisposable? self) && self is StringName)
+                    continue;
+
+                OtherInstances.TryRemove(item, out _);
+            }
+
+            GC.WaitForPendingFinalizers();
         }
 
         private static ConcurrentDictionary<WeakReference<GodotObject>, byte> GodotObjectInstances { get; } =
@@ -85,16 +115,12 @@ namespace Godot
             return weakReferenceToSelf;
         }
 
-        public static void UnregisterGodotObject(GodotObject godotObject, WeakReference<GodotObject> weakReferenceToSelf)
-        {
-            if (!GodotObjectInstances.TryRemove(weakReferenceToSelf, out _))
-                throw new ArgumentException("Godot Object not registered.", nameof(weakReferenceToSelf));
-        }
+        // 2dog: both return false once the instance's engine has shut down (EndEngineLifetime); the caller must then
+        // leave the native side alone.
+        public static bool UnregisterGodotObject(GodotObject godotObject, WeakReference<GodotObject> weakReferenceToSelf)
+            => GodotObjectInstances.TryRemove(weakReferenceToSelf, out _);
 
-        public static void UnregisterDisposable(WeakReference<IDisposable> weakReference)
-        {
-            if (!OtherInstances.TryRemove(weakReference, out _))
-                throw new ArgumentException("Disposable not registered.", nameof(weakReference));
-        }
+        public static bool UnregisterDisposable(WeakReference<IDisposable> weakReference)
+            => OtherInstances.TryRemove(weakReference, out _);
     }
 }
