@@ -39,11 +39,6 @@ namespace Godot
             if (isStdoutVerbose)
                 GD.Print("Unloading: Disposing tracked instances...");
 
-            // 2dog: finalize what the GC already found unreachable while the engine is alive. Their weak references
-            // are dead, so the loops below would miss them, and a later engine may reuse the memory they release.
-            GC.Collect();
-            GC.WaitForPendingFinalizers();
-
             try
             {
                 // Dispose Godot Objects first, and only then dispose other disposables
@@ -77,9 +72,9 @@ namespace Godot
                 GD.Print("Unloading: Finished disposing tracked instances.");
         }
 
-        // 2dog: registration means the running engine owns the native side. Whatever the loops above missed (collected
+        // 2dog: registration means the running engine owns the native side. Whatever the loops above missed (created
         // meanwhile, or skipped after a throwing Dispose) is dropped, so its later release is skipped; the wait lets
-        // finalizers that unregistered before this cut-off finish while the engine is still alive.
+        // finalizers that claimed their registration first finish while the engine is still alive.
         private static void EndEngineLifetime(bool preserveStringNames)
         {
             GodotObjectInstances.Clear();
@@ -101,16 +96,18 @@ namespace Godot
         private static ConcurrentDictionary<WeakReference<IDisposable>, byte> OtherInstances { get; } =
             new();
 
+        // 2dog: long weak references still reach instances awaiting finalization, so shutdown disposes those while the
+        // engine is alive. The Unregister claim keeps a finalizer running concurrently from releasing twice.
         public static WeakReference<GodotObject> RegisterGodotObject(GodotObject godotObject)
         {
-            var weakReferenceToSelf = new WeakReference<GodotObject>(godotObject);
+            var weakReferenceToSelf = new WeakReference<GodotObject>(godotObject, trackResurrection: true);
             GodotObjectInstances.TryAdd(weakReferenceToSelf, 0);
             return weakReferenceToSelf;
         }
 
         public static WeakReference<IDisposable> RegisterDisposable(IDisposable disposable)
         {
-            var weakReferenceToSelf = new WeakReference<IDisposable>(disposable);
+            var weakReferenceToSelf = new WeakReference<IDisposable>(disposable, trackResurrection: true);
             OtherInstances.TryAdd(weakReferenceToSelf, 0);
             return weakReferenceToSelf;
         }

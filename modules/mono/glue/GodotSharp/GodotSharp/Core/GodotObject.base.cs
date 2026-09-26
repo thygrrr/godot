@@ -120,14 +120,16 @@ namespace Godot
 
             _disposed = true;
 
-            // 2dog: unregistered means the wrapper outlived its engine. Its native object is freed or leaked, and
-            // releasing it now would run against the next engine's ObjectDB and bindings.
-            bool ownedByRunningEngine = _weakReferenceToSelf == null ||
+            // 2dog: only the caller that claims the registration releases the native side; shutdown and a finalizer
+            // may race here. Unregistered means the wrapper outlived its engine, whose memory is no longer ours. The
+            // pointer is read before the claim, so a losing caller's reset below cannot reach the winner.
+            IntPtr nativePtr = NativePtr;
+            bool owned = _weakReferenceToSelf == null ||
                 DisposablesTracker.UnregisterGodotObject(this, _weakReferenceToSelf);
 
-            if (NativePtr != IntPtr.Zero && ownedByRunningEngine)
+            if (nativePtr != IntPtr.Zero && owned)
             {
-                IntPtr gcHandleToFree = NativeFuncs.godotsharp_internal_object_get_associated_gchandle(NativePtr);
+                IntPtr gcHandleToFree = NativeFuncs.godotsharp_internal_object_get_associated_gchandle(nativePtr);
 
                 if (gcHandleToFree != IntPtr.Zero)
                 {
@@ -140,12 +142,12 @@ namespace Godot
 
                 if (_memoryOwn)
                 {
-                    NativeFuncs.godotsharp_internal_refcounted_disposed(NativePtr, gcHandleToFree,
+                    NativeFuncs.godotsharp_internal_refcounted_disposed(nativePtr, gcHandleToFree,
                         (!disposing).ToGodotBool());
                 }
                 else
                 {
-                    NativeFuncs.godotsharp_internal_object_disposed(NativePtr, gcHandleToFree);
+                    NativeFuncs.godotsharp_internal_object_disposed(nativePtr, gcHandleToFree);
                 }
             }
 

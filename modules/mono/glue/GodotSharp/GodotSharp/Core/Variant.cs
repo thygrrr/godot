@@ -40,7 +40,8 @@ public partial struct Variant : IDisposable
 
         private void Dispose(bool disposing)
         {
-            // 2dog: unregistered means the value outlived its engine; releasing it now would act on the next engine.
+            // 2dog: only the caller that claims the registration releases; otherwise another caller did, or the engine
+            // that owned the value is gone.
             if (_weakReferenceToSelf != null && !DisposablesTracker.UnregisterDisposable(_weakReferenceToSelf))
                 return;
 
