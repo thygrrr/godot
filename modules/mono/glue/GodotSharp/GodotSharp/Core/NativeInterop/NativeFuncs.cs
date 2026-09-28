@@ -48,7 +48,9 @@ namespace Godot.NativeInterop
         public static partial IntPtr godotsharp_engine_get_singleton(in godot_string p_name);
 
 
-        internal static partial Error godotsharp_stack_info_vector_resize(
+        // These helpers return int32_t in runtime_interop.cpp. Godot.Error is a 64-bit
+        // public API enum, so convert it only after crossing the native boundary.
+        internal static partial int godotsharp_stack_info_vector_resize(
             ref DebuggingUtils.godot_stack_info_vector p_stack_info_vector, int p_size);
 
         internal static partial void godotsharp_stack_info_vector_destroy(
@@ -69,7 +71,7 @@ namespace Godot.NativeInterop
         internal static partial void godotsharp_internal_refcounted_disposed(IntPtr ptr, IntPtr gcHandleToFree,
             godot_bool isFinalizer);
 
-        internal static partial Error godotsharp_internal_signal_awaiter_connect(IntPtr source,
+        internal static partial int godotsharp_internal_signal_awaiter_connect(IntPtr source,
             in godot_string_name signal,
             IntPtr target, IntPtr awaiterHandlePtr);
 
@@ -415,7 +417,7 @@ namespace Godot.NativeInterop
 
         public static partial void godotsharp_array_remove_at(ref godot_array p_self, int p_index);
 
-        public static partial Error godotsharp_array_resize(ref godot_array p_self, int p_new_size);
+        public static partial int godotsharp_array_resize(ref godot_array p_self, int p_new_size);
 
         public static partial void godotsharp_array_reverse(ref godot_array p_self);
 

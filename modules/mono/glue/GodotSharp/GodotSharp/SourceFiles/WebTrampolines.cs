@@ -38,9 +38,9 @@ namespace GodotPlugins.Game
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate long godotsharp_array_size_sig(IntPtr _0);
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate Godot.Error godotsharp_stack_info_vector_resize_sig(IntPtr _0, int _1);
+        public delegate int godotsharp_stack_info_vector_resize_sig(IntPtr _0, int _1);
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
-        public delegate Godot.Error godotsharp_internal_signal_awaiter_connect_sig(IntPtr _0, IntPtr _1, IntPtr _3, IntPtr _4);
+        public delegate int godotsharp_internal_signal_awaiter_connect_sig(IntPtr _0, IntPtr _1, IntPtr _3, IntPtr _4);
 
         // 2dog: pointer/int32-only shapes, previously covered only by unrelated DllImport scans.
         // Named by wasm signature cookie: return type first ('i' ptr/int32, 'v' void), then args.
