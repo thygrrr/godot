@@ -179,9 +179,11 @@ namespace GodotTools.Export
             if (!TryDeterminePlatformFromOSName(osName, out string? platform))
                 throw new NotSupportedException("Target platform not supported.");
 
-            if (platform == OS.Platforms.Web && !path.EndsWith(".html", StringComparison.OrdinalIgnoreCase))
+            if (path.EndsWith(".pck", StringComparison.OrdinalIgnoreCase)
+                || (platform == OS.Platforms.Web && !path.EndsWith(".html", StringComparison.OrdinalIgnoreCase)))
             {
-                // 2dog: pack-only web exports have no template; the host publish supplies assemblies.
+                // 2dog: pack-only exports ship no build outputs; the host publish supplies the assemblies and runtime.
+                // Publishing here would hand the whole .NET publish tree to the export as shared objects.
                 return;
             }
 
