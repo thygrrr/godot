@@ -2463,7 +2463,24 @@ Error EditorExportPlatform::save_zip_patch(const Ref<EditorExportPreset> &p_pres
 
 Error EditorExportPlatform::export_pack(const Ref<EditorExportPreset> &p_preset, bool p_debug, const String &p_path, BitField<EditorExportPlatform::DebugFlags> p_flags) {
 	ExportNotifier notifier(*this, p_preset, p_debug, p_path, p_flags);
-	return save_pack(p_preset, p_debug, p_path);
+	// 2dog: a pack-only export still needs the preset's GDExtension libraries. Copy them beside the pack, where
+	// desktop runtimes look (next to the executable); web presets embed their side modules in the pack instead.
+	Vector<SharedObject> so_files;
+	Error err = save_pack(p_preset, p_debug, p_path, &so_files);
+	if (err != OK || get_os_name() == "Web") {
+		return err;
+	}
+	Ref<DirAccess> da = DirAccess::create(DirAccess::ACCESS_FILESYSTEM);
+	for (const SharedObject &so : so_files) {
+		const String src = ProjectSettings::get_singleton()->globalize_path(so.path);
+		const String dst = p_path.get_base_dir().path_join(so.path.get_file());
+		err = da->dir_exists(src) ? da->copy_dir(src, dst) : da->copy(src, dst);
+		if (err != OK) {
+			add_message(EXPORT_MESSAGE_ERROR, TTR("Export"), vformat(TTR("Could not copy GDExtension library \"%s\" to \"%s\"."), so.path, dst));
+			return err;
+		}
+	}
+	return OK;
 }
 
 Error EditorExportPlatform::export_zip(const Ref<EditorExportPreset> &p_preset, bool p_debug, const String &p_path, BitField<EditorExportPlatform::DebugFlags> p_flags) {

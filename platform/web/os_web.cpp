@@ -36,10 +36,12 @@
 #include "ip_web.h"
 #include "net_socket_web.h"
 
+#include "core/config/project_settings.h"
 #include "core/io/file_access.h"
 #include "core/os/main_loop.h"
 #include "core/os/os.h"
 #include "core/profiling/profiling.h"
+#include "core/templates/hash_map.h"
 #include "drivers/unix/dir_access_unix.h"
 #include "drivers/unix/file_access_unix.h"
 #include "main/main.h"
@@ -165,15 +167,16 @@ bool OS_Web::_check_internal_feature_support(const String &p_feature) {
 		return true;
 	}
 
+	// 2dog: static library builds load GDExtensions through the side module loader.
 	if (p_feature == "web_extensions") {
-#ifdef WEB_DLINK_ENABLED
+#if defined(WEB_DLINK_ENABLED) || defined(WEB_SIDE_MODULE_LOADER_ENABLED)
 		return true;
 #else
 		return false;
 #endif
 	}
 	if (p_feature == "web_noextensions") {
-#ifdef WEB_DLINK_ENABLED
+#if defined(WEB_DLINK_ENABLED) || defined(WEB_SIDE_MODULE_LOADER_ENABLED)
 		return false;
 #else
 		return true;
@@ -277,6 +280,106 @@ bool OS_Web::is_userfs_persistent() const {
 	return idb_available;
 }
 
+#ifdef WEB_SIDE_MODULE_LOADER_ENABLED
+// 2dog: side modules are read through Godot's file system, so they load from the exported pack (the GDExtension
+// export plugin embeds them there for web presets).
+static String _side_module_path(const String &p_path) {
+	if (FileAccess::exists(p_path)) {
+		return p_path;
+	}
+	const String local = ProjectSettings::get_singleton()->localize_path(p_path);
+	if (FileAccess::exists(local)) {
+		return local;
+	}
+	// globalize_path() drops the res:// prefix when the project runs from a pack without a resource directory.
+	if (p_path.is_relative_path() && FileAccess::exists("res://" + p_path)) {
+		return "res://" + p_path;
+	}
+	return String();
+}
+
+static String _side_module_error() {
+	char *error = godot_js_dylink_error();
+	const String message = String::utf8(error);
+	free(error);
+	return message;
+}
+
+static Error _open_side_module(const String &p_path, int &r_handle) {
+	const String path = _side_module_path(p_path);
+	ERR_FAIL_COND_V_MSG(path.is_empty(), ERR_FILE_NOT_FOUND, vformat("Can't open dynamic library, file not found: '%s'.", p_path));
+	const Vector<uint8_t> bytes = FileAccess::get_file_as_bytes(path);
+	ERR_FAIL_COND_V_MSG(bytes.is_empty(), ERR_CANT_OPEN, vformat("Can't read dynamic library: '%s'.", path));
+
+	r_handle = godot_js_dylink_open(path.get_file().utf8().get_data(), bytes.ptr(), bytes.size());
+	ERR_FAIL_COND_V_MSG(r_handle == 0, ERR_CANT_OPEN, vformat("Can't open dynamic library: %s. Error: %s.", path, _side_module_error()));
+	return OK;
+}
+
+// Dependencies opened for each library handle, closed along with it.
+static HashMap<int, Vector<int>> &_side_module_dependencies() {
+	static HashMap<int, Vector<int>> dependencies;
+	return dependencies;
+}
+
+Error OS_Web::open_dynamic_library(const String &p_path, void *&p_library_handle, GDExtensionData *p_data) {
+	Vector<int> dependency_handles;
+	Error err = OK;
+	if (p_data != nullptr && p_data->library_dependencies != nullptr) {
+		// Loaded first so the library's dylink "needed" entries resolve by file name.
+		for (const String &dependency : *p_data->library_dependencies) {
+			int dependency_handle = 0;
+			err = _open_side_module(dependency, dependency_handle);
+			if (err != OK) {
+				break;
+			}
+			dependency_handles.push_back(dependency_handle);
+		}
+	}
+
+	int handle = 0;
+	if (err == OK) {
+		err = _open_side_module(p_path, handle);
+	}
+	if (err != OK) {
+		for (int dependency_handle : dependency_handles) {
+			godot_js_dylink_close(dependency_handle);
+		}
+		return err;
+	}
+	if (!dependency_handles.is_empty()) {
+		_side_module_dependencies()[handle].append_array(dependency_handles);
+	}
+	p_library_handle = reinterpret_cast<void *>(static_cast<intptr_t>(handle));
+
+	if (p_data != nullptr && p_data->r_resolved_path != nullptr) {
+		*p_data->r_resolved_path = _side_module_path(p_path);
+	}
+
+	return OK;
+}
+
+Error OS_Web::close_dynamic_library(void *p_library_handle) {
+	const int handle = static_cast<int>(reinterpret_cast<intptr_t>(p_library_handle));
+	godot_js_dylink_close(handle);
+	if (const Vector<int> *dependencies = _side_module_dependencies().getptr(handle)) {
+		for (int dependency_handle : *dependencies) {
+			godot_js_dylink_close(dependency_handle);
+		}
+		_side_module_dependencies().erase(handle);
+	}
+	return OK;
+}
+
+Error OS_Web::get_dynamic_library_symbol_handle(void *p_library_handle, const String &p_name, void *&p_symbol_handle, bool p_optional) {
+	p_symbol_handle = godot_js_dylink_symbol(static_cast<int>(reinterpret_cast<intptr_t>(p_library_handle)), p_name.utf8().get_data());
+	if (p_symbol_handle == nullptr) {
+		ERR_FAIL_COND_V_MSG(!p_optional, ERR_CANT_RESOLVE, vformat("Can't resolve symbol %s. Error: %s.", p_name, _side_module_error()));
+		return ERR_CANT_RESOLVE;
+	}
+	return OK;
+}
+#else
 Error OS_Web::open_dynamic_library(const String &p_path, void *&p_library_handle, GDExtensionData *p_data) {
 	String path = p_path.get_file();
 	p_library_handle = dlopen(path.utf8().get_data(), RTLD_NOW);
@@ -288,6 +391,7 @@ Error OS_Web::open_dynamic_library(const String &p_path, void *&p_library_handle
 
 	return OK;
 }
+#endif
 
 OS_Web *OS_Web::get_singleton() {
 	return static_cast<OS_Web *>(OS::get_singleton());
