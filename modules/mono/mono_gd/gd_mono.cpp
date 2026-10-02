@@ -753,7 +753,13 @@ void GDMono::initialize() {
 
 #if defined(UNIX_ENABLED) && !defined(MACOS_ENABLED) && !defined(APPLE_EMBEDDED_ENABLED)
 	// Managed code can access it on its own on other platforms
+#if defined(ANDROID_ENABLED) && defined(LIBGODOT_HOSTFXR)
+	// 2dog: the .NET Android host loads this JNI library locally, not into the executable's global scope.
+	godot_dll_handle = dlopen("libgodot_android.so", RTLD_NOW);
+	ERR_FAIL_NULL_MSG(godot_dll_handle, ".NET: Failed to resolve the Android Godot JNI library.");
+#else
 	godot_dll_handle = dlopen(nullptr, RTLD_NOW);
+#endif
 #endif
 
 #if defined(TOOLS_ENABLED) || defined(LIBGODOT_HOSTFXR)
