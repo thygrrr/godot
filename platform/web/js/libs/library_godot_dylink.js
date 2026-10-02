@@ -1,9 +1,8 @@
 // SPDX-License-Identifier: MIT
 // 2dog: this file is part of https://2dog.dev
 
-// GDExtension side modules for static library builds. The host links Godot into a non-relocatable main module (the
-// .NET runtime), so emscripten's dynamic linker (RELOCATABLE builds only) is unavailable. This loader instantiates
-// a SIDE_MODULE against the main module instead; the host link must export every symbol the side modules import.
+// 2dog: load GDExtension side modules against the statically linked main module.
+// 2dog: the host must export their imports because Emscripten's dynamic linker requires relocatable builds.
 const GodotDylink = {
 	$GodotDylink__deps: ['$addFunction', '$updateTableMap', '$functionsInTableMap', '$wasmTable', '$alignMemory', '$zeroMemory', '$UTF8ArrayToString', 'malloc'],
 	$GodotDylink: {
@@ -11,8 +10,8 @@ const GodotDylink = {
 		lastError: '',
 		stackPointer: null,
 
-		// The main module's __stack_pointer is internal, so side modules share their own shadow stack. Frames stay
-		// LIFO per stack across main <-> side calls; only unwinding through side frames (longjmp) would leak it.
+		// 2dog: side modules share a shadow stack because the main stack pointer is private.
+		// 2dog: frames stay LIFO; longjmp through side frames cannot unwind this stack.
 		STACK_SIZE: 1024 * 1024,
 
 		metadata: function (module) {
@@ -44,26 +43,26 @@ const GodotDylink = {
 				const type = bytes[offset++];
 				const size = leb();
 				const end = offset + size;
-				if (type === 1) { // WASM_DYLINK_MEM_INFO
+				if (type === 1) { // 2dog: WASM_DYLINK_MEM_INFO
 					meta.memorySize = leb();
 					meta.memoryAlign = leb();
 					meta.tableSize = leb();
-				} else if (type === 2) { // WASM_DYLINK_NEEDED
+				} else if (type === 2) { // 2dog: WASM_DYLINK_NEEDED
 					for (let n = leb(); n > 0; n--) {
 						meta.needed.push(str());
 					}
-				} else if (type === 3) { // WASM_DYLINK_EXPORT_INFO
+				} else if (type === 3) { // 2dog: WASM_DYLINK_EXPORT_INFO
 					for (let n = leb(); n > 0; n--) {
 						const name = str();
-						if (leb() & 0x100) { // WASM_SYMBOL_TLS
+						if (leb() & 0x100) { // 2dog: WASM_SYMBOL_TLS
 							meta.tls.add(name);
 						}
 					}
-				} else if (type === 4) { // WASM_DYLINK_IMPORT_INFO
+				} else if (type === 4) { // 2dog: WASM_DYLINK_IMPORT_INFO
 					for (let n = leb(); n > 0; n--) {
-						str(); // Module name.
+						str(); // 2dog: Module name.
 						const name = str();
-						if ((leb() & 0x3) === 0x1) { // WASM_SYMBOL_BINDING_WEAK
+						if ((leb() & 0x3) === 0x1) { // 2dog: WASM_SYMBOL_BINDING_WEAK
 							meta.weak.add(name);
 						}
 					}
@@ -77,7 +76,7 @@ const GodotDylink = {
 			return Object.prototype.hasOwnProperty.call(obj, name);
 		},
 
-		// A wasm export, a JS library function the main module imports, or a JS function exported to Module.
+		// 2dog: resolve symbols from wasm exports, imported JS library functions, or Module exports.
 		mainSymbol: function (name) {
 			if (GodotDylink.has(wasmExports, name)) {
 				return wasmExports[name];
@@ -103,14 +102,14 @@ const GodotDylink = {
 		},
 
 		load: function (name, bytes) {
-			// Like dlopen, a library that is still open is shared rather than instantiated twice.
+			// 2dog: reuse open libraries rather than instantiating them twice.
 			const open = GodotDylink.libs.findIndex((l) => l && l.name === name);
 			if (open > 0) {
 				GodotDylink.libs[open].refs++;
 				return open;
 			}
 
-			// Compile before allocating: malloc may grow memory and detach the byte view.
+			// 2dog: compile before malloc can grow memory and detach the byte view.
 			const module = new WebAssembly.Module(bytes);
 			const meta = GodotDylink.metadata(module);
 			if (meta.tls.size > 0) {
@@ -154,7 +153,7 @@ const GodotDylink = {
 			for (const imp of WebAssembly.Module.imports(module)) {
 				const sym = imp.name;
 				if (imp.module === 'GOT.mem' || imp.module === 'GOT.func') {
-					// Filled after instantiation, before data relocations and constructors read them.
+					// 2dog: fill symbols after instantiation, before data relocations and constructors read them.
 					const entry = new WebAssembly.Global({ 'value': 'i32', 'mutable': true }, 0);
 					got.push({ entry, sym, func: imp.module === 'GOT.func' });
 					imports[imp.module][sym] = entry;
@@ -176,7 +175,7 @@ const GodotDylink = {
 						func = fromNeeded(sym);
 					}
 					if (typeof func !== 'function') {
-						// The module may define it itself, or never call it: fail on call rather than on load.
+						// 2dog: defer missing-symbol failures until calls; modules may define or never use the symbol.
 						if (!meta.weak.has(sym)) {
 							unresolved.push(sym);
 						}
@@ -190,7 +189,7 @@ const GodotDylink = {
 					}
 					env[sym] = func;
 				} else if (imp.kind === 'tag') {
-					// Exception tags must be the main module's to interoperate; a private one still works locally.
+					// 2dog: share main-module exception tags for interop; private tags work only within the side module.
 					const tag = GodotDylink.mainSymbol(sym);
 					env[sym] = tag instanceof WebAssembly.Tag ? tag : new WebAssembly.Tag({ 'parameters': ['i32'] });
 				} else {
@@ -207,7 +206,7 @@ const GodotDylink = {
 
 			const instance = new WebAssembly.Instance(module, imports);
 
-			// Exported data symbols are relative to the module's memory base.
+			// 2dog: exported data symbols are relative to the module's memory base.
 			exports = {};
 			for (const [sym, value] of Object.entries(instance.exports)) {
 				exports[sym] = value instanceof WebAssembly.Global ? value.value + memoryBase : value;
@@ -216,7 +215,7 @@ const GodotDylink = {
 				updateTableMap(tableBase, meta.tableSize);
 			}
 
-			// Own definitions win (like -Bsymbolic): extensions must never bind to each other's data.
+			// 2dog: prefer a module's own definitions so extensions never bind to each other's data.
 			for (const { entry, sym, func } of got) {
 				let value = GodotDylink.has(exports, sym) ? exports[sym] : undefined;
 				if (value === undefined) {
@@ -238,7 +237,7 @@ const GodotDylink = {
 					if (typeof value !== 'function') {
 						throw new Error(`symbol '${sym}' is not a function`);
 					}
-					// addFunction reuses an existing table slot, keeping function pointers comparable.
+					// 2dog: reuse table slots through addFunction to preserve function-pointer equality.
 					entry.value = addFunction(value);
 				} else {
 					if (typeof value !== 'number') {
@@ -302,7 +301,7 @@ const GodotDylink = {
 	godot_js_dylink_close__proxy: 'sync',
 	godot_js_dylink_close__sig: 'vi',
 	godot_js_dylink_close: function (p_handle) {
-		// Instances cannot be unloaded; the last close drops the handle, so a later open instantiates afresh.
+		// 2dog: drop closed handles; reopening creates a new instance because wasm instances cannot unload.
 		const lib = GodotDylink.libs[p_handle];
 		if (p_handle > 0 && lib && --lib.refs === 0) {
 			GodotDylink.libs[p_handle] = null;

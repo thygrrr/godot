@@ -77,8 +77,7 @@ bool GodotInstance::start() {
 		if (OS::get_singleton()->get_main_loop()) {
 			OS::get_singleton()->get_main_loop()->initialize();
 		}
-		// 2dog: with --hidden-window some display servers report no drawable window;
-		// registering as an additional output keeps the render loop presenting.
+		// 2dog: register hidden windows as additional outputs so display servers keep presenting.
 		if (OS::get_singleton()->is_hidden_window() && DisplayServer::get_singleton()) {
 			DisplayServer::get_singleton()->register_additional_output(this);
 		}

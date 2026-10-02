@@ -50,8 +50,7 @@ GDExtensionObjectPtr libgodot_create_godot_instance(int p_argc, char *p_argv[], 
 
 	godot_init_profiler();
 
-	// 2dog: like desktop libgodot, process-lifetime metadata (ClassDB, StringName, audio driver registry) survives
-	// engine restarts; the host hands each lifetime a fresh canvas (the browser reuses one WebGL context per element).
+	// 2dog: retain process metadata across restarts; each engine lifetime needs a fresh canvas.
 	CoreGlobals::global_init_func_libgodot = p_init_func;
 	CoreGlobals::engine_reinit_enabled = true;
 #ifndef PROXY_TO_PTHREAD_ENABLED

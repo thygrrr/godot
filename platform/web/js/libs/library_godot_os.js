@@ -241,7 +241,7 @@ const GodotOS = {
 		_fs_sync_promise: null,
 
 		atexit: function (p_promise_cb, p_persistent = false) {
-			// Postset hooks are registered once per runtime, but must clean up every engine lifetime.
+			// 2dog: runtime postset hooks must clean up every engine lifetime.
 			const cbs = p_persistent ? GodotOS._persistent_async_cbs : GodotOS._async_cbs;
 			cbs.push(p_promise_cb);
 		},
@@ -258,7 +258,7 @@ const GodotOS = {
 		finish_async: function (callback) {
 			GodotOS._fs_sync_promise.then(function (err) {
 				const promises = [];
-				// Keep module hooks; consume callbacks registered for this engine (audio, file drops).
+				// 2dog: retain module hooks and consume this engine's audio and file-drop callbacks.
 				const cbs = GodotOS._persistent_async_cbs.concat(GodotOS._async_cbs);
 				GodotOS._async_cbs = [];
 				cbs.forEach(function (cb) {

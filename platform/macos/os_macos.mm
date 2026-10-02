@@ -1201,11 +1201,8 @@ void OS_MacOS_NSApp::cleanup() {
 OS_MacOS_NSApp::OS_MacOS_NSApp(const char *p_execpath, int p_argc, char **p_argv) :
 		OS_MacOS(p_execpath, p_argc, p_argv) {
 #ifdef LIBGODOT_ENABLED
-	// 2dog: a host runtime that already brought AppKit up (an NSApplication with a delegate,
-	// e.g. an Avalonia or WinForms host) owns the application. The engine then only borrows
-	// the shared instance for its windows: no activation policy, main menu, delegate, search
-	// handler, or signal handler of its own - replacing the host's delegate would evict its
-	// lifecycle handling and route AppKit's launch/open-file events into engine bootstrap.
+	// 2dog: embedded hosts own NSApplication setup, delegates, menus, and signal handlers.
+	// 2dog: borrow their AppKit instance without replacing host lifecycle handling.
 	hosted = NSApp != nil && [NSApp delegate] != nil;
 	if (hosted) {
 		return;

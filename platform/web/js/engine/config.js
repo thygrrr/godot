@@ -151,23 +151,15 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
 		 * @default
 		 */
 		dotnetModuleImports: null,
+		// 2dog: try precompressed siblings such as .gz and inflate them in-page; fall back to plain files.
 		/**
-		 * 2dog: when set (e.g. ``'.gz'``), engine and runtime downloads first
-		 * try the precompressed sibling file (``<name>.gz``, written by the
-		 * 2dog publish) and inflate it in the page via ``DecompressionStream``.
-		 * For hosts that serve everything uncompressed; falls back to the
-		 * plain file per resource.
-		 *
 		 * @memberof EngineConfig
 		 * @type {string}
 		 * @default
 		 */
 		precompressedSuffix: '',
+		// 2dog: report cumulative .NET _framework download bytes separately from onProgress.
 		/**
-		 * 2dog: a callback receiving the cumulative number of bytes the .NET
-		 * runtime loader has downloaded (``_framework/*``). These files are
-		 * not covered by ``onProgress``.
-		 *
 		 * @memberof EngineConfig
 		 * @type {?function(number)}
 		 * @default

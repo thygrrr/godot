@@ -185,8 +185,7 @@ class OS_MacOS_NSApp : public OS_MacOS {
 	id delegate = nullptr;
 	bool should_terminate = false;
 	bool main_started = false;
-	// 2dog: true when a host runtime already owned NSApplication before the engine came up
-	// (library builds only); the application-level setup is then left untouched.
+	// 2dog: host-owned NSApplication instances keep their application setup in library builds.
 	bool hosted = false;
 
 	CFRunLoopObserverRef pre_wait_observer = nil;

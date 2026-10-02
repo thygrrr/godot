@@ -88,7 +88,7 @@ namespace Godot.Bridge
             _scriptTypeBiMap = new();
             _pathTypeBiMap = new();
             _scriptDataForReload = new();
-            // Managed assemblies survive native lifetimes, so replay their registrations.
+            // 2dog: managed assemblies survive native lifetimes; replay their script registrations.
             foreach (var assembly in _scriptAssemblies)
                 LookupScriptsInAssembly(assembly);
         }

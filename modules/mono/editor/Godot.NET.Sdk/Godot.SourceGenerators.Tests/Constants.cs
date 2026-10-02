@@ -8,7 +8,7 @@ public static class Constants
 {
     public static Assembly GodotSharpAssembly => typeof(GodotObject).Assembly;
 
-    // Can't find what needs updating to be able to access ReferenceAssemblies.Net.Net100, so we're making our own one.
+    // 2dog: define the .NET 10 reference set until the test helper exposes Net100.
     public static ReferenceAssemblies Net100 => new ReferenceAssemblies(
         "net10.0",
         new PackageIdentity("Microsoft.NETCore.App.Ref", "10.0.0"),

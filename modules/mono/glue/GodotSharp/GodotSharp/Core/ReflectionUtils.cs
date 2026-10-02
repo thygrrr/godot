@@ -9,8 +9,7 @@ using System.Text;
 
 namespace Godot;
 
-// 2dog: trimmed publish paths root game assemblies and GodotSharp, making these reflection
-// boundaries safe; desktop deployments do not trim.
+// 2dog: rooted game assemblies and GodotSharp make publish reflection safe; desktop builds do not trim.
 internal static class TrimJustifications
 {
     public const string ScriptTypesAreRooted =

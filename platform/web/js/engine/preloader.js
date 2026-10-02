@@ -47,10 +47,8 @@ const Preloader = /** @constructor */ function () { // eslint-disable-line no-un
 				return consume(response);
 			});
 		}
-		// 2dog: prefer a precompressed sibling (e.g. '.gz' written by the
-		// publish) and inflate it in the page - for hosts that serve
-		// everything uncompressed. Tracked bytes are the inflated ones, so
-		// fileSizes totals stay correct.
+		// 2dog: try precompressed siblings for hosts without HTTP compression; fall back to plain files.
+		// 2dog: count inflated bytes to match fileSizes.
 		if (compressedSuffix && typeof DecompressionStream !== 'undefined') {
 			return fetch(file + compressedSuffix).then(function (response) {
 				if (!response.ok || !response.body) {

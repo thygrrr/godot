@@ -5,9 +5,8 @@ namespace GodotPlugins.Game
 {
     internal static partial class Initializer
     {
-        // Generate web trampolines.
-        // C# doesn't automatically generate them for 'delegate* unmanaged' calli, so every distinct
-        // NativeFuncs signature shape must be declared here (2dog: verified by WebTrampolineCoverageTests).
+        // 2dog: declare each NativeFuncs signature so wasm generates unmanaged calli trampolines.
+        // 2dog: WebTrampolineCoverageTests verifies coverage.
 
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         private delegate IntPtr classdb_get_method_bind_sig(IntPtr _1, IntPtr _2, long _3);
@@ -43,7 +42,7 @@ namespace GodotPlugins.Game
         public delegate int godotsharp_internal_signal_awaiter_connect_sig(IntPtr _0, IntPtr _1, IntPtr _3, IntPtr _4);
 
         // 2dog: pointer/int32-only shapes, previously covered only by unrelated DllImport scans.
-        // Named by wasm signature cookie: return type first ('i' ptr/int32, 'v' void), then args.
+        // 2dog: Named by wasm signature cookie: return type first ('i' ptr/int32, 'v' void), then args.
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr sig_i();
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]

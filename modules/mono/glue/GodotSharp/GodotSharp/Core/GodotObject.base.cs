@@ -120,9 +120,8 @@ namespace Godot
 
             _disposed = true;
 
-            // 2dog: only the caller that claims the registration releases the native side; shutdown and a finalizer
-            // may race here. Unregistered means the wrapper outlived its engine, whose memory is no longer ours. The
-            // pointer is read before the claim, so a losing caller's reset below cannot reach the winner.
+            // 2dog: only the unregister winner releases native memory; stale wrappers skip release.
+            // 2dog: read the pointer before claiming to survive a concurrent finalizer's reset.
             IntPtr nativePtr = NativePtr;
             bool owned = _weakReferenceToSelf == null ||
                 DisposablesTracker.UnregisterGodotObject(this, _weakReferenceToSelf);

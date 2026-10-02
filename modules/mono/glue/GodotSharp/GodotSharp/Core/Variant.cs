@@ -40,8 +40,7 @@ public partial struct Variant : IDisposable
 
         private void Dispose(bool disposing)
         {
-            // 2dog: only the caller that claims the registration releases; otherwise another caller did, or the engine
-            // that owned the value is gone.
+            // 2dog: release only after claiming registration; another caller or engine shutdown may own cleanup.
             if (_weakReferenceToSelf != null && !DisposablesTracker.UnregisterDisposable(_weakReferenceToSelf))
                 return;
 

@@ -475,9 +475,7 @@ void DisplayServerMacOSBase::screen_set_keep_on(bool p_enable) {
 	}
 }
 
-// 2dog: the application delegate is Godot's own only when the engine owns NSApplication; a
-// library build hosted by another runtime (its delegate stays installed) queries the
-// workspace directly instead of the cached delegate state.
+// 2dog: host-owned NSApplication delegates lack Godot's cached state; query the workspace directly.
 static GodotApplicationDelegate *_godot_app_delegate() {
 	id delegate = [[NSApplication sharedApplication] delegate];
 	if (delegate && [delegate isKindOfClass:[GodotApplicationDelegate class]]) {

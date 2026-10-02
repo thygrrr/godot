@@ -48,8 +48,7 @@ namespace Godot.NativeInterop
         public static partial IntPtr godotsharp_engine_get_singleton(in godot_string p_name);
 
 
-        // These helpers return int32_t in runtime_interop.cpp. Godot.Error is a 64-bit
-        // public API enum, so convert it only after crossing the native boundary.
+        // 2dog: native helpers return int32_t; convert to the 64-bit Godot.Error enum after interop.
         internal static partial int godotsharp_stack_info_vector_resize(
             ref DebuggingUtils.godot_stack_info_vector p_stack_info_vector, int p_size);
 

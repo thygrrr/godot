@@ -182,8 +182,7 @@ namespace GodotTools.Export
             if (path.EndsWith(".pck", StringComparison.OrdinalIgnoreCase)
                 || (platform == OS.Platforms.Web && !path.EndsWith(".html", StringComparison.OrdinalIgnoreCase)))
             {
-                // 2dog: pack-only exports ship no build outputs; the host publish supplies the assemblies and runtime.
-                // Publishing here would hand the whole .NET publish tree to the export as shared objects.
+                // 2dog: pack-only exports use host-published assemblies and runtimes, excluding .NET build outputs.
                 return;
             }
 

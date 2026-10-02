@@ -217,7 +217,7 @@ public:
 	bool is_accurate_breadcrumbs_enabled() const;
 #endif
 	int32_t get_gpu_index() const;
-	uint64_t get_gpu_luid() const; // 2dog
+	uint64_t get_gpu_luid() const; // 2dog:
 
 	void increment_frames_drawn();
 	bool notify_frame_server_synced();

@@ -72,9 +72,8 @@ namespace Godot
                 GD.Print("Unloading: Finished disposing tracked instances.");
         }
 
-        // 2dog: registration means the running engine owns the native side. Whatever the loops above missed (created
-        // meanwhile, or skipped after a throwing Dispose) is dropped, so its later release is skipped; the wait lets
-        // finalizers that claimed their registration first finish while the engine is still alive.
+        // 2dog: clear unclaimed registrations so wrappers cannot free a stopped engine's memory.
+        // 2dog: wait for finalizers that already claimed ownership before shutting the engine down.
         private static void EndEngineLifetime(bool preserveStringNames)
         {
             GodotObjectInstances.Clear();
@@ -96,8 +95,8 @@ namespace Godot
         private static ConcurrentDictionary<WeakReference<IDisposable>, byte> OtherInstances { get; } =
             new();
 
-        // 2dog: long weak references still reach instances awaiting finalization, so shutdown disposes those while the
-        // engine is alive. The Unregister claim keeps a finalizer running concurrently from releasing twice.
+        // 2dog: long weak references let shutdown dispose wrappers awaiting finalization.
+        // 2dog: unregister claims prevent concurrent finalizers from releasing them twice.
         public static WeakReference<GodotObject> RegisterGodotObject(GodotObject godotObject)
         {
             var weakReferenceToSelf = new WeakReference<GodotObject>(godotObject, trackResurrection: true);
@@ -112,8 +111,7 @@ namespace Godot
             return weakReferenceToSelf;
         }
 
-        // 2dog: both return false once the instance's engine has shut down (EndEngineLifetime); the caller must then
-        // leave the native side alone.
+        // 2dog: registrations expire at EndEngineLifetime; failed claims must leave native memory alone.
         public static bool UnregisterGodotObject(GodotObject godotObject, WeakReference<GodotObject> weakReferenceToSelf)
             => GodotObjectInstances.TryRemove(weakReferenceToSelf, out _);
 

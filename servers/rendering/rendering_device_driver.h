@@ -285,10 +285,8 @@ public:
 	virtual void texture_free(TextureID p_texture) = 0;
 	virtual uint64_t texture_get_allocation_size(TextureID p_texture) = 0;
 
-	// 2dog: external texture sharing with a host compositor. Defaults report no support;
-	// drivers opt in per handle type (bitmask of 1 << ExternalTextureShareHandleType).
-	// r_export_handle is always the share handle: exported for export-style types,
-	// echoed back for import-style ones.
+	// 2dog: drivers opt into external texture sharing per handle-type bit; defaults report no support.
+	// 2dog: r_export_handle is exported for export types and echoed for import types.
 	virtual uint32_t external_texture_supported_handle_types() { return 0; }
 	virtual TextureID external_texture_create(ExternalTextureShareHandleType p_handle_type, DataFormat p_format, uint32_t p_width, uint32_t p_height, uint64_t p_import_handle, uint64_t *r_export_handle) { return TextureID(); }
 	// Returns a texture layout for buffer <-> texture copies. If you are copying multiple texture subresources to/from the same buffer,

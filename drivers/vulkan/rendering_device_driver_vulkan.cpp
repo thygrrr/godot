@@ -2615,8 +2615,7 @@ void RenderingDeviceDriverVulkan::texture_free(TextureID p_texture) {
 
 // 2dog: external texture sharing - shareable images a host compositor can import.
 
-// The external memory features (importable/exportable/...) of an optimal-tiling 2D image
-// of this format, usage and handle type; 0 when the driver rejects the combination.
+// 2dog: query optimal-tiling external memory support for this format, usage, and handle type.
 VkExternalMemoryFeatureFlags RenderingDeviceDriverVulkan::_external_texture_features(VkExternalMemoryHandleTypeFlagBits p_handle_type, VkFormat p_format, VkImageUsageFlags p_usage) const {
 	VkPhysicalDeviceExternalImageFormatInfo external_format_info = {};
 	external_format_info.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO;
@@ -2639,8 +2638,7 @@ VkExternalMemoryFeatureFlags RenderingDeviceDriverVulkan::_external_texture_feat
 	return external_format_props.externalMemoryProperties.externalMemoryFeatures;
 }
 
-// The usage every external texture is created with (the engine copies into it, compositors
-// sample it); capability probes must ask about the same combination creation will use.
+// 2dog: probe the same copy-target and sampled usage flags used when creating shared textures.
 static const VkImageUsageFlags EXTERNAL_TEXTURE_USAGE = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT;
 
 uint32_t RenderingDeviceDriverVulkan::external_texture_supported_handle_types() {
@@ -2650,9 +2648,8 @@ uint32_t RenderingDeviceDriverVulkan::external_texture_supported_handle_types() 
 	uint32_t types = 0;
 #if defined(VK_USE_PLATFORM_WIN32_KHR)
 	if (enabled_device_extension_names.has(VK_KHR_EXTERNAL_MEMORY_WIN32_EXTENSION_NAME)) {
-		// Extension presence is not importability: older Intel drivers expose the extension
-		// yet reject D3D11 KMT handles outright (while accepting NT handles), so probe each
-		// handle type against the canonical shared format.
+		// 2dog: probe each handle type; extension support does not guarantee importability.
+		// 2dog: older Intel drivers may accept NT handles while rejecting D3D11 KMT.
 		if (_external_texture_features(VK_EXTERNAL_MEMORY_HANDLE_TYPE_D3D11_TEXTURE_KMT_BIT, VK_FORMAT_R8G8B8A8_UNORM, EXTERNAL_TEXTURE_USAGE) & VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT) {
 			types |= 1u << EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_D3D11_KMT_KEYED_MUTEX;
 		}
@@ -2699,7 +2696,7 @@ RDD::TextureID RenderingDeviceDriverVulkan::external_texture_create(ExternalText
 
 	const VkImageUsageFlags vk_usage = EXTERNAL_TEXTURE_USAGE;
 
-	// The device must support an importable/exportable optimal-tiling image of this format.
+	// 2dog: require external memory support for this optimal-tiling image format.
 	VkExternalMemoryFeatureFlags features = _external_texture_features(vk_handle_type, RD_TO_VK_FORMAT[p_format], vk_usage);
 	if (importing ? !(features & VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT) : !(features & VK_EXTERNAL_MEMORY_FEATURE_EXPORTABLE_BIT)) {
 		ERR_FAIL_V_MSG(TextureID(), vformat("The driver cannot %s an external image of this format for handle type %d.", importing ? "import" : "export", (int)p_handle_type));
@@ -2729,7 +2726,7 @@ RDD::TextureID RenderingDeviceDriverVulkan::external_texture_create(ExternalText
 	VkResult err = vkCreateImage(vk_device, &create_info, VKC::get_allocation_callbacks(VK_OBJECT_TYPE_IMAGE), &vk_image);
 	ERR_FAIL_COND_V_MSG(err, TextureID(), vformat("Couldn't create Vulkan external image (VkResult error %d).", err));
 
-	// Dedicated allocation outside VMA (external memory wants its own VkDeviceMemory).
+	// 2dog: allocate dedicated external memory outside VMA.
 	VkMemoryDedicatedRequirements dedicated_reqs = {};
 	dedicated_reqs.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_REQUIREMENTS;
 	VkMemoryRequirements2 mem_reqs = {};
@@ -2740,8 +2737,7 @@ RDD::TextureID RenderingDeviceDriverVulkan::external_texture_create(ExternalText
 	mem_reqs_info.image = vk_image;
 	vkGetImageMemoryRequirements2(vk_device, &mem_reqs_info, &mem_reqs);
 
-	// The allocation itself stays outside VMA (external memory wants a dedicated
-	// VkDeviceMemory), but VMA still picks the memory type.
+	// 2dog: keep external memory outside VMA, but let VMA select the memory type.
 	VmaAllocationCreateInfo type_lookup = {};
 	type_lookup.preferredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 	uint32_t memory_type_index = 0;
@@ -2751,11 +2747,8 @@ RDD::TextureID RenderingDeviceDriverVulkan::external_texture_create(ExternalText
 		ERR_FAIL_V_MSG(TextureID(), "No suitable memory type for external texture.");
 	}
 
-	// Dedicated allocation only when the driver demands it: importers that cannot mark
-	// the memory as dedicated (OpenGL's GL_EXT_memory_object has GL_DEDICATED_MEMORY_OBJECT_EXT,
-	// but e.g. Avalonia's importer never sets it) get undefined contents from a dedicated
-	// export, so a plain exportable allocation is the compatible default.
-	// D3D11 interop handles always import as dedicated.
+	// 2dog: dedicate memory when required by the driver or D3D11 imports.
+	// 2dog: other exporters use plain allocations for importers that cannot mark memory dedicated.
 	VkMemoryDedicatedAllocateInfo dedicated_info = {};
 	dedicated_info.sType = VK_STRUCTURE_TYPE_MEMORY_DEDICATED_ALLOCATE_INFO;
 	dedicated_info.image = vk_image;
@@ -2799,7 +2792,7 @@ RDD::TextureID RenderingDeviceDriverVulkan::external_texture_create(ExternalText
 		ERR_FAIL_V_MSG(TextureID(), vformat("Couldn't bind external texture memory (VkResult error %d).", err));
 	}
 
-	// Import-style handles round-trip: the caller's handle is also the share handle.
+	// 2dog: return the caller's handle when importing shared textures.
 	uint64_t export_handle = importing ? p_import_handle : 0;
 #if defined(LINUXBSD_ENABLED) || defined(ANDROID_ENABLED)
 	{
@@ -2836,7 +2829,7 @@ RDD::TextureID RenderingDeviceDriverVulkan::external_texture_create(ExternalText
 	}
 
 	TextureInfo *tex_info = VersatileResource::allocate<TextureInfo>(resources_allocator);
-	create_info.pNext = nullptr; // Stored for metadata only; the chain lives on this stack.
+	create_info.pNext = nullptr; // 2dog: Stored for metadata only; the chain lives on this stack.
 	tex_info->vk_image = vk_image;
 	tex_info->vk_view = vk_image_view;
 	tex_info->rd_format = p_format;

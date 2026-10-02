@@ -817,9 +817,7 @@ Error ProjectSettings::_setup(const String &p_path, const String &p_main_pack, b
 	// Nothing was found, try to find a project file in provided path (`p_path`)
 	// or, if requested (`p_upwards`) in parent directories.
 
-	// 2dog: absolute project paths resolve without consulting the process CWD
-	// (DirAccess::change_dir transiently chdirs the process, which races with
-	// other engine instances booting or running in the same process).
+	// 2dog: resolve absolute project paths without process CWD changes that race other engine instances.
 	Ref<DirAccess> d;
 	String current_dir;
 	const String simplified = p_path.simplify_path();

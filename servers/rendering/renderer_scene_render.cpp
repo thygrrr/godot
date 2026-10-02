@@ -58,8 +58,7 @@ void RendererSceneRender::CameraData::set_multiview_camera(uint32_t p_view_count
 	is_orthogonal = p_is_orthogonal;
 	vaspect = p_vaspect;
 
-	// 2dog: mono-preview XR emulators report two identical eye views (no IPD offset); the
-	// combined-frustum derivation below degenerates for those, so use the first view directly.
+	// 2dog: identical XR eye views produce a degenerate combined frustum; use the first view directly.
 	if (p_transforms[0].is_equal_approx(p_transforms[1]) && p_projections[0] == p_projections[1]) {
 		main_transform = p_transforms[0];
 		main_projection = p_projections[0];

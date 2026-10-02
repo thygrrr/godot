@@ -356,8 +356,8 @@ namespace Godot.SourceGenerators
                 const string DictionaryType =
                     "global::System.Collections.Generic.Dictionary<global::Godot.StringName, global::Godot.Variant>";
 
-                // 2dog: no #if TOOLS. Editor engines (content export, Editor configuration) load non-Debug builds,
-                // and their placeholders drop saved [Export] values without defaults, which then serialize as NIL.
+                // 2dog: generate defaults in all builds; editor exports also load Release assemblies.
+                // 2dog: missing defaults drop saved [Export] values and serialize them as NIL.
 
                 source.Append("    /// <summary>\n")
                     .Append("    /// Get the default values for all properties declared in this class.\n")

@@ -281,8 +281,7 @@ bool OS_Web::is_userfs_persistent() const {
 }
 
 #ifdef WEB_SIDE_MODULE_LOADER_ENABLED
-// 2dog: side modules are read through Godot's file system, so they load from the exported pack (the GDExtension
-// export plugin embeds them there for web presets).
+// 2dog: load GDExtension side modules from the exported pack through Godot's file system.
 static String _side_module_path(const String &p_path) {
 	if (FileAccess::exists(p_path)) {
 		return p_path;
@@ -291,7 +290,7 @@ static String _side_module_path(const String &p_path) {
 	if (FileAccess::exists(local)) {
 		return local;
 	}
-	// globalize_path() drops the res:// prefix when the project runs from a pack without a resource directory.
+	// 2dog: restore res:// when globalize_path has no resource directory for a packed project.
 	if (p_path.is_relative_path() && FileAccess::exists("res://" + p_path)) {
 		return "res://" + p_path;
 	}
@@ -316,7 +315,7 @@ static Error _open_side_module(const String &p_path, int &r_handle) {
 	return OK;
 }
 
-// Dependencies opened for each library handle, closed along with it.
+// 2dog: close dependencies with their owning library handle.
 static HashMap<int, Vector<int>> &_side_module_dependencies() {
 	static HashMap<int, Vector<int>> dependencies;
 	return dependencies;
@@ -326,7 +325,7 @@ Error OS_Web::open_dynamic_library(const String &p_path, void *&p_library_handle
 	Vector<int> dependency_handles;
 	Error err = OK;
 	if (p_data != nullptr && p_data->library_dependencies != nullptr) {
-		// Loaded first so the library's dylink "needed" entries resolve by file name.
+		// 2dog: load dependencies first so dylink needed entries resolve by file name.
 		for (const String &dependency : *p_data->library_dependencies) {
 			int dependency_handle = 0;
 			err = _open_side_module(dependency, dependency_handle);

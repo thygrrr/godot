@@ -531,9 +531,8 @@ void RenderingDeviceDriverMetal::texture_free(TextureID p_texture) {
 	obj->release();
 }
 
-// 2dog: external texture sharing - IOSurface-backed textures a host compositor can import.
-// The texture retains its IOSurface, so the exported IOSurfaceRef stays valid while the
-// texture's RID lives; hosts retaining it longer must CFRetain it themselves.
+// 2dog: shared textures retain their IOSurface for the RID's lifetime.
+// 2dog: hosts must CFRetain handles kept after the texture is freed.
 
 uint32_t RenderingDeviceDriverMetal::external_texture_supported_handle_types() {
 	return 1u << EXTERNAL_TEXTURE_SHARE_HANDLE_TYPE_IOSURFACE;
@@ -548,11 +547,11 @@ RDD::TextureID RenderingDeviceDriverMetal::external_texture_create(ExternalTextu
 	switch (p_format) {
 		case DATA_FORMAT_R8G8B8A8_UNORM:
 		case DATA_FORMAT_R8G8B8A8_SRGB: {
-			fourcc = 0x52474241; // 'RGBA'
+			fourcc = 0x52474241; // 2dog: 'RGBA'
 		} break;
 		case DATA_FORMAT_B8G8R8A8_UNORM:
 		case DATA_FORMAT_B8G8R8A8_SRGB: {
-			fourcc = 0x42475241; // 'BGRA'
+			fourcc = 0x42475241; // 2dog: 'BGRA'
 		} break;
 		default: {
 			ERR_FAIL_V_MSG(TextureID(), "External textures support 8-bit RGBA/BGRA formats only.");
@@ -587,7 +586,7 @@ RDD::TextureID RenderingDeviceDriverMetal::external_texture_create(ExternalTextu
 	desc->setWidth(p_width);
 	desc->setHeight(p_height);
 	desc->setMipmapLevelCount(1);
-	desc->setStorageMode(MTL::StorageModeShared); // IOSurface-backed textures must be shared.
+	desc->setStorageMode(MTL::StorageModeShared); // 2dog: IOSurface-backed textures must be shared.
 	desc->setResourceOptions(base_hazard_tracking | MTL::ResourceStorageModeShared);
 	desc->setUsage(MTL::TextureUsageShaderRead);
 
@@ -596,8 +595,7 @@ RDD::TextureID RenderingDeviceDriverMetal::external_texture_create(ExternalTextu
 		CFRelease(surface);
 		ERR_FAIL_V_MSG(TextureID(), "Unable to create IOSurface-backed texture.");
 	}
-	// The texture holds its own IOSurface reference; drop the creation reference so the
-	// surface's lifetime follows the texture's.
+	// 2dog: the texture retains its IOSurface; release the creation reference.
 	CFRelease(surface);
 
 	_track_resource(obj);

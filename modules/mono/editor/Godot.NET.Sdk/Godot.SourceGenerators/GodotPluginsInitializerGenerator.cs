@@ -49,8 +49,7 @@ namespace GodotPlugins.Game
 
                 ManagedCallbacks.Create(outManagedCallbacks);
 
-                // Register once. The host replays script registrations on restart after
-                // this initializer has refreshed the native and managed callbacks.
+                // 2dog: register once; hosts replay scripts after the initializer refreshes native and managed callbacks.
                 if (!_scriptsRegistered)
                 {
                     ScriptManagerBridge.LookupScriptsInAssembly(typeof(global::GodotPlugins.Game.Main).Assembly);

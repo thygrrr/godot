@@ -189,13 +189,13 @@ private:
 		if (api_assemblies_dir.is_empty()) {
 			api_assemblies_dir = api_assemblies_base_dir.path_join(GDMono::get_expected_api_build_config());
 		}
-#else // LIBGODOT_HOSTFXR only (not TOOLS_ENABLED)
+#else // 2dog: LIBGODOT_HOSTFXR only (not TOOLS_ENABLED)
 		// 2dog: non-editor libgodot builds place assemblies directly beside the executable.
 		if (api_assemblies_dir.is_empty()) {
 			api_assemblies_dir = exe_dir;
 		}
 #endif // TOOLS_ENABLED
-#else // TOOLS_ENABLED || LIBGODOT_HOSTFXR
+#else // 2dog: TOOLS_ENABLED || LIBGODOT_HOSTFXR
 		String platform = _get_platform_name();
 		String arch = Engine::get_singleton()->get_architecture_name();
 		String appname_safe = Path::get_csharp_project_name();
@@ -250,7 +250,7 @@ private:
 			api_assemblies_dir = data_dir_root;
 		}
 #endif // ANDROID_ENABLED
-#endif // TOOLS_ENABLED || LIBGODOT_HOSTFXR
+#endif // 2dog: TOOLS_ENABLED || LIBGODOT_HOSTFXR
 	}
 
 public:

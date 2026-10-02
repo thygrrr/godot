@@ -1909,8 +1909,7 @@ RID RenderingDevice::external_texture_create(ExternalTextureShareHandleType p_ha
 	RDD::TextureID driver_id = driver->external_texture_create(p_handle_type, p_format, p_width, p_height, p_import_handle, &export_handle);
 	ERR_FAIL_COND_V(!driver_id, RID());
 
-	// The shared free path subtracts every texture's allocation size; without the matching
-	// increment here, freeing an external texture wraps texture_memory around.
+	// 2dog: count external allocations in texture_memory to prevent underflow when textures are freed.
 	texture_memory += driver->texture_get_allocation_size(driver_id);
 
 	Texture texture;
@@ -1928,7 +1927,7 @@ RID RenderingDevice::external_texture_create(ExternalTextureShareHandleType p_ha
 	texture.read_aspect_flags.set_flag(RDD::TEXTURE_ASPECT_COLOR_BIT);
 	texture.barrier_aspect_flags.set_flag(RDD::TEXTURE_ASPECT_COLOR_BIT);
 	texture.external_share_handle_type = p_handle_type;
-	texture.external_share_handle = export_handle; // Drivers echo import-style handles back.
+	texture.external_share_handle = export_handle; // 2dog: Drivers echo import-style handles back.
 	texture.driver_id = driver_id;
 
 	_texture_make_mutable(&texture, RID());
@@ -1969,9 +1968,8 @@ Error RenderingDevice::external_texture_present(RID p_from_texture, RID p_to_ext
 		return err;
 	}
 
-	// Complete all buffered frames so the copy has executed before the host hands the
-	// texture to its compositor; the host provides cross-API ordering (e.g. a D3D11
-	// keyed mutex held around this call). Coarse but correct.
+	// 2dog: flush buffered frames before the host passes this texture to its compositor.
+	// 2dog: hosts provide cross-API ordering, such as a D3D11 keyed mutex.
 	_flush_and_stall_for_all_frames();
 	return OK;
 }
@@ -8434,7 +8432,7 @@ Error RenderingDevice::initialize(RenderingContextDriver *p_context, DisplayServ
 		String vendor = _get_device_vendor_name(device_option);
 		String type = _get_device_type_name(device_option);
 		bool present_supported = main_surface != 0 ? context->device_supports_present(i, main_surface) : false;
-		String luid_suffix = device_option.luid_valid ? " - LUID 0x" + String::num_uint64(device_option.luid, 16) : String(); // 2dog
+		String luid_suffix = device_option.luid_valid ? " - LUID 0x" + String::num_uint64(device_option.luid, 16) : String(); // 2dog:
 		print_verbose("  #" + itos(i) + ": " + vendor + " " + name + " - " + (present_supported ? "Supported" : "Unsupported") + ", " + type + luid_suffix);
 		if (detect_device && (present_supported || main_surface == 0)) {
 			// If a window was specified, present must be supported by the device to be available as an option.
@@ -8451,7 +8449,7 @@ Error RenderingDevice::initialize(RenderingContextDriver *p_context, DisplayServ
 		}
 	}
 
-	// 2dog
+	// 2dog: warn before falling back when the requested GPU adapter is unavailable.
 	if (detect_device && target_luid != 0 && device_type_score != UINT32_MAX) {
 		WARN_PRINT(vformat("No usable GPU matches the requested adapter LUID 0x%s; falling back to automatic device selection.", String::num_uint64(target_luid, 16)));
 	}

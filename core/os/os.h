@@ -247,7 +247,7 @@ public:
 
 	bool is_layered_allowed() const { return _allow_layered; }
 	bool is_hidpi_allowed() const { return _allow_hidpi; }
-	bool is_hidden_window() const { return _hidden_window; } // 2dog
+	bool is_hidden_window() const { return _hidden_window; } // 2dog:
 
 	void ensure_user_data_dir();
 

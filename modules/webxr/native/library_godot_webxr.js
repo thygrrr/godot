@@ -29,11 +29,9 @@
 /**************************************************************************/
 
 const GodotWebXR = {
-	// 2dog: uses the emscripten 3.1.56 Browser API (inverse of upstream 793258919b, which moved to the
-	// 4.x $MainLoop API); revert when the .NET runtime pack's emscripten reaches 4.x.
+	// 2dog: use the Emscripten 3.1.56 Browser API; switch back to MainLoop when .NET reaches 4.x.
 	$GodotWebXR__deps: ['$Browser', '$GL', '$GodotRuntime', '$GodotOS', '$runtimeKeepalivePush', '$runtimeKeepalivePop'],
-	// 2dog: an engine shutdown without an explicit uninitialize must not leave the session or the
-	// monkey-patched requestAnimationFrame behind for the next engine lifetime.
+	// 2dog: engine shutdown must clear active XR sessions and restore requestAnimationFrame.
 	$GodotWebXR__postset: 'GodotOS.atexit(function(resolve, reject) { GodotWebXR.reset(); resolve(); });',
 	$GodotWebXR: {
 		gl: null,

@@ -196,7 +196,7 @@ static PhysicsServer3D *physics_server_3d = nullptr;
 #ifndef XR_DISABLED
 static XRServer *xr_server = nullptr;
 #endif // XR_DISABLED
-// Track the two setup phases separately so delayed setup2() failures can roll phase one back safely.
+// 2dog: track setup phases separately so delayed setup2 failures can roll back phase one.
 static bool _setup_success = false;
 static bool _start_success = false;
 static bool _core_modules_initialized = false;
@@ -595,8 +595,8 @@ void finalize_display() {
 	}
 }
 
-// Roll back setup2() after server modules have initialized, but before scene types,
-// navigation servers and physics have initialized. Phase one is cleaned up by the caller.
+// 2dog: roll back partial phase two before scene, navigation, and physics initialization.
+// 2dog: the caller cleans up phase one.
 void Main::cleanup_servers_phase() {
 	ResourceLoader::clear_thread_load_tasks();
 	ResourceLoader::clear_translation_remaps();
@@ -625,8 +625,7 @@ void Main::cleanup_servers_phase() {
 		audio_server = nullptr;
 	}
 
-	// OS-owned joypads can access Input during destruction. This must precede
-	// deleting Input, just as it does during normal Main::cleanup().
+	// 2dog: destroy OS-owned joypads before Input, matching normal Main::cleanup().
 	OS::get_singleton()->finalize();
 	finalize_display();
 
@@ -855,7 +854,7 @@ void Main::print_help(const char *p_binary) {
 	print_help_option("--rendering-method <renderer>", "Renderer name. Requires driver support.\n");
 	print_help_option("--rendering-driver <driver>", "Rendering driver (depends on display driver).\n");
 	print_help_option("--gpu-index <device_index>", "Use a specific GPU (only available on the Forward+/Mobile renderers; run with --verbose to get a list of available devices).\n");
-	print_help_option("--gpu-luid <adapter_luid>", "Prefer the GPU whose OS adapter LUID matches (hexadecimal; Windows). Ignored when --gpu-index is set; falls back to automatic selection when no device matches.\n"); // 2dog
+	print_help_option("--gpu-luid <adapter_luid>", "Prefer the GPU whose OS adapter LUID matches (hexadecimal; Windows). Ignored when --gpu-index is set; falls back to automatic selection when no device matches.\n"); // 2dog:
 	print_help_option("--text-driver <driver>", "Text driver (used for font rendering, bidirectional support and shaping).\n");
 	print_help_option("--tablet-driver <driver>", "Pen tablet input driver.\n");
 	print_help_option("--headless", "Enable headless mode (--display-driver headless --audio-driver Dummy). Useful for servers and with --script.\n");
@@ -1592,7 +1591,7 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 				OS::get_singleton()->print("Missing GPU index argument, aborting.\n");
 				goto error;
 			}
-		} else if (arg == "--gpu-luid") { // 2dog
+		} else if (arg == "--gpu-luid") { // 2dog:
 			if (N) {
 				Engine::singleton->gpu_luid = (uint64_t)N->get().hex_to_int();
 				N = N->next();
@@ -2019,8 +2018,7 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 					OS::get_singleton()->print("Invalid project path specified: \"%s\", aborting.\n", p.utf8().get_data());
 					goto error;
 				}
-				// 2dog: record the project path explicitly; ProjectSettings must not
-				// re-derive it from the process CWD (racy with in-process multi-instance).
+				// 2dog: record project paths explicitly; process CWD changes can race other engine instances.
 				String resolved = p.simplify_path();
 				project_path = resolved.is_absolute_path() ? resolved : OS::get_singleton()->get_cwd();
 				N = N->next();
@@ -2302,9 +2300,7 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 			}
 #endif // TOOLS_ENABLED
 		} else if (arg == "--hidden-window") {
-			// 2dog: embedding hosts composite the viewport themselves; keep the OS window
-			// unmapped. The OS flag is the single source of truth (a fresh OS instance per
-			// engine run keeps it restart-safe).
+			// 2dog: embedding hosts composite the viewport, so keep the OS window unmapped.
 			OS::get_singleton()->_hidden_window = true;
 		} else if (arg == "--wid") {
 			if (N) {

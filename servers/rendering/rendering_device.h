@@ -2034,7 +2034,7 @@ private:
 
 VARIANT_ENUM_CAST_EXT(RenderingDeviceEnums::DeviceType, RenderingDevice::DeviceType)
 VARIANT_ENUM_CAST(RenderingDevice::DriverResource)
-VARIANT_ENUM_CAST(RenderingDevice::ExternalTextureShareHandleType) // 2dog
+VARIANT_ENUM_CAST(RenderingDevice::ExternalTextureShareHandleType) // 2dog:
 VARIANT_ENUM_CAST(RenderingDevice::ShaderStage)
 VARIANT_ENUM_CAST(RenderingDevice::ShaderLanguage)
 VARIANT_ENUM_CAST(RenderingDevice::CompareOperator)

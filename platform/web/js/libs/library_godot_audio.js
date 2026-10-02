@@ -748,7 +748,7 @@ class SampleNode {
 		if (!this.isStarted) {
 			return;
 		}
-		// The audio context was closed or the node was already cleared.
+		// 2dog: skip nodes cleared by AudioContext shutdown.
 		if (GodotAudio.ctx == null || this._source == null) {
 			return;
 		}
@@ -1335,9 +1335,8 @@ const _GodotAudio = {
 				resolve();
 				return;
 			}
-			// Stop live sample playbacks so that late engine calls (e.g. pausing
-			// samples during exit) find no stale nodes referencing the closed
-			// context. Skip finished callbacks into the exiting engine.
+			// 2dog: stop sample playback without callbacks into the exiting engine.
+			// 2dog: clear stale nodes before the AudioContext closes.
 			GodotAudio.sampleFinishedCallback = null;
 			for (const sampleNode of GodotAudio.sampleNodes.values()) {
 				sampleNode.clear();
@@ -1387,7 +1386,7 @@ const _GodotAudio = {
 			busIndex,
 			startOptions
 		) {
-			// Ignore samples started after the audio context was closed.
+			// 2dog: ignore samples started after AudioContext shutdown.
 			if (GodotAudio.ctx == null) {
 				return;
 			}

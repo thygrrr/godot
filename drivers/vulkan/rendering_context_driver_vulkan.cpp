@@ -870,7 +870,7 @@ Error RenderingContextDriverVulkan::_initialize_devices() {
 			props2.pNext = &id_props;
 			vkGetPhysicalDeviceProperties2(physical_devices[i], &props2);
 			if (id_props.deviceLUIDValid) {
-				// Decode little-endian: yields (HighPart << 32) | LowPart, as D3D hosts compose it.
+				// 2dog: decode adapter LUIDs as little-endian to match D3D host values.
 				uint64_t luid = 0;
 				for (int32_t b = VK_LUID_SIZE - 1; b >= 0; b--) {
 					luid = (luid << 8) | id_props.deviceLUID[b];

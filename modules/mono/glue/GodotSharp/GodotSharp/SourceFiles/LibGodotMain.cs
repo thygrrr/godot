@@ -16,7 +16,7 @@ namespace GodotPlugins.Game
 {
     internal static partial class Initializer
     {
-        // Shared builds register the managed initializer through this callback.
+        // 2dog: shared builds register the managed initializer through this callback.
         [LibraryImport("libgodot")]
         private static partial void set_load_from_executable_fn(nint callback);
 

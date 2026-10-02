@@ -1,8 +1,7 @@
 // SPDX-License-Identifier: MIT
 // 2dog: this file is part of https://2dog.dev
 
-// 2dog: .NET resource names are file names, but its default URLs do not escape
-// URL delimiters such as '#' before fetch interprets them.
+// 2dog: escape URL delimiters such as # in .NET resource names before fetch interprets them.
 const encodeDotnetResourceUrl = (defaultUri, name) => {
 	const uriName = encodeURI(name);
 	const matchedName = defaultUri.includes(name) ? name : uriName;
@@ -14,9 +13,9 @@ const encodeDotnetResourceUrl = (defaultUri, name) => {
 	return `${defaultUri.slice(0, nameIndex)}${encodedName}${defaultUri.slice(nameIndex + matchedName.length)}`;
 };
 
-// Wrap the .NET runtime module as Godot's Emscripten module.
+// 2dog: wrap the .NET runtime module as Godot's Emscripten module.
 const Godot = async (moduleConfig) => { // eslint-disable-line no-unused-vars
-	// Required for JSImport, JSExport, and multithreading.
+	// 2dog: let .NET configure wasm instantiation for JS imports, exports, and threads.
 	delete moduleConfig['instantiateWasm'];
 
 	// Depends on "dotnet.native.wasm" being in place of "godot.wasm".
@@ -30,11 +29,8 @@ const Godot = async (moduleConfig) => { // eslint-disable-line no-unused-vars
 		}
 	};
 
-	// 2dog: optional precompressed-sibling fallback ('.gz' + in-page inflate,
-	// for hosts that serve everything uncompressed) and cumulative download
-	// reporting for the _framework payload the engine preloader never sees.
-	// Only binary resources are taken over - script modules must stay URLs so
-	// the runtime can import() them.
+	// 2dog: inflate precompressed binary resources and report _framework download progress.
+	// 2dog: leave script resources as URLs for the runtime's import().
 	const gzSuffix = moduleConfig['godotPrecompressedSuffix'] || '';
 	const onDotnetBytes = moduleConfig['godotOnDotnetProgress'];
 	let dotnetLoaded = 0;
@@ -72,27 +68,27 @@ const Godot = async (moduleConfig) => { // eslint-disable-line no-unused-vars
 		// Pass emscripten config.
 		.withModuleConfig(moduleConfig)
 		.withConfig({
-			// Let .NET configure the initial thread-pool size.
+			// 2dog: let .NET configure the initial thread-pool size.
 			pthreadPoolInitialSize: moduleConfig['emscriptenPoolSize'] || 8,
-			// Enables synchronous JSImport and JSExport calls with threads.
+			// 2dog: enable synchronous JS import and export calls with threads.
 			jsThreadBlockingMode: 'ThrowWhenBlockingWait',
 		})
 		.withResourceLoader((_type, name, _defaultUri, _integrity, _behavior) => {
 			if (name === 'dotnet.native.wasm') {
 				if (preloadedWasm) {
-					// Pass the preloaded wasm response to the Godot loader.
+					// 2dog: pass the preloaded wasm response to the Godot loader.
 					const promise = Promise.resolve(preloadedWasm);
 					preloadedWasm = null;
 					return promise;
 				}
-				// Fall back to the resolved wasm path.
+				// 2dog: fall back to the resolved wasm path.
 				return loadPath;
 			}
 			const resourceUrl = encodeDotnetResourceUrl(_defaultUri, name);
 			if ((gzSuffix || onDotnetBytes) && /\.(wasm|dat|pdb)$/.test(name)) {
 				return loadBinaryResource(resourceUrl);
 			}
-			// Preserve the default loader path unless the resource name needed escaping.
+			// 2dog: preserve default resource URLs unless their names need escaping.
 			return resourceUrl === _defaultUri ? null : resourceUrl;
 		});
 
@@ -111,7 +107,7 @@ const Godot = async (moduleConfig) => { // eslint-disable-line no-unused-vars
 	}
 	Module['getGodotSharpExports'] = getAssemblyExports.bind(null, dotnetConfig.mainAssemblyName);
 
-	// Godot starts wasm through callMain; provide it when Emscripten omits it.
+	// 2dog: provide callMain for Godot when Emscripten omits it.
 	Module.callMain = (args) => runMain(dotnetConfig.mainAssemblyName, args);
 	return Module;
 };

@@ -14,13 +14,16 @@ namespace Godot
 {
     internal static class DelegateUtils
     {
+        internal static Delegate? GetDelegate(object? target)
+            => target is Callable.ManagedTrampolineState state ? state.Delegate : (Delegate?)target;
+
         [UnmanagedCallersOnly]
         internal static godot_bool DelegateEquals(IntPtr delegateGCHandleA, IntPtr delegateGCHandleB)
         {
             try
             {
-                var @delegateA = (Delegate?)GCHandle.FromIntPtr(delegateGCHandleA).Target;
-                var @delegateB = (Delegate?)GCHandle.FromIntPtr(delegateGCHandleB).Target;
+                var @delegateA = GetDelegate(GCHandle.FromIntPtr(delegateGCHandleA).Target);
+                var @delegateB = GetDelegate(GCHandle.FromIntPtr(delegateGCHandleB).Target);
                 return (@delegateA! == @delegateB!).ToGodotBool();
             }
             catch (Exception e)
@@ -35,7 +38,7 @@ namespace Godot
         {
             try
             {
-                var @delegate = (Delegate?)GCHandle.FromIntPtr(delegateGCHandle).Target;
+                var @delegate = GetDelegate(GCHandle.FromIntPtr(delegateGCHandle).Target);
                 return @delegate?.GetHashCode() ?? 0;
             }
             catch (Exception e)
@@ -50,7 +53,7 @@ namespace Godot
         {
             try
             {
-                var @delegate = (Delegate?)GCHandle.FromIntPtr(delegateGCHandle).Target;
+                var @delegate = GetDelegate(GCHandle.FromIntPtr(delegateGCHandle).Target);
                 int? argCount = @delegate?.Method?.GetParameters().Length;
                 if (argCount is null)
                 {
@@ -74,13 +77,21 @@ namespace Godot
         {
             try
             {
+                var target = GCHandle.FromIntPtr(delegateGCHandle).Target;
+                if (target is Callable.ManagedTrampolineState state)
+                {
+                    state.Trampoline(state.Delegate, new NativeVariantPtrArgs(args, argc), out godot_variant result);
+                    *outRet = result;
+                    return;
+                }
+
                 if (trampoline == null)
                 {
                     throw new ArgumentNullException(nameof(trampoline),
                         "Cannot dynamically invoke delegate because the trampoline is null.");
                 }
 
-                var @delegate = (Delegate)GCHandle.FromIntPtr(delegateGCHandle).Target!;
+                var @delegate = (Delegate)target!;
                 var trampolineFn = (delegate* managed<object, NativeVariantPtrArgs, out godot_variant, void>)trampoline;
 
                 trampolineFn(@delegate, new NativeVariantPtrArgs(args, argc), out godot_variant ret);
@@ -329,7 +340,7 @@ namespace Godot
                 var serializedData = Collections.Array.CreateTakingOwnershipOfDisposableValue(
                     NativeFuncs.godotsharp_array_new_copy(*nSerializedData));
 
-                var @delegate = (Delegate)GCHandle.FromIntPtr(delegateGCHandle).Target!;
+                var @delegate = GetDelegate(GCHandle.FromIntPtr(delegateGCHandle).Target)!;
 
                 return TrySerializeDelegate(@delegate, serializedData)
                     .ToGodotBool();

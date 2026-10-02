@@ -141,8 +141,7 @@
 
 - (void)applicationDidFinishLaunching:(NSNotification *)notification {
 #ifndef LIBGODOT_ENABLED
-	// 2dog: in a library build the host creates, starts, and iterates the instance itself;
-	// launching the application must never boot a second engine.
+	// 2dog: hosts bootstrap library instances; application launch must not create a second engine.
 	os_mac->start_main();
 #endif
 }
@@ -198,8 +197,7 @@ static const char *godot_ac_ctx = "gd_accessibility_observer_ctx";
 		if (os_mac->get_main_loop()) {
 #ifndef LIBGODOT_ENABLED
 			// Application is already running, open a new instance with the URL/files as command line arguments.
-			// 2dog: never in a library build - the host owns the process lifecycle (and AppKit hands it every
-			// bare command-line argument as a document, which would relaunch the host forever).
+			// 2dog: hosts handle library-build open-file events; forwarding arguments can relaunch them forever.
 			os_mac->create_instance(args);
 #endif
 		} else if (os_mac->get_cmd_argc() == 0) {

@@ -2463,9 +2463,8 @@ Error EditorExportPlatform::save_zip_patch(const Ref<EditorExportPreset> &p_pres
 
 Error EditorExportPlatform::export_pack(const Ref<EditorExportPreset> &p_preset, bool p_debug, const String &p_path, BitField<EditorExportPlatform::DebugFlags> p_flags) {
 	ExportNotifier notifier(*this, p_preset, p_debug, p_path, p_flags);
-	// 2dog: a pack-only export still needs the preset's GDExtension libraries. Copy them beside the pack, where
-	// desktop runtimes look (next to the executable), honoring targets like EditorExportPlatformPC; web presets
-	// embed their side modules in the pack instead.
+	// 2dog: pack-only exports copy desktop GDExtensions beside the pack for host lookup.
+	// 2dog: web presets embed their side modules in the pack.
 	Vector<SharedObject> so_files;
 	Error err = save_pack(p_preset, p_debug, p_path, &so_files);
 	if (err != OK || get_os_name() == "Web") {

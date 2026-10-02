@@ -272,9 +272,8 @@ void RenderingServerDefault::_finish() {
 	memdelete(RSG::scene);
 	memdelete(RSG::camera_attributes);
 
-	// 2dog: reinit safety - null every RSG static, or they dangle into the next
-	// engine instance. A restarted instance probes has_os_feature() (GLOBAL_DEF
-	// feature overrides) before its rasterizer assigns them.
+	// 2dog: clear RSG pointers so restarted engines cannot access destroyed renderers.
+	// 2dog: feature overrides may query them before the next rasterizer initializes.
 	RSG::canvas = nullptr;
 	RSG::viewport = nullptr;
 	RSG::rasterizer = nullptr;
