@@ -10,7 +10,7 @@ namespace GodotPlugins
 {
     public class PluginLoadContext : AssemblyLoadContext
     {
-        private readonly AssemblyDependencyResolver _resolver;
+        private readonly AssemblyDependencyResolver? _resolver;
         private readonly ICollection<string> _sharedAssemblies;
         private readonly AssemblyLoadContext _mainLoadContext;
 
@@ -20,7 +20,9 @@ namespace GodotPlugins
             AssemblyLoadContext mainLoadContext, bool isCollectible)
             : base(isCollectible)
         {
-            _resolver = new AssemblyDependencyResolver(pluginPath);
+            // Android's runtime resolves the APK's managed bundle and does not
+            // support AssemblyDependencyResolver. Reuse the host load context.
+            _resolver = OperatingSystem.IsAndroid() ? null : new AssemblyDependencyResolver(pluginPath);
             _sharedAssemblies = sharedAssemblies;
             _mainLoadContext = mainLoadContext;
 
@@ -63,6 +65,9 @@ namespace GodotPlugins
             if (_sharedAssemblies.Contains(assemblyName.Name))
                 return _mainLoadContext.LoadFromAssemblyName(assemblyName);
 
+            if (_resolver == null)
+                return _mainLoadContext.LoadFromAssemblyName(assemblyName);
+
             string? assemblyPath = _resolver.ResolveAssemblyToPath(assemblyName);
             if (assemblyPath != null)
             {
@@ -86,7 +91,7 @@ namespace GodotPlugins
 
         protected override IntPtr LoadUnmanagedDll(string unmanagedDllName)
         {
-            string? libraryPath = _resolver.ResolveUnmanagedDllToPath(unmanagedDllName);
+            string? libraryPath = _resolver?.ResolveUnmanagedDllToPath(unmanagedDllName);
             if (libraryPath != null)
                 return LoadUnmanagedDllFromPath(libraryPath);
 
