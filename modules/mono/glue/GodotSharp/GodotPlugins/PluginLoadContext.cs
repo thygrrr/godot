@@ -47,7 +47,8 @@ namespace GodotPlugins
             }
         }
 
-        // 2dog: GodotPlugins ships only in untrimmed desktop/editor deployments.
+        // 2dog: only untrimmed desktop/editor deployments load plugins from disk; trimmed Android deployments
+        // resolve them through the host load context.
         [UnconditionalSuppressMessage("Trimming", "IL2026",
             Justification = "Plugin assemblies are loaded from disk in untrimmed deployments only.")]
         protected override Assembly? Load(AssemblyName assemblyName)

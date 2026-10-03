@@ -178,8 +178,14 @@ namespace GodotPlugins
             }
         }
 
+        private const string ToolsAreEditorOnly =
+            "Only the editor loads GodotTools, and editor deployments are never trimmed.";
+
+        // 2dog: InitializeFromEngine hands this callback to native code, so RequiresUnreferencedCode here warned in
+        // every trimmed deployment (Android), although only the untrimmed editor calls it.
         [UnmanagedCallersOnly]
-        [RequiresUnreferencedCode("Calls System.Reflection.Assembly.GetType(String)")]
+        [UnconditionalSuppressMessage("Trimming", "IL2026", Justification = ToolsAreEditorOnly)]
+        [UnconditionalSuppressMessage("Trimming", "IL2075", Justification = ToolsAreEditorOnly)]
         private static unsafe IntPtr LoadToolsAssembly(char* nAssemblyPath,
             IntPtr unmanagedCallbacks, int unmanagedCallbacksSize)
         {
