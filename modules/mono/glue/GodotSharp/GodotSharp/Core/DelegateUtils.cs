@@ -591,6 +591,10 @@ namespace Godot
 
             if (genericArgumentsCount != 0)
             {
+                // 2dog: only editor hot reload deserializes delegates, and NativeAOT cannot construct generic types.
+                if (!RuntimeFeature.IsDynamicCodeSupported)
+                    return null;
+
                 var genericArgumentTypes = new Type[genericArgumentsCount];
 
                 for (int i = 0; i < genericArgumentsCount; i++)
