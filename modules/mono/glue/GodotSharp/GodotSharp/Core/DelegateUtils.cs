@@ -14,6 +14,10 @@ namespace Godot
 {
     internal static class DelegateUtils
     {
+        // 2dog: AOT cannot construct arbitrary generic types. Remember concrete types seen by the serializer
+        // instead. Dynamic runtimes must not populate this set: it would keep editor reload assemblies alive.
+        private static readonly HashSet<Type> _aotSerializedGenericTypes = new();
+
         internal static Delegate? GetDelegate(object? target)
             => target is Callable.ManagedTrampolineState state ? state.Delegate : (Delegate?)target;
 
@@ -309,6 +313,12 @@ namespace Godot
             }
             else if (type.IsGenericType)
             {
+                if (!RuntimeFeature.IsDynamicCodeSupported && type.IsConstructedGenericType)
+                {
+                    lock (_aotSerializedGenericTypes)
+                        _aotSerializedGenericTypes.Add(type);
+                }
+
                 Type genericTypeDef = type.GetGenericTypeDefinition();
                 Type[] genericArgs = type.GetGenericArguments();
 
@@ -591,10 +601,6 @@ namespace Godot
 
             if (genericArgumentsCount != 0)
             {
-                // 2dog: only editor hot reload deserializes delegates, and NativeAOT cannot construct generic types.
-                if (!RuntimeFeature.IsDynamicCodeSupported)
-                    return null;
-
                 var genericArgumentTypes = new Type[genericArgumentsCount];
 
                 for (int i = 0; i < genericArgumentsCount; i++)
@@ -605,7 +611,35 @@ namespace Godot
                     genericArgumentTypes[i] = genericArgumentType;
                 }
 
-                type = type.MakeGenericType(genericArgumentTypes);
+                if (RuntimeFeature.IsDynamicCodeSupported)
+                {
+                    type = type.MakeGenericType(genericArgumentTypes);
+                }
+                else
+                {
+                    // The serialization callbacks preserve delegates within the running application. Reuse a
+                    // type that actually existed there, rather than asking AOT for a new generic instantiation.
+                    lock (_aotSerializedGenericTypes)
+                    {
+                        foreach (Type candidate in _aotSerializedGenericTypes)
+                        {
+                            if (candidate.GetGenericTypeDefinition() != type)
+                                continue;
+
+                            Type[] arguments = candidate.GetGenericArguments();
+                            if (arguments.Length != genericArgumentTypes.Length)
+                                continue;
+
+                            int i = 0;
+                            while (i < arguments.Length && arguments[i] == genericArgumentTypes[i])
+                                i++;
+                            if (i == arguments.Length)
+                                return candidate;
+                        }
+                    }
+
+                    return null; // Unknown generic types cannot be reconstructed safely under AOT.
+                }
             }
 
             return type;
