@@ -4436,22 +4436,27 @@ void DisplayServerWindows::process_events() {
 	_THREAD_SAFE_LOCK_
 
 	MSG msg = {};
-	// 2dog: an unfiltered peek prevents false window hangs after focus changes.
-	// 2dog: Leave messages queued for batched raw input and throttled mouse motion.
-	PeekMessageW(&msg, nullptr, 0, 0, PM_NOREMOVE);
+	// 2dog: remove and dispatch one unfiltered message before the throttled pump.
+	// A PM_NOREMOVE peek followed only by filtered retrieval can leave taskbar
+	// activation stuck after minimizing, even though the main loop keeps running.
+	if (PeekMessageW(&msg, nullptr, 0, 0, PM_REMOVE)) {
+		TranslateMessage(&msg);
+		DispatchMessageW(&msg);
+	}
 	process_raw_input();
 
 	// The pump throttles only what the hardware can flood, and drains the rest.
 	// See <https://ph3at.github.io/posts/Windows-Input/> for more information.
 	//
-	// - WM_INPUT is never dispatched from here: pulling raw input through
+	// - After the initial unfiltered retrieval, WM_INPUT stays queued: pulling it through
 	//   PeekMessage() one message at a time is what collapses the pump at high
 	//   polling rates (2,000 Hz and above). It stays in the queue for the next
 	//   buffered read in process_raw_input().
 	// - WM_MOUSEMOVE and WM_NCMOUSEMOVE are synthesized on demand from the
 	//   hardware input stream, so while the mouse is moving, the queue never
 	//   reads empty and an unbounded pump spins until the mouse stops. They are
-	//   dispatched at most once per frame each. No motion is lost: they carry
+	//   dispatched at most once per frame each by the filtered pump, in addition
+	//   to any initial unfiltered message. No motion is lost: they carry
 	//   the latest (coalesced) cursor position, and the relative motion derived
 	//   from successive positions preserves the total delta. Captured mouse
 	//   mode gets its sub-frame motion from raw input.
@@ -5877,11 +5882,9 @@ LRESULT DisplayServerWindows::WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARA
 			}
 
 			// The bulk of raw input is drained in batch by process_raw_input()
-			// before the message pump runs. This only sees WM_INPUT messages the
-			// pump picks up afterwards (it peeks the full message range whenever
-			// the app is not focused, and raw input can also arrive while the pump
-			// itself is running). Without this fallback, DefWindowProc() would
-			// free their data unread.
+			// before the filtered message pump runs. The initial unfiltered
+			// retrieval can dispatch WM_INPUT before that batch is read. Without
+			// this fallback, DefWindowProc() would free its data unread.
 			UINT dwSize;
 			if (GetRawInputData((HRAWINPUT)lParam, RID_INPUT, nullptr, &dwSize, sizeof(RAWINPUTHEADER)) != 0 || dwSize == 0) {
 				break;
