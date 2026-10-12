@@ -1331,6 +1331,9 @@ void register_scene_types() {
 void unregister_scene_types() {
 	OS::get_singleton()->benchmark_begin_measure("Scene", "Unregister Types");
 
+	// 2dog: idle callbacks are registered for each scene-subsystem lifetime.
+	SceneTree::clear_idle_callbacks();
+
 	SceneDebugger::deinitialize();
 
 	if constexpr (GD_IS_CLASS_ENABLED(TextureLayered)) {

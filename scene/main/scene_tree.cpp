@@ -2006,15 +2006,12 @@ void SceneTree::_call_idle_callbacks() {
 }
 
 void SceneTree::add_idle_callback(IdleCallback p_callback) {
-	// 2dog: register_scene_types() runs on every boot of the same loaded library, and these statics outlive
-	// the engine. Keep one entry per callback so repeated restarts cannot exhaust MAX_IDLE_CALLBACKS.
-	for (int i = 0; i < idle_callback_count; i++) {
-		if (idle_callbacks[i] == p_callback) {
-			return;
-		}
-	}
 	ERR_FAIL_COND(idle_callback_count >= MAX_IDLE_CALLBACKS);
 	idle_callbacks[idle_callback_count++] = p_callback;
+}
+
+void SceneTree::clear_idle_callbacks() {
+	idle_callback_count = 0;
 }
 
 #ifdef TOOLS_ENABLED
