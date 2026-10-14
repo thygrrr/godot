@@ -4,7 +4,7 @@
 // 2dog: load GDExtension side modules against the statically linked main module.
 // 2dog: the host must export their imports because Emscripten's dynamic linker requires relocatable builds.
 const GodotDylink = {
-	$GodotDylink__deps: ['$addFunction', '$updateTableMap', '$functionsInTableMap', '$wasmTable', '$setWasmTableEntry', '$alignMemory', '$zeroMemory', '$UTF8ArrayToString', 'malloc'],
+	$GodotDylink__deps: ['$addFunction', '$updateTableMap', '$functionsInTableMap', '$wasmTable', '$alignMemory', '$zeroMemory', '$UTF8ArrayToString', 'malloc'],
 	// 2dog: threaded builds: each pthread instantiates the loaded side modules before its entry point runs.
 	$GodotDylink__postset: 'if (typeof PThread !== "undefined") { PThread.tlsInitFunctions.push(() => wasmExports["godot_web_sync_side_modules"]()); }',
 	$GodotDylink: {
@@ -290,7 +290,7 @@ const GodotDylink = {
 			if (slots) {
 				for (const [sym, slot] of slots) {
 					if (typeof exports[sym] === 'function') {
-						setWasmTableEntry(slot, exports[sym]);
+						wasmTable.set(slot, exports[sym]);
 					}
 				}
 			}
@@ -319,7 +319,7 @@ const GodotDylink = {
 					}
 					if (slots) {
 						entry.value = slots.get(sym);
-						setWasmTableEntry(entry.value, value);
+						wasmTable.set(entry.value, value);
 					} else {
 						// 2dog: reuse table slots through addFunction to preserve function-pointer equality.
 						entry.value = addFunction(value);
