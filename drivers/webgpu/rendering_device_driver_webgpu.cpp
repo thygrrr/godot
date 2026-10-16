@@ -8138,8 +8138,13 @@ RDD::PipelineID RenderingDeviceDriverWebGPU::render_pipeline_create(
 	LocalVector<WGPUBlendState> blend_states;
 	color_targets.resize(color_target_count);
 	blend_states.resize(color_target_count);
-	memset(color_targets.ptr(), 0, sizeof(WGPUColorTargetState) * color_target_count);
-	memset(blend_states.ptr(), 0, sizeof(WGPUBlendState) * color_target_count);
+	// Depth-only passes have no color targets. Calling memset with a null
+	// pointer is undefined even for zero bytes; GCC can then remove the
+	// LocalVector destructor's null checks and report invalid frees.
+	if (color_target_count > 0) {
+		memset(color_targets.ptr(), 0, sizeof(WGPUColorTargetState) * color_target_count);
+		memset(blend_states.ptr(), 0, sizeof(WGPUBlendState) * color_target_count);
+	}
 
 	for (uint32_t i = 0; i < color_target_count; i++) {
 		// Get texture format from subpass color reference i.
