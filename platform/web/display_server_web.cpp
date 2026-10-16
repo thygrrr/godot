@@ -1159,7 +1159,7 @@ DisplayServerWeb::DisplayServerWeb(const String &p_rendering_driver, DisplayServ
 			r_error = ERR_CANT_CREATE;
 			ERR_FAIL_MSG("WebGPU: Failed to initialize rendering context. Ensure navigator.gpu is available and the device was pre-initialized in the HTML shell.");
 		}
-		Error err = rendering_context->window_create(DisplayServerEnums::MAIN_WINDOW_ID, nullptr);
+		Error err = rendering_context->window_create(DisplayServerEnums::MAIN_WINDOW_ID, canvas_id);
 		if (err != OK) {
 			memdelete(rendering_context);
 			rendering_context = nullptr;

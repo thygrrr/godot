@@ -131,13 +131,8 @@ RenderingContextDriver::SurfaceID RenderingContextDriverWebGPU::surface_create(c
 #ifndef WEB_ENABLED
 	return surface_create_native(p_platform_data);
 #else
-	// p_platform_data is expected to contain a canvas selector string (e.g., "#canvas").
-	// For the web platform, we use the default canvas "#canvas".
-	const char *canvas_selector = "#canvas";
-	if (p_platform_data != nullptr) {
-		// TODO: Extract canvas selector from platform data if provided.
-		// For now, use default.
-	}
+	// Use the configured canvas selector; embedded hosts can have distinct IDs.
+	const char *canvas_selector = p_platform_data ? static_cast<const char *>(p_platform_data) : "#canvas";
 
 	// Emscripten 5.x / emdawnwebgpu renamed this struct.
 	WGPUEmscriptenSurfaceSourceCanvasHTMLSelector canvas_desc = {};
