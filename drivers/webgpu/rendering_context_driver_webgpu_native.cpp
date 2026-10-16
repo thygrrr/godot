@@ -68,6 +68,15 @@ Error RenderingContextDriverWebGPU::initialize_native() {
 	WGPURequestAdapterOptions options = WGPU_REQUEST_ADAPTER_OPTIONS_INIT;
 	options.powerPreference = OS::get_singleton()->get_user_prefers_integrated_gpu() ? WGPUPowerPreference_LowPower : WGPUPowerPreference_HighPerformance;
 	String backend = GLOBAL_GET("rendering/rendering_device/webgpu/native_backend");
+	if (backend == "auto") {
+#ifdef WINDOWS_ENABLED
+		backend = "d3d12";
+#elif defined(MACOS_ENABLED)
+		backend = "metal";
+#else
+		backend = "vulkan";
+#endif
+	}
 	if (backend == "vulkan") {
 		options.backendType = WGPUBackendType_Vulkan;
 	} else if (backend == "d3d12") {
