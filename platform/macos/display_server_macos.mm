@@ -787,6 +787,13 @@ bool DisplayServerMacOS::get_is_resizing() const {
 
 void DisplayServerMacOS::window_destroy(DisplayServerEnums::WindowID p_window) {
 	ERR_FAIL_COND(!windows.has(p_window));
+	WindowData &wd = windows[p_window];
+	// AppKit may retain queued notifications after closing the NSWindow.
+	// Detach callbacks before their display server or rendering resources end.
+	[wd.window_delegate invalidate];
+	[wd.window_object setDelegate:nil];
+	[wd.window_view setWindowID:DisplayServerEnums::INVALID_WINDOW_ID];
+	wd.window_view.layer.delegate = nil;
 
 #if defined(GLES3_ENABLED)
 	if (gl_manager_legacy) {
@@ -3965,8 +3972,14 @@ DisplayServerMacOS::~DisplayServerMacOS() {
 	for (HashMap<DisplayServerEnums::WindowID, WindowData>::Iterator E = windows.begin(); E;) {
 		HashMap<DisplayServerEnums::WindowID, WindowData>::Iterator F = E;
 		++E;
-		[F->value.window_object setContentView:nil];
-		[F->value.window_object close];
+		GodotWindowDelegate *window_delegate = F->value.window_delegate;
+		NSWindow *window_object = F->value.window_object;
+		[F->value.window_view setWindowID:DisplayServerEnums::INVALID_WINDOW_ID];
+		F->value.window_view.layer.delegate = nil;
+		[window_object setContentView:nil];
+		[window_object close];
+		[window_delegate invalidate];
+		[window_object setDelegate:nil];
 	}
 
 	// Destroy drivers.
