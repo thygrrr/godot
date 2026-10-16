@@ -6770,50 +6770,8 @@ void RenderingDeviceDriverWebGPU::command_begin_render_pass(CommandBufferID p_cm
 		}
 	}
 
-	// Proactive encoder isolation: if any current-pass attachment has BOTH
-	// TextureBinding and RenderAttachment usage, this pass may cause an
-	// intra-pass sync scope conflict. Split the encoder BEFORE the pass so
-	// previous rendering work is preserved even if this pass's command
-	// buffer gets invalidated by the conflict.
-	{
-		bool has_dual_usage = false;
-		for (uint32_t i = 0; i < cmd->render_state.current_pass_attachment_count; i++) {
-			// We don't have the WGTexture* for current_pass_attachments (only WGPUTexture),
-			// so check the framebuffer's attachments for usage bits.
-			for (uint32_t j = 0; j < fb->attachments.size(); j++) {
-				WGTexture *tex = fb->attachments[j];
-				if (tex) {
-					WGPUTexture gpu_tex = tex->gpu_handle();
-					if (gpu_tex == cmd->render_state.current_pass_attachments[i] &&
-							(tex->usage & WGPUTextureUsage_TextureBinding) &&
-							(tex->usage & WGPUTextureUsage_RenderAttachment)) {
-						has_dual_usage = true;
-						break;
-					}
-				}
-			}
-			if (has_dual_usage) break;
-		}
-		if (has_dual_usage && cmd->encoder) {
-			// Flush push constant ring buffer before mid-frame submit.
-			if (push_constant_shadow_dirty_start < push_constant_shadow_dirty_end) {
-				wgpuQueueWriteBuffer(queue, push_constant_ring_buffer, push_constant_shadow_dirty_start,
-						push_constant_shadow + push_constant_shadow_dirty_start,
-						push_constant_shadow_dirty_end - push_constant_shadow_dirty_start);
-				push_constant_shadow_dirty_start = UINT32_MAX;
-				push_constant_shadow_dirty_end = 0;
-			}
-			// Split: submit everything so far, start a fresh encoder.
-			WGPUCommandBuffer finished = wgpuCommandEncoderFinish(cmd->encoder, nullptr);
-			if (finished) {
-				wgpuQueueSubmit(queue, 1, &finished);
-				wgpuCommandBufferRelease(finished);
-			}
-			wgpuCommandEncoderRelease(cmd->encoder);
-			cmd->encoder = wgpuDeviceCreateCommandEncoder(device, nullptr);
-			cmd->invalidate_bind_groups();
-		}
-	}
+	// Keep commands in Godot's submission order. Submitting here would execute
+	// this buffer ahead of earlier, completed buffers in the render graph chain.
 
 	// --- Helper lambdas for op mapping ---
 	auto map_load_op = [](AttachmentLoadOp op) -> WGPULoadOp {
