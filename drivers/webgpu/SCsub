@@ -4,6 +4,7 @@ from misc.utility.scons_hints import *
 Import("env")
 
 import wgsl_precompile
+import native_loader
 
 env_webgpu = env.Clone()
 
@@ -728,6 +729,16 @@ env_webgpu.Prepend(
 webgpu_sources = Glob("#drivers/webgpu/*.cpp")
 webgpu_sources = [f for f in webgpu_sources if "tint_wrapper" not in str(f)]
 env_webgpu.add_source_files(env.drivers_sources, webgpu_sources)
+
+if env["platform"] == "macos":
+    # Load Dawn only when WebGPU is selected, preserving the other renderers'
+    # macOS baseline when the optional SDK requires a newer OS.
+    dawn_loader = env.CommandNoCache(
+        "#drivers/webgpu/native/dawn_loader.gen.h",
+        [env.File(env["webgpu_native_path"] + "/include/dawn/webgpu.h"), "#drivers/webgpu/native/dawn_boundary.h"],
+        env.Run(native_loader.build_loader),
+    )
+    env.Depends(webgpu_sources, dawn_loader)
 
 # Add thirdparty objects to the driver.
 env.drivers_sources += spirv_tools_obj
