@@ -65,14 +65,14 @@ class NativeConfigTests(unittest.TestCase):
                 env = FakeEnvironment(webgpu=True, platform=platform, webgpu_native_path=directory)
                 self.module.configure_native_webgpu(env)
                 library = root / "lib/godot_webgpu_dawn.lib" if platform == "windows" else root / runtime
-                self.assertEqual(env["LIBS"], [library])
+                self.assertEqual(env.get("LIBS", []), [] if platform == "macos" else [library])
                 self.assertEqual(env["webgpu_native_runtimes"], [str(root / runtime)])
                 self.assertIn("RD_ENABLED", env["CPPDEFINES"])
                 self.assertIn("WEBGPU_ENABLED", env["CPPDEFINES"])
                 if platform == "linuxbsd":
                     self.assertIn("$$ORIGIN", env["LINKFLAGS"][0])
                 elif platform == "macos":
-                    self.assertIn("@loader_path", env["LINKFLAGS"][0])
+                    self.assertNotIn("LINKFLAGS", env)
 
     def test_windows_compiler_sidecars_are_staged_when_supplied(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -23,7 +23,8 @@ def configure_native_webgpu(env):
     env.AppendUnique(CPPDEFINES=["WEBGPU_ENABLED", "RD_ENABLED"])
     env.Prepend(CPPPATH=[str(root / "include")])
     library = root / "lib/godot_webgpu_dawn.lib" if env["platform"] == "windows" else runtime
-    env.Append(LIBS=[env.File(str(library))])
+    if env["platform"] != "macos":
+        env.Append(LIBS=[env.File(str(library))])
     env["webgpu_native_runtime"] = str(runtime)
     env["webgpu_native_runtimes"] = [str(runtime)]
     if env["platform"] == "windows":
@@ -33,5 +34,3 @@ def configure_native_webgpu(env):
                 env["webgpu_native_runtimes"].append(str(compiler))
     if env["platform"] == "linuxbsd":
         env.Append(LINKFLAGS=["-Wl,-rpath,'$$ORIGIN'"])
-    elif env["platform"] == "macos":
-        env.Append(LINKFLAGS=["-Wl,-rpath,@loader_path"])

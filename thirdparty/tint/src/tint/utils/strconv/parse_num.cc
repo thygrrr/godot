@@ -31,11 +31,14 @@
 
 #ifdef __EMSCRIPTEN__
 #include <emscripten/version.h>
-#if __EMSCRIPTEN_major__ < 4
+#endif
+#if defined(__APPLE__) || (defined(__EMSCRIPTEN__) && __EMSCRIPTEN_major__ < 4)
 #include <cerrno>
 #include <cmath>
 #include <cstdlib>
 #include <locale.h>
+#ifdef __APPLE__
+#include <xlocale.h>
 #endif
 #endif
 
@@ -53,9 +56,10 @@ template <typename T>
 Result<T, ParseNumberError> Parse(std::string_view number) {
     T val = 0;
     if constexpr (std::is_floating_point_v<T>) {
-#if defined(__EMSCRIPTEN__) && __EMSCRIPTEN_major__ < 4
-        // Emscripten 3.1.56's libc++ deletes the floating-point from_chars
-        // overloads. Keep this fallback local to Tint and locale-independent.
+#if defined(__APPLE__) || (defined(__EMSCRIPTEN__) && __EMSCRIPTEN_major__ < 4)
+        // Floating-point from_chars requires macOS 26 or newer and is deleted
+        // by Emscripten 3.1.56's libc++. Preserve the engine's OS baseline with
+        // a locale-independent fallback local to Tint.
         if (number.empty() || number.front() == '+' || number.front() == ' ' ||
             (number.front() >= '\t' && number.front() <= '\r')) {
             return ParseNumberError::kUnparsable;
