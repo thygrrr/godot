@@ -1049,6 +1049,16 @@ Files extracted from upstream source:
 - `include/spirv/unified1/spirv.{h,hpp,hpp11}` with the same folder structure
 - `LICENSE` (edited to keep only relevant license)
 
+## spirv-headers-webgpu
+
+- Upstream: https://github.com/KhronosGroup/SPIRV-Headers
+- Version: ad9184e76a66b1001c29db9b0a3e87f646c64de0 (2026)
+- License: MIT
+
+Separate headers used only by WebGPU's Tint and SPIRV-Tools. The engine's
+existing spirv-headers snapshot remains unchanged.
+
+
 
 ## spirv-reflect
 
@@ -1070,6 +1080,22 @@ Patches:
 - `0002-spirv-headers.patch` ([GH-111452](https://github.com/godotengine/godot/pull/111452))
 
 
+## spirv-tools
+
+- Upstream: https://github.com/KhronosGroup/SPIRV-Tools
+- Version: git (3605cce5b11f6a085107fd400f1721cd2a59c49e, 2026)
+- License: Apache 2.0
+
+Files extracted from upstream source:
+
+- `source/` folder
+- `include/` folder
+- `generated/` folder (pre-generated from upstream build)
+- `LICENSE`
+
+Required by Tint for SPIR-V parsing and validation. Version pinned by Dawn DEPS.
+
+
 ## swappy-frame-pacing
 
 - Upstream: https://android.googlesource.com/platform/frameworks/opt/gamesdk/ via https://github.com/godotengine/godot-swappy
@@ -1081,6 +1107,30 @@ Files extracted from upstream source:
 - `include/common/`
 - `include/swappy/{swappy_common.h,swappyVk.h}`
 - `LICENSE`
+
+
+## tint
+
+- Upstream: https://dawn.googlesource.com/dawn (src/tint/)
+- Version: git (db49a5496374b1f7284e0b9c8f2964c01d4bb20a, 2026)
+- License: BSD-3-Clause
+
+Files extracted from upstream source:
+
+- `src/tint/` folder (extracted via `extract_tint.sh`)
+- `LICENSE`
+
+Patches:
+
+- `0001-skip-block-layout-validation.patch` — `SetSkipBlockLayout(true)` for Godot UBO layout
+- `0002-allow-struct-member-size-mismatch.patch` — `kAllowStructMemberSizeMismatch` for specialization constants
+- `0003-decompose-strided-array-stride-guard.patch` — Skip padding when stride < element size
+- `0004-accept-non-constant-point-size.patch` — Accept non-constant `point_size` stores
+- `0005-size-emission-and-capability.patch` — `@size` emission guard for specialization constants
+- `0006-remove-abseil-dependency.patch` — Replace `absl::from_chars` with `std::from_chars`
+
+Used for SPIR-V to WGSL translation in the WebGPU rendering backend.
+Requires spirv-tools and spirv-headers.
 
 
 ## thorvg
@@ -1311,3 +1361,16 @@ Files extracted from upstream source:
 
 - `lib/{common/,compress/,decompress/,zstd.h,zstd_errors.h}`
 - `LICENSE`
+
+## emdawnwebgpu
+
+- Upstream: https://github.com/google/dawn/releases/tag/v20251002.162335
+- Version: v20251002.162335
+- License: BSD-3-Clause and Emscripten's MIT / NCSA (see bundled LICENSE files)
+- Source: emdawnwebgpu_pkg-v20251002.162335.zip
+- SHA512: ed15672c2c495a77c764929e6979f4e155bf8b9c46dee5b0f234f3208a708bc2b846d89eef345b725d03454b56d549531f48fc84ff2afe7627d14115893b0fb0
+
+The local port chooses library_webgpu_legacy.js on Emscripten 3.x. This copy
+changes only the stackSave/stackRestore JS-library dependency names to the
+3.x spelling, preserving the pinned 3.1.56 .NET toolchain. Modern SDKs use
+the unmodified upstream JavaScript library.

@@ -42,7 +42,11 @@ void main() {
 	ivec2 center = base + ivec2(params.shift);
 
 	ivec2 rel = ivec2(32767);
+#ifdef RENDER_DRIVER_WEBGPU
+	float d = 1e6;
+#else
 	float d = 1e20;
+#endif
 	int found = 0;
 	int solid_found = 0;
 	for (int i = 0; i < s; i++) {
