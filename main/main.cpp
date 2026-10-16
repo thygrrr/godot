@@ -2848,6 +2848,8 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 				rendering_method = "dummy";
 			} else if (rendering_driver == "opengl3" || rendering_driver == "opengl3_angle" || rendering_driver == "opengl3_es") {
 				rendering_method = "gl_compatibility";
+			} else if (rendering_driver == "webgpu") {
+				rendering_method = "mobile";
 			} else {
 				rendering_method = "forward_plus";
 			}
@@ -2926,6 +2928,13 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 			rendering_driver = GLOBAL_GET("rendering/rendering_device/driver");
 			rendering_driver_source = OS::RenderingSource::RENDERING_SOURCE_PROJECT_SETTING;
 		}
+	}
+
+	// Forward+ uses shader features which the current WebGPU/Tint integration
+	// cannot translate. Reject it before constructing the renderer or its shaders.
+	if (rendering_driver.to_lower() == "webgpu" && rendering_method == "forward_plus") {
+		OS::get_singleton()->print("WebGPU currently supports only the Mobile rendering method. Use --rendering-method mobile or select Mobile in the project settings.\n");
+		goto error;
 	}
 
 	// always convert to lower case for consistency in the code
