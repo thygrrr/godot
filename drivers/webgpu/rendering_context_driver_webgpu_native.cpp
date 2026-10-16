@@ -38,9 +38,7 @@
 #include "core/config/project_settings.h"
 #include "core/os/os.h"
 
-#ifdef MACOS_ENABLED
 #include "native/dawn_loader.gen.h"
-#endif
 
 namespace {
 String webgpu_message(WGPUStringView p_message) {
@@ -49,9 +47,7 @@ String webgpu_message(WGPUStringView p_message) {
 } // namespace
 
 Error RenderingContextDriverWebGPU::initialize_native() {
-#ifdef MACOS_ENABLED
-	ERR_FAIL_COND_V_MSG(!load_native_dawn(), ERR_UNAVAILABLE, "WebGPU requires macOS 13 or newer and the Dawn runtime beside libgodot.");
-#endif
+	ERR_FAIL_COND_V_MSG(!load_native_dawn(), ERR_UNAVAILABLE, "WebGPU could not load the native Dawn runtime beside libgodot. Check its runtime dependencies (macOS 13+, or the Visual C++ runtime on Windows).");
 	WGPUInstanceFeatureName timed_wait = WGPUInstanceFeatureName_TimedWaitAny;
 	WGPUInstanceDescriptor instance_desc = WGPU_INSTANCE_DESCRIPTOR_INIT;
 	instance_desc.requiredFeatureCount = 1;
