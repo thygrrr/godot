@@ -43,6 +43,8 @@ class RenderingContextDriverWebGPU : public RenderingContextDriver {
 	WGPUQueue queue = nullptr;
 
 	Device device_info; // Single device description.
+	Error initialize_native();
+	SurfaceID surface_create_native(const void *p_platform_data);
 
 	struct Surface {
 		WGPUSurface handle = nullptr;
@@ -50,12 +52,23 @@ class RenderingContextDriverWebGPU : public RenderingContextDriver {
 		uint32_t height = 0;
 		DisplayServerEnums::VSyncMode vsync_mode = DisplayServerEnums::VSYNC_ENABLED;
 		bool needs_resize = false;
+		WGPUTextureFormat format = WGPUTextureFormat_BGRA8Unorm;
+		WGPUCompositeAlphaMode alpha_mode = WGPUCompositeAlphaMode_Opaque;
+		Vector<WGPUPresentMode> present_modes;
 	};
 
 	HashMap<SurfaceID, Surface> surfaces;
 	SurfaceID next_surface_id = 1;
 
 public:
+	// Plain platform data so the desktop display servers can put it in their
+	// existing window-data union without depending on native SDK headers.
+	struct WindowPlatformData {
+		enum Kind { KIND_WIN32, KIND_XLIB, KIND_WAYLAND, KIND_METAL_LAYER } kind;
+		void *display;
+		void *window;
+		uint64_t window_id;
+	};
 	RenderingContextDriverWebGPU();
 	virtual ~RenderingContextDriverWebGPU() override;
 
@@ -95,6 +108,9 @@ public:
 	WGPUQueue get_queue() const { return queue; }
 	WGPUInstance get_instance() const { return instance; }
 	WGPUSurface surface_get_handle(SurfaceID p_surface) const;
+	WGPUTextureFormat surface_get_format(SurfaceID p_surface) const;
+	WGPUCompositeAlphaMode surface_get_alpha_mode(SurfaceID p_surface) const;
+	WGPUPresentMode surface_get_present_mode(SurfaceID p_surface) const;
 };
 
 #endif // WEBGPU_ENABLED

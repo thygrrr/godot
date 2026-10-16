@@ -33,7 +33,7 @@
 #include "core/io/file_access.h"
 #include "core/io/resource_loader.h"
 #include "core/object/class_db.h"
-#ifdef WEBGPU_ENABLED
+#if defined(WEBGPU_ENABLED) && defined(WEB_ENABLED)
 #include "core/os/os.h"
 #endif
 #include "scene/resources/bit_map.h"
@@ -244,7 +244,7 @@ bool CompressedTexture2D::has_alpha() const {
 }
 
 Ref<Image> CompressedTexture2D::get_image() const {
-#ifdef WEBGPU_ENABLED
+#if defined(WEBGPU_ENABLED) && defined(WEB_ENABLED)
 	if (OS::get_singleton()->get_current_rendering_driver_name() == "webgpu") {
 		// Reload image from disk when path is available.
 		// On WebGPU (single-threaded WASM), RS::texture_2d_get() triggers an async

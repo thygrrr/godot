@@ -27,6 +27,9 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
+#ifdef WEBGPU_ENABLED
+#include "drivers/webgpu/rendering_context_driver_webgpu.h"
+#endif
 
 #import "display_server_macos.h"
 
@@ -192,7 +195,16 @@ DisplayServerEnums::WindowID DisplayServerMacOS::_create_window(DisplayServerEnu
 #ifdef METAL_ENABLED
 				RenderingContextDriverMetal::WindowPlatformData metal;
 #endif
+#ifdef WEBGPU_ENABLED
+				RenderingContextDriverWebGPU::WindowPlatformData webgpu;
+#endif
 			} wpd;
+#ifdef WEBGPU_ENABLED
+			if (rendering_driver == "webgpu") {
+				wpd.webgpu.kind = RenderingContextDriverWebGPU::WindowPlatformData::KIND_METAL_LAYER;
+				wpd.webgpu.window = (__bridge void *)layer;
+			}
+#endif
 #ifdef VULKAN_ENABLED
 			if (rendering_driver == "vulkan") {
 				wpd.vulkan.layer_ptr = (CAMetalLayer *const *)&layer;
@@ -3502,7 +3514,6 @@ DisplayServer *DisplayServerMacOS::create_func(const String &p_rendering_driver,
 
 Vector<String> DisplayServerMacOS::get_rendering_drivers_func() {
 	Vector<String> drivers;
-
 #if defined(VULKAN_ENABLED)
 	drivers.push_back("vulkan");
 #endif
@@ -3514,6 +3525,9 @@ Vector<String> DisplayServerMacOS::get_rendering_drivers_func() {
 #if defined(ANGLE_ENABLED)
 	drivers.push_back("opengl3_angle");
 #endif
+#endif
+#ifdef WEBGPU_ENABLED
+	drivers.push_back("webgpu");
 #endif
 	drivers.push_back("dummy");
 
@@ -3800,6 +3814,13 @@ DisplayServerMacOS::DisplayServerMacOS(const String &p_rendering_driver, Display
 		OS::get_singleton()->set_current_rendering_driver_name(rendering_driver, OS::RENDERING_SOURCE_FALLBACK);
 	}
 #endif
+#endif
+#ifdef WEBGPU_ENABLED
+	if (rendering_driver == "webgpu") {
+		rendering_context = memnew(RenderingContextDriverWebGPU);
+	}
+#endif
+#if defined(VULKAN_ENABLED)
 	if (rendering_driver == "vulkan") {
 		rendering_context = memnew(RenderingContextDriverVulkanMacOS);
 	}

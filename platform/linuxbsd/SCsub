@@ -56,3 +56,11 @@ else:
 
 if env["debug_symbols"] and env["separate_debug_symbols"]:
     env.AddPostAction(prog, env.Run(platform_linuxbsd_builders.make_debug_linuxbsd))
+
+# The native Dawn C API is an isolated shared dependency of this build.
+if env.get("webgpu_native_runtimes"):
+    from pathlib import Path
+
+    for dawn_runtime in env["webgpu_native_runtimes"]:
+        dawn_copy = env.Command("#bin/" + Path(dawn_runtime).name, dawn_runtime, Copy("$TARGET", "$SOURCE"))
+        env.Depends(prog, dawn_copy)

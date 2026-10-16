@@ -651,6 +651,9 @@ else:
     ]
 
 # CLI args utility (needed by some Tint internals).
+if env["platform"] in ("linuxbsd", "macos"):
+    tint_sources.append("src/tint/utils/text/styled_text_printer_ansi.cc")
+
 tint_sources += [
     "src/tint/utils/command/args.cc",
     "src/tint/utils/command/cli.cc",
@@ -662,8 +665,9 @@ env_tint = env_webgpu.Clone()
 env_tint.disable_warnings()
 
 # Tint requires C++20.
+env_tint["CXXFLAGS"] = [flag for flag in env_tint["CXXFLAGS"] if not str(flag).startswith(("/std:", "-std="))]
 if env_tint.get("is_msvc", False) or env.msvc:
-    env_tint.Append(CXXFLAGS=["/std:c++20"])
+    env_tint.Append(CXXFLAGS=["/std:c++20", "/Zc:preprocessor"])
 else:
     env_tint.Append(CXXFLAGS=["-std=c++20"])
 
