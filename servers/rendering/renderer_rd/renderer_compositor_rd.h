@@ -148,7 +148,9 @@ public:
 	_ALWAYS_INLINE_ virtual double get_total_time() const override { return time; }
 	_ALWAYS_INLINE_ virtual bool can_create_resources_async() const override { return true; }
 
-	virtual bool is_xr_enabled() const override { return RendererCompositor::is_xr_enabled(); }
+	// Shared desktop/web projects may enable XR shaders for their WebXR host.
+	// WebGPU has no multiview support, so it must not compile those variants.
+	virtual bool is_xr_enabled() const override { return RD::get_singleton()->get_device_api_name() != "WebGPU" && RendererCompositor::is_xr_enabled(); }
 
 	static Error is_viable() {
 		return OK;
