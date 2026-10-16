@@ -35,17 +35,27 @@
 
 // html5_webgpu.h was removed in Emscripten 5.x when USE_WEBGPU was dropped.
 // Device is now created from C++ using the emdawnwebgpu port's Dawn API.
+#ifdef WEB_ENABLED
 #include <emscripten/emscripten.h>
+#endif
 
 RenderingContextDriverWebGPU::RenderingContextDriverWebGPU() {
 }
 
 RenderingContextDriverWebGPU::~RenderingContextDriverWebGPU() {
+	for (const auto &surface : surfaces) {
+		wgpuSurfaceUnconfigure(surface.value.handle);
+		wgpuSurfaceRelease(surface.value.handle);
+	}
 	if (queue) {
 		wgpuQueueRelease(queue);
 		queue = nullptr;
 	}
 	if (device) {
+#ifndef WEB_ENABLED
+		wgpuDeviceDestroy(device);
+		wgpuInstanceProcessEvents(instance);
+#endif
 		wgpuDeviceRelease(device);
 		device = nullptr;
 	}
@@ -60,6 +70,9 @@ RenderingContextDriverWebGPU::~RenderingContextDriverWebGPU() {
 }
 
 Error RenderingContextDriverWebGPU::initialize() {
+#ifndef WEB_ENABLED
+	return initialize_native();
+#else
 	// The HTML shell pre-initializes a GPUDevice and stores it in Module.preinitializedWebGPUDevice.
 	// We use the emdawnwebgpu port's WebGPU.importJsDevice() to wrap it in a C WGPUDevice handle.
 	// Note: emdawnwebgpu is a thin JS wrapper around the browser's WebGPU API.
@@ -90,6 +103,7 @@ Error RenderingContextDriverWebGPU::initialize() {
 
 	print_verbose("WebGPU: Device imported from JS successfully.");
 	return OK;
+#endif
 }
 
 const RenderingContextDriver::Device &RenderingContextDriverWebGPU::device_get(uint32_t p_device_index) const {
@@ -114,6 +128,9 @@ void RenderingContextDriverWebGPU::driver_free(RenderingDeviceDriver *p_driver) 
 }
 
 RenderingContextDriver::SurfaceID RenderingContextDriverWebGPU::surface_create(const void *p_platform_data) {
+#ifndef WEB_ENABLED
+	return surface_create_native(p_platform_data);
+#else
 	// p_platform_data is expected to contain a canvas selector string (e.g., "#canvas").
 	// For the web platform, we use the default canvas "#canvas".
 	const char *canvas_selector = "#canvas";
@@ -148,6 +165,7 @@ RenderingContextDriver::SurfaceID RenderingContextDriverWebGPU::surface_create(c
 	surface.needs_resize = true;
 
 	return id;
+#endif
 }
 
 void RenderingContextDriverWebGPU::surface_set_size(SurfaceID p_surface, uint32_t p_width, uint32_t p_height) {
@@ -162,7 +180,10 @@ void RenderingContextDriverWebGPU::surface_set_size(SurfaceID p_surface, uint32_
 
 void RenderingContextDriverWebGPU::surface_set_vsync_mode(SurfaceID p_surface, DisplayServerEnums::VSyncMode p_vsync_mode) {
 	ERR_FAIL_COND(!surfaces.has(p_surface));
-	surfaces[p_surface].vsync_mode = p_vsync_mode;
+	if (surfaces[p_surface].vsync_mode != p_vsync_mode) {
+		surfaces[p_surface].vsync_mode = p_vsync_mode;
+		surfaces[p_surface].needs_resize = true;
+	}
 }
 
 DisplayServerEnums::VSyncMode RenderingContextDriverWebGPU::surface_get_vsync_mode(SurfaceID p_surface) const {
@@ -207,6 +228,30 @@ WGPUSurface RenderingContextDriverWebGPU::surface_get_handle(SurfaceID p_surface
 	const Surface *s = surfaces.getptr(p_surface);
 	ERR_FAIL_COND_V(s == nullptr, nullptr);
 	return s->handle;
+}
+
+WGPUTextureFormat RenderingContextDriverWebGPU::surface_get_format(SurfaceID p_surface) const {
+	const Surface *surface = surfaces.getptr(p_surface);
+	ERR_FAIL_NULL_V(surface, WGPUTextureFormat_Undefined);
+	return surface->format;
+}
+
+WGPUCompositeAlphaMode RenderingContextDriverWebGPU::surface_get_alpha_mode(SurfaceID p_surface) const {
+	const Surface *surface = surfaces.getptr(p_surface);
+	ERR_FAIL_NULL_V(surface, WGPUCompositeAlphaMode_Opaque);
+	return surface->alpha_mode;
+}
+
+WGPUPresentMode RenderingContextDriverWebGPU::surface_get_present_mode(SurfaceID p_surface) const {
+	const Surface *surface = surfaces.getptr(p_surface);
+	ERR_FAIL_NULL_V(surface, WGPUPresentMode_Fifo);
+	if (surface->vsync_mode == DisplayServerEnums::VSYNC_DISABLED && surface->present_modes.has(WGPUPresentMode_Immediate)) {
+		return WGPUPresentMode_Immediate;
+	}
+	if (surface->vsync_mode == DisplayServerEnums::VSYNC_MAILBOX && surface->present_modes.has(WGPUPresentMode_Mailbox)) {
+		return WGPUPresentMode_Mailbox;
+	}
+	return WGPUPresentMode_Fifo;
 }
 
 #endif // WEBGPU_ENABLED

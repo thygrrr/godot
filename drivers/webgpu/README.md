@@ -40,6 +40,8 @@ Optional float32 features are queried by JS feature name across Dawn versions.
 
 ### Upstream PRs considered
 
+The isolated Godot fork branch is `2dog-4.7.2-webgpu`.
+
 - [#3](https://github.com/dwalter/godotwebgpu/pull/3): applied callback overloads
   for both Emdawnwebgpu callback generations.
 - [#4](https://github.com/dwalter/godotwebgpu/pull/4): applied the matching Tint
@@ -77,8 +79,9 @@ default frozen cache cannot build the vendored port; set a writable
 
 `webgpu_precompile=no` leaves the optional build-time shader cache empty; the
 linked Tint runtime still translates shaders. It is the default on Windows,
-where the upstream cache-building helper requires POSIX tools. Other hosts can
-enable the cache with host Tint and glslang installed.
+where the upstream cache-building helper requires POSIX tools. Other web build
+hosts can enable the cache with host Tint and glslang installed. Native builds
+default to runtime translation without requiring the host shader tools.
 
 A custom .NET browser shell must set `renderingDriver: 'webgpu'` on its Engine
 configuration before `init()` or `startGame()`, and select the Mobile renderer.
@@ -86,12 +89,33 @@ Its final emcc link must also use the vendored Dawn port (and the bundled
 Closure externs on Emscripten 3.1.56). The ordinary 2dog native packages/build
 script do not enable or package this experimental payload automatically.
 
+Desktop builds also accept `webgpu=yes webgpu_native_path=<boundary-sdk>`.
+See [native/README.md](native/README.md) for the pinned Dawn release, shared
+dependency build, sidecar staging, and Windows/Linux/macOS invocation examples.
+The shared boundary isolates Dawn's own Tint from Godot's patched compiler.
+Windows HWND, Linux Xlib/Wayland, and macOS normal/embedded Metal-layer surfaces
+are supported without changing the existing driver preference order.
+Native fences and readback wait for GPU completion; browser readback remains
+asynchronous. Subpass restrictions and L8/LA8 conversion are selected per driver
+at runtime, preserving Vulkan and OpenGL behavior in a WebGPU-enabled binary.
+
 ### Verification and remaining scope
 
-- Windows x64 shared libgodot builds with the existing Vulkan and OpenGL paths.
+- Windows x64 shared libgodot builds with WebGPU, Vulkan, and OpenGL together.
 - A separate .NET 10 host passes two lifetimes each in headless, Vulkan Mobile,
-  Vulkan Forward+, and OpenGL Compatibility. Native errors/warnings fail the
-  checks; all three graphical modes also read back distinct lit-cube pixels.
+  Vulkan Forward+, OpenGL Compatibility, and native WebGPU Mobile. Native
+  errors/warnings fail the checks; all four graphical modes read back distinct
+  lit-cube pixels and preserve L8/LA8 texture contents across an upload/readback.
+- Linux x64 builds with both X11 and Wayland. Both display paths pass the native
+  scene's pixel check and clean shutdown through Dawn Vulkan on llvmpipe in WSL.
+  Dawn is destroyed before disconnecting Wayland so its presentation resources
+  cannot outlive the display connection. Physical Linux GPU testing is pending.
+- macOS normal and embedded CAMetalLayer integration is implemented; a Mac build
+  and runtime check remain pending.
+- Native SDK configuration tests: 4 passed, covering opt-out behavior, missing
+  dependencies, all three platforms, and Windows compiler sidecar staging.
+- Windows WebGPU also passes both lifetimes with 2dog's `--gpu-luid` selecting
+  the reported D3D adapter LUID.
 - Existing GodotSharp RenderingDevice initialization and GLSL-to-SPIR-V
   compilation pass against the Windows build without regenerating bindings.
 - Imported driver tests: 327 passed. WGSL cache tests: 124 passed.
@@ -105,7 +129,7 @@ The full single-threaded Mono WebGPU archive builds and links into a .NET 10
 browser host using the existing 3.1.56 workload. A headless Chrome host renders
 a lit cube in WebGPU Mobile and WebGL Compatibility, with no console errors or
 GPU validation errors. Screenshots confirm distinct object/background pixels. No
-cross-browser, WebGPU threading, WebGPU XR, Android, macOS, double-precision,
+cross-browser, WebGPU threading, WebGPU XR, Android, macOS runtime, double-precision,
 or release-package compatibility claim is made by these local checks. Promotion
 to the main 2dog checkout requires a native revision bump, portable package
 staging/link integration, repacking, and the normal platform CI checks.
@@ -115,8 +139,9 @@ browser shell to capture the last preprocessed shader in
 `globalThis.webgpuLastSpirv`. This is disabled unless requested by the shell.
 
 A `RenderingDeviceDriver` / `RenderingContextDriver` implementation targeting
-WebGPU via Emscripten's **emdawnwebgpu** port (Dawn). This enables Godot's
-Forward+ and Mobile renderers to run in the browser.
+WebGPU via Emscripten's **emdawnwebgpu** port or native Dawn. The sections below
+describe the upstream browser architecture and reported browser coverage;
+the local checks and current 2dog scope are recorded above.
 
 ## Architecture Overview
 
@@ -221,7 +246,7 @@ scons platform=web target=template_release dlink_enabled=yes webgpu=yes opengl3=
 # Build with both WebGPU and WebGL2 support
 scons platform=web target=template_debug dlink_enabled=yes webgpu=yes opengl3=yes threads=no -j$(nproc)
 
-# Build macOS editor (does not include WebGPU driver, for reference)
+# Build macOS editor (existing renderers, WebGPU disabled by default)
 scons platform=macos target=editor -j$(nproc)
 ```
 

@@ -197,7 +197,7 @@ static uint64_t eval_spec_op(uint32_t p_opcode, const Vector<uint64_t> &p_operan
 		case 197: return a() | b(); // BitwiseOr
 		case 198: return a() ^ b(); // BitwiseXor
 		case 199: return a() & b(); // BitwiseAnd
-		case 200: return (uint64_t)(~(uint32_t)a()); // Not
+		case 200: return uint64_t(uint32_t(a()) ^ UINT32_MAX); // Not (32-bit result).
 
 		// Composite.
 		case 81: return a(); // CompositeExtract (return first operand)

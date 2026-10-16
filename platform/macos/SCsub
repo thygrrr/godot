@@ -59,3 +59,11 @@ if env["debug_symbols"] and env["separate_debug_symbols"]:
 
 if env["generate_bundle"]:
     env.AlwaysBuild(env.CommandNoCache("generate_bundle", prog, env.Run(platform_macos_builders.generate_bundle)))
+
+# The native Dawn C API is an isolated shared dependency of this build.
+if env.get("webgpu_native_runtimes"):
+    from pathlib import Path
+
+    for dawn_runtime in env["webgpu_native_runtimes"]:
+        dawn_copy = env.Command("#bin/" + Path(dawn_runtime).name, dawn_runtime, Copy("$TARGET", "$SOURCE"))
+        env.Depends(prog, dawn_copy)

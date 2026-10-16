@@ -89,7 +89,7 @@ def get_doc_path():
 def get_flags():
     return {
         "arch": detect_arch(),
-        "supported": ["library", "mono"],
+        "supported": ["webgpu", "library", "mono"],
     }
 
 
@@ -586,3 +586,8 @@ def configure(env: "SConsEnvironment"):
     else:
         if env["use_llvm"] and platform.system() != "FreeBSD":
             env.Append(LIBS=["atomic"])
+
+    # Optional native Dawn WebGPU backend.
+    from drivers.webgpu.native_config import configure_native_webgpu
+
+    configure_native_webgpu(env)

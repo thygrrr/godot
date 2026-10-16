@@ -198,3 +198,11 @@ if not env.msvc:
             env.AddPostAction(prog_wrap, env.Run(platform_windows_builders.make_debug_mingw))
 
 env.platform_sources += sources
+
+# The native Dawn C API is an isolated shared dependency of this build.
+if env.get("webgpu_native_runtimes"):
+    from pathlib import Path
+
+    for dawn_runtime in env["webgpu_native_runtimes"]:
+        dawn_copy = env.Command("#bin/" + Path(dawn_runtime).name, dawn_runtime, Copy("$TARGET", "$SOURCE"))
+        env.Depends(prog, dawn_copy)
