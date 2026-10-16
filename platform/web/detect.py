@@ -91,7 +91,7 @@ def get_flags():
         # run-time performance.
         # Note that this overrides the "auto" behavior for target/dev_build.
         "optimize": "size",
-        "supported": ["library", "mono"],
+        "supported": ["library", "mono", "webgpu"],
     }
 
 
@@ -143,7 +143,8 @@ def configure(env: "SConsEnvironment"):
     while emcc_path.is_symlink():
         # For some reason, mypy trips on `Path.readlink` not being defined, somehow.
         emcc_path = emcc_path.readlink()  # type: ignore[attr-defined]
-    emscripten_include_path = emcc_path.parent.joinpath("cache", "sysroot", "include")
+    emscripten_cache_path = Path(os.environ.get("EM_CACHE", str(emcc_path.parent / "cache")))
+    emscripten_include_path = emscripten_cache_path.joinpath("sysroot", "include")
     env.Append(CPPPATH=[emscripten_include_path])
 
     ## Configure assertions.
@@ -272,6 +273,22 @@ def configure(env: "SConsEnvironment"):
         # See https://emscripten.org/docs/tools_reference/settings_reference.html#gl-enable-get-proc-address
         env.Append(LINKFLAGS=["-sGL_ENABLE_GET_PROC_ADDRESS=0"])
 
+    if env["webgpu"]:
+        env.AppendUnique(CPPDEFINES=["WEBGPU_ENABLED", "RD_ENABLED"])
+        # Emscripten 4.0.10+ uses the emdawnwebgpu port; -sUSE_WEBGPU=1 was removed in 5.0.
+        # Pass --use-port=emdawnwebgpu to both CCFLAGS (for headers) and LINKFLAGS (for JS glue).
+        port = env["webgpu_port"]
+        if port == "auto":
+            port = env.File("#thirdparty/emdawnwebgpu/emdawnwebgpu.port.py").abspath.replace("\\", "/")
+        if cc_semver < (4, 0, 10) and port == "emdawnwebgpu":
+            print_error("WebGPU on Emscripten < 4.0.10 requires webgpu_port=<local emdawnwebgpu.port.py>; keep the .NET Emscripten version pinned.")
+            sys.exit(255)
+        env.Append(CCFLAGS=["--use-port=" + port])
+        env.Append(LINKFLAGS=["--use-port=" + port])
+        if cc_semver < (4, 0, 7):
+            externs = Path(port).parent / "webgpu/src/webgpu-externs.js"
+            env.Append(LINKFLAGS=["--closure-args=--externs=" + str(externs)])
+
     if env["javascript_eval"]:
         env.Append(CPPDEFINES=["JAVASCRIPT_EVAL_ENABLED"])
 
@@ -355,6 +372,11 @@ def configure(env: "SConsEnvironment"):
     # when using WebAssembly (in comparison to asm.js) and works well for
     # us since we don't know requirements at compile-time.
     env.Append(LINKFLAGS=["-sALLOW_MEMORY_GROWTH=1"])
+
+    # Ensure malloc returns NULL on failure instead of aborting. Emscripten
+    # sets this automatically when ALLOW_MEMORY_GROWTH=1, but being explicit
+    # prevents regressions if the default ever changes and documents intent.
+    env.Append(LINKFLAGS=["-sABORTING_MALLOC=0"])
 
     # Do not call main immediately when the support code is ready.
     env.Append(LINKFLAGS=["-sINVOKE_RUN=0"])
