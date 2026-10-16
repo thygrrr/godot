@@ -52,9 +52,10 @@ uv run scons platform=macos target=template_debug webgpu=yes webgpu_native_path=
 ```
 
 SCons copies the runtime into `bin/`. Keep it beside the executable or libgodot
-when deploying; Linux uses `$ORIGIN`. macOS loads Dawn from that directory only
-when WebGPU is selected, which requires macOS 13 or newer. Existing renderers
-retain their original OS requirements. Build the boundary with
+when deploying. Native platforms load Dawn from that directory only when WebGPU
+is selected. WebGPU requires macOS 13 or newer on macOS and the Visual C++
+Redistributable on Windows. Existing renderers retain their original runtime
+requirements. Build the boundary with
 `-DCMAKE_OSX_DEPLOYMENT_TARGET=13.0` on macOS. App bundles
 and 2dog platform packages still need their normal staging/signing integration.
 

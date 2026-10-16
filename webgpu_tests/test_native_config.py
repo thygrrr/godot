@@ -50,7 +50,7 @@ class NativeConfigTests(unittest.TestCase):
                 self.module.configure_native_webgpu(env)
             self.assertIn("native/README.md", self.messages[0])
 
-    def test_desktop_sdks_link_exact_files_and_stage_the_runtime(self):
+    def test_desktop_sdks_stage_dawn_without_linking_it_into_other_renderer_paths(self):
         for platform, runtime in (
             ("windows", "bin/godot_webgpu_dawn.dll"),
             ("linuxbsd", "lib/libgodot_webgpu_dawn.so"),
@@ -64,15 +64,11 @@ class NativeConfigTests(unittest.TestCase):
                     file.touch()
                 env = FakeEnvironment(webgpu=True, platform=platform, webgpu_native_path=directory)
                 self.module.configure_native_webgpu(env)
-                library = root / "lib/godot_webgpu_dawn.lib" if platform == "windows" else root / runtime
-                self.assertEqual(env.get("LIBS", []), [] if platform == "macos" else [library])
+                self.assertNotIn("LIBS", env)
                 self.assertEqual(env["webgpu_native_runtimes"], [str(root / runtime)])
                 self.assertIn("RD_ENABLED", env["CPPDEFINES"])
                 self.assertIn("WEBGPU_ENABLED", env["CPPDEFINES"])
-                if platform == "linuxbsd":
-                    self.assertIn("$$ORIGIN", env["LINKFLAGS"][0])
-                elif platform == "macos":
-                    self.assertNotIn("LINKFLAGS", env)
+                self.assertNotIn("LINKFLAGS", env)
 
     def test_windows_compiler_sidecars_are_staged_when_supplied(self):
         with tempfile.TemporaryDirectory() as directory:
