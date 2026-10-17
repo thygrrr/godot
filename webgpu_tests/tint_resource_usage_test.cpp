@@ -68,14 +68,22 @@ OpFunctionEnd
     assert(spvTextToBinary(context, source, std::strlen(source), &binary, &diagnostic) == SPV_SUCCESS);
     tint_wrapper_initialize();
     char *error = nullptr;
-    char *wgsl = tint_wrapper_spirv_to_wgsl(binary->code, binary->wordCount, &error);
-    if (error) std::fprintf(stderr, "%s\n", error);
+	size_t prepared_count = 0;
+	auto *prepared = tint_wrapper_prepare_spirv(binary->code, binary->wordCount, &prepared_count, &error);
+	if (error) {
+		std::fprintf(stderr, "%s\n", error);
+	}
+	assert(prepared);
+	char *wgsl = tint_wrapper_spirv_to_wgsl(prepared, prepared_count, &error);
+	std::free(prepared);
+	if (error) std::fprintf(stderr, "%s\n", error);
     assert(wgsl);
     assert(std::strstr(wgsl, "//RESOURCE_USAGE\n"));
     assert(std::strstr(wgsl, "//RESOURCE_USED:0,0\n"));
     assert(std::strstr(wgsl, "//RESOURCE_USED:0,1\n"));
     assert(!std::strstr(wgsl, "//RESOURCE_USED:0,2\n"));
-    assert(std::strstr(wgsl, "textureSample("));
+	assert(std::strstr(wgsl, "//TEXTURE_SAMPLED:0,0\n"));
+	assert(std::strstr(wgsl, "textureSample("));
     std::free(wgsl);
     std::free(error);
     spvBinaryDestroy(binary);

@@ -321,6 +321,10 @@ bool ReplaceDescArrayAccessUsingVarIndex::ReplaceNonUniformAccessWithSwitchCase(
 
   // Replace OpPhi incoming block operand that uses |block| with |merge_block|
   ReplacePhiIncomingBlock(block->id(), merge_block->id());
+  // The switch now performs the operation. Leaving the original instruction
+  // executes image stores/atomics twice and retains a dynamic descriptor access
+  // that descriptor scalar replacement cannot lower. DCE only removes reads.
+  context()->KillInst(access_chain_final_user);
   return true;
 }
 

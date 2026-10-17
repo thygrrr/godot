@@ -2269,6 +2269,12 @@ class Parser {
                 case spv::Op::OpBitcast:
                     EmitBitcast(inst);
                     break;
+                case spv::Op::OpIsNan:
+                    EmitFloatClassification(inst, true);
+                    break;
+                case spv::Op::OpIsInf:
+                    EmitFloatClassification(inst, false);
+                    break;
                 case spv::Op::OpQuantizeToF16:
                     EmitBuiltinCall(inst, core::BuiltinFn::kQuantizeToF16);
                     break;
@@ -3402,6 +3408,19 @@ class Parser {
         auto val = Value(inst.GetSingleWordInOperand(0));
         auto ty = Type(inst.type_id());
         Emit(b_.Bitcast(ty, val), inst.result_id());
+    }
+
+    // WGSL has no isnan/isinf builtins. Classify the IEEE-754 bit pattern
+    // instead of comparing floats, which a finite-math optimizer may fold.
+    void EmitFloatClassification(const spvtools::opt::Instruction& inst, bool is_nan) {
+        auto* value = Value(inst.GetSingleWordInOperand(0));
+        auto* bits = b_.Bitcast(ty_.MatchWidth(ty_.u32(), value->Type()), value);
+        EmitWithoutSpvResult(bits);
+        auto* magnitude = b_.And(bits, b_.MatchWidth(u32(0x7fffffff), value->Type()));
+        EmitWithoutSpvResult(magnitude);
+        auto* exponent = b_.MatchWidth(u32(0x7f800000), value->Type());
+        Emit(b_.Binary(is_nan ? core::BinaryOp::kGreaterThan : core::BinaryOp::kEqual,
+                       Type(inst.type_id()), magnitude, exponent), inst.result_id());
     }
 
     core::ir::ControlInstruction* StopWalkingAt(uint32_t id) {

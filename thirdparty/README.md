@@ -1095,6 +1095,10 @@ Files extracted from upstream source:
 
 Required by Tint for SPIR-V parsing and validation. Version pinned by Dawn DEPS.
 
+Patches:
+
+- `0001-remove-lowered-descriptor-access.patch` — Remove the original descriptor operation after replacing dynamic indexing with a switch, including image stores and atomics.
+
 
 ## swappy-frame-pacing
 
@@ -1128,6 +1132,10 @@ Patches:
 - `0004-accept-non-constant-point-size.patch` — Accept non-constant `point_size` stores
 - `0005-size-emission-and-capability.patch` — `@size` emission guard for specialization constants
 - `0006-remove-abseil-dependency.patch` — Replace `absl::from_chars` with `std::from_chars`
+- `0007-extend-size-mismatch-to-struct-total-size.patch` — Preserve specialization-constant-sized uniform blocks.
+- `0008-emscripten-3-float-parsing.patch` — Locale-independent parsing with Emscripten 3.x libc++.
+- `0009-macos-float-parsing.patch` — Support macOS versions below the availability of floating-point `from_chars`.
+- `0010-support-float-classification.patch` — Lower scalar and vector NaN/infinity classification using integer bit patterns.
 
 Used for SPIR-V to WGSL translation in the WebGPU rendering backend.
 Requires spirv-tools and spirv-headers.

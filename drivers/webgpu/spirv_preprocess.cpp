@@ -1315,9 +1315,9 @@ Vector<uint8_t> split_combined_samplers(const Vector<uint8_t> &p_bytes) {
 					push_word(out, w0); // Same wc|op.
 					push_word(out, target);
 					push_word(out, DECO_BINDING);
-					// Multisampled: no sampler, so image gets binding*2 (like non-combined).
-					// Regular: image gets binding*2+1, sampler gets binding*2.
-					push_word(out, cinfo.is_multisampled ? cinfo.binding * 2 : cinfo.binding * 2 + 1);
+					// Keep the image in the combined texture slot even when MSAA
+					// removes the unused sampler. Uniform sets use this same mapping.
+					push_word(out, cinfo.binding * 2 + 1);
 					pos += wc;
 					continue;
 				} else if (decoration == DECO_NON_WRITABLE) {
@@ -1885,11 +1885,12 @@ Vector<uint8_t> strip_restrict_decoration(const Vector<uint8_t> &p_bytes) {
 
 	const uint8_t *data = p_bytes.ptr();
 	static constexpr uint32_t DECO_RESTRICT = 19;
+	static constexpr uint32_t DECO_VOLATILE = 21;
 	static constexpr uint32_t DECO_INPUT_ATTACHMENT_INDEX = 43;
 
 	// Helper: is this a decoration we need to strip?
 	auto is_stripped_deco = [](uint32_t d) {
-		return d == DECO_RESTRICT || d == DECO_INPUT_ATTACHMENT_INDEX;
+		return d == DECO_RESTRICT || d == DECO_VOLATILE || d == DECO_INPUT_ATTACHMENT_INDEX;
 	};
 
 	// Quick scan: any stripped decoration present?

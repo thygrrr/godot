@@ -89,6 +89,7 @@ Vector<uint8_t> negate_position_y(const Vector<uint8_t> &p_bytes);
 
 // Strip OpDecorate/OpMemberDecorate for decorations unsupported by Tint:
 // Restrict (19) — memory hint from glslang, no WGSL equivalent.
+// Volatile (21) — no corresponding WGSL storage qualifier.
 // InputAttachmentIndex (43) — Vulkan subpass inputs, no WebGPU equivalent.
 Vector<uint8_t> strip_restrict_decoration(const Vector<uint8_t> &p_bytes);
 

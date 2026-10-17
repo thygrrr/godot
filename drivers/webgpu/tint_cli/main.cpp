@@ -1,6 +1,6 @@
 // tint_convert_cli — Standalone SPIR-V → WGSL converter for build-time precompilation.
 //
-// Runs the same 11 preprocessing passes as the Godot WebGPU runtime driver,
+// Runs the same SPIR-V preprocessing passes as the Godot WebGPU runtime driver,
 // then converts to WGSL via Tint. Produces output identical to what the engine
 // generates at runtime, enabling precompilation of ubershader and specialized
 // shader variants at build time.
@@ -52,8 +52,35 @@ static std::string convert_spirv_to_wgsl(const std::vector<uint8_t> &p_spv_bytes
 	spv.resize((int64_t)p_spv_bytes.size());
 	memcpy(spv.ptrw(), p_spv_bytes.data(), p_spv_bytes.size());
 
-	// 11 preprocessing passes (same order as rendering_device_driver_webgpu.cpp).
+	std::vector<uint32_t> original_words(p_spv_bytes.size() / 4);
+	memcpy(original_words.data(), p_spv_bytes.data(), p_spv_bytes.size());
+	size_t prepared_count = 0;
+	char *prepare_error = nullptr;
+	uint32_t *prepared = tint_wrapper_prepare_spirv(original_words.data(), original_words.size(), &prepared_count, &prepare_error);
+	if (!prepared) {
+		r_error = prepare_error ? prepare_error : "SPIR-V preparation failed";
+		free(prepare_error);
+		return {};
+	}
+	spv.resize(prepared_count * sizeof(uint32_t));
+	memcpy(spv.ptrw(), prepared, spv.size());
+	free(prepared);
+
+	// Resource-array inputs must use the ranges reserved by the runtime driver
+	// before its SPIR-V cache lookup. Never collapse an array to its first element.
 	spv = spirv_preprocess::freeze_spec_constant_ops(spv);
+	spv = spirv_preprocess::strip_restrict_decoration(spv);
+	size_t scalar_count = 0;
+	char *scalar_error = nullptr;
+	uint32_t *scalar = tint_wrapper_scalarize_descriptors(reinterpret_cast<const uint32_t *>(spv.ptr()), spv.size() / 4, &scalar_count, &scalar_error);
+	if (!scalar) {
+		r_error = scalar_error ? scalar_error : "Descriptor-array expansion failed";
+		free(scalar_error);
+		return {};
+	}
+	spv.resize(scalar_count * sizeof(uint32_t));
+	memcpy(spv.ptrw(), scalar, spv.size());
+	free(scalar);
 	spv = spirv_preprocess::rewrite_copy_logical(spv);
 	spv = spirv_preprocess::rewrite_terminate_invocation(spv);
 	spv = spirv_preprocess::convert_push_constants_to_uniforms(spv);
@@ -64,7 +91,6 @@ static std::string convert_spirv_to_wgsl(const std::vector<uint8_t> &p_spv_bytes
 	spv = spirv_preprocess::strip_restrict_decoration(spv);
 	spv = spirv_preprocess::strip_memory_barrier(spv);
 	spv = spirv_preprocess::fix_nonfinite_literals(spv);
-	spv = spirv_preprocess::flatten_binding_arrays(spv);
 	spv = spirv_preprocess::normalize_storage_buffer_access(spv);
 	spv = spirv_preprocess::infer_readonly_storage(spv);
 

@@ -30,8 +30,7 @@ void tint_wrapper_initialize() {
 	tint::Initialize();
 }
 
-char *tint_wrapper_spirv_to_wgsl(const uint32_t *p_spirv_words, size_t p_word_count, char **r_error) {
-	std::vector<uint32_t> words(p_spirv_words, p_spirv_words + p_word_count);
+uint32_t *tint_wrapper_prepare_spirv(const uint32_t *p_words, size_t p_count, size_t *r_count, char **r_error) {
 	// Tint's texture lowering does not accept Godot 4.7's opaque handle
 	// parameters. Inline just image/sampler calls, retaining ordinary functions.
 	spvtools::Optimizer optimizer(SPV_ENV_UNIVERSAL_1_6);
@@ -44,7 +43,7 @@ char *tint_wrapper_spirv_to_wgsl(const uint32_t *p_spirv_words, size_t p_word_co
 	optimizer.RegisterPass(spvtools::CreateInlineOpaquePass());
 	optimizer.RegisterPass(spvtools::CreateEliminateDeadFunctionsPass());
 	std::vector<uint32_t> inlined;
-	if (!optimizer.Run(words.data(), words.size(), &inlined)) {
+	if (!optimizer.Run(p_words, p_count, &inlined)) {
 		if (r_error) {
 			*r_error = static_cast<char *>(malloc(diagnostics.size() + 1));
 			if (*r_error) {
@@ -53,8 +52,47 @@ char *tint_wrapper_spirv_to_wgsl(const uint32_t *p_spirv_words, size_t p_word_co
 		}
 		return nullptr;
 	}
-	words = std::move(inlined);
+	*r_count = inlined.size();
+	auto *result = static_cast<uint32_t *>(malloc(inlined.size() * sizeof(uint32_t)));
+	if (result) {
+		memcpy(result, inlined.data(), inlined.size() * sizeof(uint32_t));
+	}
+	return result;
+}
 
+uint32_t *tint_wrapper_scalarize_descriptors(const uint32_t *p_words, size_t p_count, size_t *r_count, char **r_error) {
+	spvtools::Optimizer optimizer(SPV_ENV_UNIVERSAL_1_6);
+	std::string diagnostics;
+	optimizer.SetMessageConsumer([&](spv_message_level_t, const char *, const spv_position_t &, const char *message) {
+		diagnostics += message;
+		diagnostics += '\n';
+	});
+	optimizer.RegisterPass(spvtools::CreateReplaceDescArrayAccessUsingVarIndexPass());
+	optimizer.RegisterPass(spvtools::CreateAggressiveDCEPass());
+	optimizer.RegisterPass(spvtools::CreateDescriptorArrayScalarReplacementPass());
+	optimizer.RegisterPass(spvtools::CreateAggressiveDCEPass());
+	optimizer.RegisterPass(spvtools::CreateDeadVariableEliminationPass());
+	optimizer.RegisterPass(spvtools::CreateEliminateDeadConstantPass());
+	std::vector<uint32_t> output;
+	if (!optimizer.Run(p_words, p_count, &output)) {
+		if (r_error) {
+			*r_error = static_cast<char *>(malloc(diagnostics.size() + 1));
+			if (*r_error) {
+				memcpy(*r_error, diagnostics.c_str(), diagnostics.size() + 1);
+			}
+		}
+		return nullptr;
+	}
+	*r_count = output.size();
+	auto *result = static_cast<uint32_t *>(malloc(output.size() * sizeof(uint32_t)));
+	if (result) {
+		memcpy(result, output.data(), output.size() * sizeof(uint32_t));
+	}
+	return result;
+}
+
+char *tint_wrapper_spirv_to_wgsl(const uint32_t *p_spirv_words, size_t p_word_count, char **r_error) {
+	std::vector<uint32_t> words(p_spirv_words, p_spirv_words + p_word_count);
 	// Allow all WGSL extensions and language features so Tint can emit
 	// constructs like readonly storage textures without validation errors.
 	tint::wgsl::writer::Options wgsl_options;
@@ -74,6 +112,9 @@ char *tint_wrapper_spirv_to_wgsl(const uint32_t *p_spirv_words, size_t p_word_co
 		for (const auto &entry : inspector.GetEntryPoints()) {
 			for (const auto &binding : inspector.GetResourceBindings(entry.name)) {
 				metadata += "//RESOURCE_USED:" + std::to_string(binding.bind_group) + "," + std::to_string(binding.binding) + "\n";
+			}
+			for (const auto &pair : inspector.GetSamplerTextureUses(entry.name)) {
+				metadata += "//TEXTURE_SAMPLED:" + std::to_string(pair.texture_binding_point.group) + "," + std::to_string(pair.texture_binding_point.binding) + "\n";
 			}
 		}
 		if (inspector.has_error()) {

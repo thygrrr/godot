@@ -169,6 +169,13 @@ struct WGShader {
 		LocalVector<BindGroupEntry> entries;
 	};
 	LocalVector<BindGroupInfo> bind_group_infos;
+	struct ResourceArray {
+		uint32_t binding = 0;
+		uint32_t length = 0;
+	};
+	// Original (set,binding) to the reserved scalar descriptor range.
+	HashMap<uint32_t, ResourceArray> resource_arrays;
+	HashSet<uint32_t> active_bindings;
 
 	// Depth alias bindings: maps (set << 16 | alias_binding) → depth_binding.
 	// Used by uniform_set_create to add extra bind group entries for split depth textures.
@@ -284,7 +291,8 @@ struct WGUniformSet {
 	// Rebind cache: when a bind group is created with shader A's BGL but
 	// needs to be used with shader B's pipeline (different BGL), we
 	// re-create the bind group with the correct BGL and cache it.
-	LocalVector<WGPUBindGroupEntry> cached_entries;
+	LocalVector<RDD::BoundUniform> original_uniforms;
+	LocalVector<WGUniformSet *> rebound_sets;
 	WGShader *source_shader = nullptr;
 	HashMap<WGPUBindGroupLayout, WGPUBindGroup> rebind_cache;
 

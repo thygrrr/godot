@@ -121,6 +121,7 @@ Error RenderingContextDriverWebGPU::initialize_native() {
 		WGPUFeatureName_TextureFormatsTier1,
 		WGPUFeatureName_TextureFormatsTier2,
 		WGPUFeatureName_RG11B10UfloatRenderable,
+		WGPUFeatureName_Depth32FloatStencil8,
 		WGPUFeatureName_ClipDistances,
 		WGPUFeatureName_DualSourceBlending,
 		WGPUFeatureName_IndirectFirstInstance,

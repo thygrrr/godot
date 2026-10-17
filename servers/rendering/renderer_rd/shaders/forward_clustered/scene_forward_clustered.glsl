@@ -1046,6 +1046,10 @@ layout(location = 4) out float depth_output_buffer;
 
 #endif // MODE_RENDER_MATERIAL
 
+#if defined(RENDER_DRIVER_WEBGPU) && defined(MODE_RENDER_SDF)
+layout(location = 0) out vec4 sdfgi_raster_output;
+#endif
+
 #ifdef MODE_RENDER_NORMAL_ROUGHNESS
 layout(location = 0) out vec4 normal_roughness_output_buffer;
 
@@ -1068,7 +1072,11 @@ layout(location = 0) out vec4 frag_color;
 #endif // RENDER DEPTH
 
 #ifdef MOTION_VECTORS
+#ifdef RENDER_DRIVER_WEBGPU
+layout(location = 2) out vec4 motion_vector;
+#else
 layout(location = 2) out vec2 motion_vector;
+#endif
 #endif
 
 #include "../scene_forward_aa_inc.glsl"
@@ -1565,14 +1573,20 @@ void fragment_shader(in SceneData scene_data) {
 
 		cluster_get_item_range(cluster_decal_offset + implementation_data.max_cluster_element_count_div_32 + cluster_z, item_min, item_max, item_from, item_to);
 
+#ifndef RENDER_DRIVER_WEBGPU
 		item_from = subgroupBroadcastFirst(subgroupMin(item_from));
 		item_to = subgroupBroadcastFirst(subgroupMax(item_to));
+#endif
 
 		for (uint i = item_from; i < item_to; i++) {
 			uint mask = cluster_buffer.data[cluster_decal_offset + i];
 			mask &= cluster_get_range_clip_mask(i, item_min, item_max);
 
+#ifdef RENDER_DRIVER_WEBGPU
+			uint merged_mask = mask;
+#else
 			uint merged_mask = subgroupBroadcastFirst(subgroupOr(mask));
+#endif
 			while (merged_mask != 0) {
 				uint bit = findMSB(merged_mask);
 				merged_mask &= ~(1u << bit);
@@ -2067,8 +2081,10 @@ void fragment_shader(in SceneData scene_data) {
 
 		cluster_get_item_range(cluster_reflection_offset + implementation_data.max_cluster_element_count_div_32 + cluster_z, item_min, item_max, item_from, item_to);
 
+#ifndef RENDER_DRIVER_WEBGPU
 		item_from = subgroupBroadcastFirst(subgroupMin(item_from));
 		item_to = subgroupBroadcastFirst(subgroupMax(item_to));
+#endif
 
 #ifdef LIGHT_ANISOTROPY_USED
 		// https://google.github.io/filament/Filament.html#lighting/imagebasedlights/anisotropy
@@ -2087,7 +2103,11 @@ void fragment_shader(in SceneData scene_data) {
 			uint mask = cluster_buffer.data[cluster_reflection_offset + i];
 			mask &= cluster_get_range_clip_mask(i, item_min, item_max);
 
+#ifdef RENDER_DRIVER_WEBGPU
+			uint merged_mask = mask;
+#else
 			uint merged_mask = subgroupBroadcastFirst(subgroupOr(mask));
+#endif
 			while (merged_mask != 0) {
 				uint bit = findMSB(merged_mask);
 				merged_mask &= ~(1u << bit);
@@ -2721,14 +2741,20 @@ void fragment_shader(in SceneData scene_data) {
 
 		cluster_get_item_range(cluster_omni_offset + implementation_data.max_cluster_element_count_div_32 + cluster_z, item_min, item_max, item_from, item_to);
 
+#ifndef RENDER_DRIVER_WEBGPU
 		item_from = subgroupBroadcastFirst(subgroupMin(item_from));
 		item_to = subgroupBroadcastFirst(subgroupMax(item_to));
+#endif
 
 		for (uint i = item_from; i < item_to; i++) {
 			uint mask = cluster_buffer.data[cluster_omni_offset + i];
 			mask &= cluster_get_range_clip_mask(i, item_min, item_max);
 
+#ifdef RENDER_DRIVER_WEBGPU
+			uint merged_mask = mask;
+#else
 			uint merged_mask = subgroupBroadcastFirst(subgroupOr(mask));
+#endif
 			while (merged_mask != 0) {
 				uint bit = findMSB(merged_mask);
 				merged_mask &= ~(1u << bit);
@@ -2782,14 +2808,20 @@ void fragment_shader(in SceneData scene_data) {
 
 		cluster_get_item_range(cluster_spot_offset + implementation_data.max_cluster_element_count_div_32 + cluster_z, item_min, item_max, item_from, item_to);
 
+#ifndef RENDER_DRIVER_WEBGPU
 		item_from = subgroupBroadcastFirst(subgroupMin(item_from));
 		item_to = subgroupBroadcastFirst(subgroupMax(item_to));
+#endif
 
 		for (uint i = item_from; i < item_to; i++) {
 			uint mask = cluster_buffer.data[cluster_spot_offset + i];
 			mask &= cluster_get_range_clip_mask(i, item_min, item_max);
 
+#ifdef RENDER_DRIVER_WEBGPU
+			uint merged_mask = mask;
+#else
 			uint merged_mask = subgroupBroadcastFirst(subgroupOr(mask));
+#endif
 			while (merged_mask != 0) {
 				uint bit = findMSB(merged_mask);
 				merged_mask &= ~(1u << bit);
@@ -2843,14 +2875,20 @@ void fragment_shader(in SceneData scene_data) {
 
 		cluster_get_item_range(cluster_area_offset + implementation_data.max_cluster_element_count_div_32 + cluster_z, item_min, item_max, item_from, item_to);
 
+#ifndef RENDER_DRIVER_WEBGPU
 		item_from = subgroupBroadcastFirst(subgroupMin(item_from));
 		item_to = subgroupBroadcastFirst(subgroupMax(item_to));
+#endif
 
 		for (uint i = item_from; i < item_to; i++) {
 			uint mask = cluster_buffer.data[cluster_area_offset + i];
 			mask &= cluster_get_range_clip_mask(i, item_min, item_max);
 
+#ifdef RENDER_DRIVER_WEBGPU
+			uint merged_mask = mask;
+#else
 			uint merged_mask = subgroupBroadcastFirst(subgroupOr(mask));
+#endif
 			while (merged_mask != 0) {
 				uint bit = findMSB(merged_mask);
 				merged_mask &= ~(1u << bit);
@@ -2956,7 +2994,11 @@ void fragment_shader(in SceneData scene_data) {
 			}
 		}
 
-#ifdef NO_IMAGE_ATOMICS
+#ifdef RENDER_DRIVER_WEBGPU
+		ivec3 facing_size = imageSize(albedo_volume_grid);
+		uint facing_offset = uint((grid_pos.z * facing_size.y + grid_pos.y) * facing_size.x + grid_pos.x);
+		atomicOr(geom_facing_grid.data[facing_offset], facing_bits);
+#elif defined(NO_IMAGE_ATOMICS)
 		imageStore(geom_facing_grid, grid_pos, uvec4(imageLoad(geom_facing_grid, grid_pos).r | facing_bits)); //store facing bits
 #else
 		imageAtomicOr(geom_facing_grid, grid_pos, facing_bits); //store facing bits
@@ -3128,7 +3170,11 @@ void fragment_shader(in SceneData scene_data) {
 	vec2 position_uv = position_clip * vec2(0.5, 0.5);
 	vec2 prev_position_uv = prev_position_clip * vec2(0.5, 0.5);
 
+#ifdef RENDER_DRIVER_WEBGPU
+	motion_vector = vec4(prev_position_uv - position_uv, 0.0, 0.0);
+#else
 	motion_vector = prev_position_uv - position_uv;
+#endif
 #endif
 }
 
@@ -3149,4 +3195,7 @@ void main() {
 #endif
 
 	fragment_shader(scene_data_block.data);
+#if defined(RENDER_DRIVER_WEBGPU) && defined(MODE_RENDER_SDF)
+	sdfgi_raster_output = vec4(0.0);
+#endif
 }

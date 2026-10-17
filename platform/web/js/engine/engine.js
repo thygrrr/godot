@@ -350,6 +350,7 @@ const Engine = (function () {
 				'float32-filterable',
 				'float32-blendable',
 				'rg11b10ufloat-renderable',
+				'depth32float-stencil8',
 				'clip-distances',
 				'dual-source-blending',
 				// Texture compression families — without these, Godot's DXT5/ETC2/ASTC
@@ -371,6 +372,7 @@ const Engine = (function () {
 			desc.requiredLimits = desc.requiredLimits || {};
 			var limitsToMax = [
 				'maxStorageBuffersPerShaderStage',
+				'maxStorageTexturesPerShaderStage',
 				'maxStorageBufferBindingSize',
 				'maxBufferSize',
 				'maxUniformBufferBindingSize',
@@ -379,6 +381,11 @@ const Engine = (function () {
 				'maxSamplersPerShaderStage',
 				'maxColorAttachments',
 				'maxBindGroups',
+				'maxComputeInvocationsPerWorkgroup',
+				'maxComputeWorkgroupSizeX',
+				'maxComputeWorkgroupSizeY',
+				'maxComputeWorkgroupSizeZ',
+				'maxComputeWorkgroupStorageSize',
 			];
 			for (var li = 0; li < limitsToMax.length; li++) {
 				var key = limitsToMax[li];

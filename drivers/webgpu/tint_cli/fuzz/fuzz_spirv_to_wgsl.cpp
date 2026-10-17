@@ -37,8 +37,28 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	spv.resize((int64_t)size);
 	memcpy(spv.ptrw(), data, size);
 
-	// 11 preprocessing passes run in-process (crashes here ARE bugs).
+	size_t prepared_count = 0;
+	char *error = nullptr;
+	uint32_t *prepared = tint_wrapper_prepare_spirv(reinterpret_cast<const uint32_t *>(spv.ptr()), spv.size() / 4, &prepared_count, &error);
+	if (!prepared) {
+		free(error);
+		return 0;
+	}
+	spv.resize(prepared_count * sizeof(uint32_t));
+	memcpy(spv.ptrw(), prepared, spv.size());
+	free(prepared);
+	// Match the runtime passes, preserving descriptor-array accesses.
 	spv = spirv_preprocess::freeze_spec_constant_ops(spv);
+	spv = spirv_preprocess::strip_restrict_decoration(spv);
+	size_t scalar_count = 0;
+	uint32_t *scalar = tint_wrapper_scalarize_descriptors(reinterpret_cast<const uint32_t *>(spv.ptr()), spv.size() / 4, &scalar_count, &error);
+	if (!scalar) {
+		free(error);
+		return 0;
+	}
+	spv.resize(scalar_count * sizeof(uint32_t));
+	memcpy(spv.ptrw(), scalar, spv.size());
+	free(scalar);
 	spv = spirv_preprocess::rewrite_copy_logical(spv);
 	spv = spirv_preprocess::rewrite_terminate_invocation(spv);
 	spv = spirv_preprocess::convert_push_constants_to_uniforms(spv);
@@ -49,7 +69,7 @@ extern "C" int LLVMFuzzerTestOneInput(const uint8_t *data, size_t size) {
 	spv = spirv_preprocess::strip_restrict_decoration(spv);
 	spv = spirv_preprocess::strip_memory_barrier(spv);
 	spv = spirv_preprocess::fix_nonfinite_literals(spv);
-	spv = spirv_preprocess::flatten_binding_arrays(spv);
+	spv = spirv_preprocess::normalize_storage_buffer_access(spv);
 	spv = spirv_preprocess::infer_readonly_storage(spv);
 
 	// Bump version to 1.3 (same as tint_convert_cli).

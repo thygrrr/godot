@@ -3111,6 +3111,7 @@ Vector<uint8_t> RenderingDevice::texture_get_data(RID p_texture, uint32_t p_laye
 		buffer_data.resize(tight_buffer_size);
 
 		uint8_t *write_ptr = buffer_data.ptrw();
+		const uint32_t gpu_pixel_size = driver->texture_get_gpu_pixel_size(tex->driver_id);
 
 		for (uint32_t i = 0; i < tex->mipmaps; i++) {
 			uint32_t width = 0, height = 0, depth = 0;
@@ -3131,7 +3132,10 @@ Vector<uint8_t> RenderingDevice::texture_get_data(RID p_texture, uint32_t p_laye
 			const uint8_t *rp = read_ptr + copy_regions[i].buffer_offset;
 			uint32_t row_pitch = mip_layouts[i].row_pitch;
 
-			if (tight_row_pitch == row_pitch) {
+			if (gpu_pixel_size > 0 && block_w == 1 && block_h == 1) {
+				driver->texture_readback_convert(tex->driver_id, rp, row_pitch, write_ptr, tight_row_pitch, width, height * depth);
+				write_ptr += tight_mip_size;
+			} else if (tight_row_pitch == row_pitch) {
 				// Same row pitch, we can copy directly.
 				memcpy(write_ptr, rp, tight_mip_size);
 				write_ptr += tight_mip_size;
@@ -4545,7 +4549,7 @@ Vector<uint8_t> RenderingDevice::shader_compile_binary_from_spirv(const Vector<S
 				continue;
 			}
 			String stage_ext = (p_spirv[i].shader_stage < 5) ? stage_suffixes[p_spirv[i].shader_stage] : "spv";
-			String safe_name = p_shader_name.is_empty() ? "unnamed" : p_shader_name.replace("/", "_").replace("\\", "_");
+			String safe_name = p_shader_name.is_empty() ? "unnamed" : p_shader_name.replace("/", "_").replace("\\", "_").replace(":", "_");
 			String path = dump_dir.path_join(safe_name + "." + stage_ext + ".spv");
 			Ref<FileAccess> f = FileAccess::open(path, FileAccess::WRITE);
 			if (f.is_valid()) {

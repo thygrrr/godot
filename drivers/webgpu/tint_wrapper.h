@@ -20,6 +20,14 @@
 // Initialize the Tint library. Call once at startup.
 void tint_wrapper_initialize();
 
+// Inline opaque texture/sampler arguments before resource types are rewritten.
+// Returns malloc'd SPIR-V words, or nullptr with a malloc'd diagnostic.
+uint32_t *tint_wrapper_prepare_spirv(const uint32_t *p_words, size_t p_count, size_t *r_count, char **r_error);
+
+// Expand descriptor arrays into individual resources, preserving dynamic indexing
+// through switches. The caller reserves non-overlapping binding ranges first.
+uint32_t *tint_wrapper_scalarize_descriptors(const uint32_t *p_words, size_t p_count, size_t *r_count, char **r_error);
+
 // Convert SPIR-V binary to WGSL text.
 // On success: returns a malloc'd null-terminated string (caller must free).
 // On failure: returns nullptr and writes an error message to *r_error
