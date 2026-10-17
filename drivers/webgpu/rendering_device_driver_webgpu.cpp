@@ -5671,9 +5671,70 @@ void RenderingDeviceDriverWebGPU::command_copy_texture(CommandBufferID p_cmd_buf
 }
 
 void RenderingDeviceDriverWebGPU::command_resolve_texture(CommandBufferID p_cmd_buffer, TextureID p_src_texture, TextureLayout p_src_texture_layout, uint32_t p_src_layer, uint32_t p_src_mipmap, TextureID p_dst_texture, TextureLayout p_dst_texture_layout, uint32_t p_dst_layer, uint32_t p_dst_mipmap) {
-	// TODO: Create a minimal render pass with MSAA texture as color attachment
-	// and the resolve target as resolveTarget. Begin and immediately end the pass.
-	WARN_PRINT_ONCE("WebGPU: command_resolve_texture not yet implemented.");
+	WGCommandBuffer *cmd = (WGCommandBuffer *)p_cmd_buffer.id;
+	WGTexture *src = (WGTexture *)p_src_texture.id;
+	WGTexture *dst = (WGTexture *)p_dst_texture.id;
+	ERR_FAIL_NULL(cmd);
+	ERR_FAIL_NULL(src);
+	ERR_FAIL_NULL(dst);
+	cmd->end_active_encoder();
+
+	WGPUTextureViewDescriptor view = {};
+	view.format = src->format;
+	view.dimension = WGPUTextureViewDimension_2D;
+	view.aspect = WGPUTextureAspect_All;
+	view.mipLevelCount = 1;
+	view.arrayLayerCount = 1;
+	view.baseMipLevel = src->base_mipmap + p_src_mipmap;
+	view.baseArrayLayer = src->base_layer + p_src_layer;
+	WGPUTextureView source_view = wgpuTextureCreateView(src->gpu_handle(), &view);
+	view.format = dst->format;
+	view.baseMipLevel = dst->base_mipmap + p_dst_mipmap;
+	view.baseArrayLayer = dst->base_layer + p_dst_layer;
+	WGPUTexture intermediate = nullptr;
+	if (!(dst->usage & WGPUTextureUsage_RenderAttachment)) {
+		// Godot permits a copy-only resolve destination. WebGPU requires a
+		// render attachment, so resolve into a temporary and copy it afterward.
+		WGPUTextureDescriptor descriptor = {};
+		descriptor.dimension = WGPUTextureDimension_2D;
+		descriptor.size = { MAX(1u, dst->width >> p_dst_mipmap), MAX(1u, dst->height >> p_dst_mipmap), 1 };
+		descriptor.format = dst->format;
+		descriptor.mipLevelCount = 1;
+		descriptor.sampleCount = 1;
+		descriptor.usage = WGPUTextureUsage_RenderAttachment | WGPUTextureUsage_CopySrc;
+		intermediate = wgpuDeviceCreateTexture(device, &descriptor);
+		view.baseMipLevel = 0;
+		view.baseArrayLayer = 0;
+	}
+	WGPUTextureView target_view = wgpuTextureCreateView(intermediate ? intermediate : dst->gpu_handle(), &view);
+
+	WGPURenderPassColorAttachment color = {};
+	color.view = source_view;
+	color.resolveTarget = target_view;
+	color.depthSlice = WGPU_DEPTH_SLICE_UNDEFINED;
+	color.loadOp = WGPULoadOp_Load;
+	color.storeOp = WGPUStoreOp_Store;
+	WGPURenderPassDescriptor pass = {};
+	pass.colorAttachmentCount = 1;
+	pass.colorAttachments = &color;
+	WGPURenderPassEncoder encoder = wgpuCommandEncoderBeginRenderPass(cmd->encoder, &pass);
+	wgpuRenderPassEncoderEnd(encoder);
+	wgpuRenderPassEncoderRelease(encoder);
+	if (intermediate) {
+		WGPUTexelCopyTextureInfo from = {};
+		from.texture = intermediate;
+		from.aspect = WGPUTextureAspect_All;
+		WGPUTexelCopyTextureInfo to = {};
+		to.texture = dst->gpu_handle();
+		to.mipLevel = dst->base_mipmap + p_dst_mipmap;
+		to.origin.z = dst->base_layer + p_dst_layer;
+		to.aspect = WGPUTextureAspect_All;
+		WGPUExtent3D size = { MAX(1u, dst->width >> p_dst_mipmap), MAX(1u, dst->height >> p_dst_mipmap), 1 };
+		wgpuCommandEncoderCopyTextureToTexture(cmd->encoder, &from, &to, &size);
+		wgpuTextureRelease(intermediate);
+	}
+	wgpuTextureViewRelease(target_view);
+	wgpuTextureViewRelease(source_view);
 }
 
 // Return the byte size of a single texel for a given WGPUTextureFormat.
