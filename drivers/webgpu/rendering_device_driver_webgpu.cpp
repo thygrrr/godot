@@ -887,6 +887,14 @@ void RenderingDeviceDriverWebGPU::_check_capabilities() {
 #else
 	has_texture_formats_tier1 = wgpuDeviceHasFeature(device, WGPUFeatureName_TextureFormatsTier1);
 #endif
+#ifdef WEB_ENABLED
+	has_texture_formats_tier2 = (bool)EM_ASM_INT({
+		var d = Module['preinitializedWebGPUDevice'];
+		return (d && d.features && d.features.has('texture-formats-tier2')) ? 1 : 0;
+	});
+#else
+	has_texture_formats_tier2 = wgpuDeviceHasFeature(device, WGPUFeatureName_TextureFormatsTier2);
+#endif
 	if (has_texture_formats_tier1) {
 		print_verbose("WebGPU: texture-formats-tier1 feature is available — r8/rg8 storage formats supported natively.");
 	}
@@ -2461,7 +2469,7 @@ WGPUTextureUsage RenderingDeviceDriverWebGPU::_texture_usage_to_wgpu(BitField<Te
 	if (p_usage.has_flag(TEXTURE_USAGE_STORAGE_BIT) || p_usage.has_flag(TEXTURE_USAGE_STORAGE_ATOMIC_BIT)) {
 		// Read-only storage declarations are lowered to textureLoad on sampled
 		// textures to stay within WebGPU's storage-texture binding limits.
-		flags |= WGPUTextureUsage_StorageBinding | WGPUTextureUsage_TextureBinding;
+		flags |= WGPUTextureUsage_StorageBinding | WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopySrc;
 	}
 	if (p_usage.has_flag(TEXTURE_USAGE_CPU_READ_BIT) || p_usage.has_flag(TEXTURE_USAGE_CAN_COPY_FROM_BIT)) {
 		flags |= WGPUTextureUsage_CopySrc;
@@ -3090,6 +3098,10 @@ bool RenderingDeviceDriverWebGPU::command_buffer_begin(CommandBufferID p_cmd_buf
 	cmd->active_encoder = WGCommandBuffer::NONE;
 	cmd->push_constants_dirty = false;
 	cmd->push_constant_data_len = 0;
+	for (uint32_t set = 0; set < WGCommandBuffer::MAX_BIND_GROUPS; set++) {
+		cmd->compute_bound_sets[set] = nullptr;
+		cmd->last_bound_state[set] = {};
+	}
 
 	return true;
 }
@@ -3657,10 +3669,10 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 		// Safari rejects read_write storage texture access at BGL validation.
 		// The shadow read binding uses the odd slot (B+1) which is free for IMAGE
 		// types due to preprocessing's binding doubling (even=resource, odd=sampler for combined).
-		if (!has_rw_storage_textures && strstr(wgsl_str, "read_write>")) {
+		if (strstr(wgsl_str, "read_write>")) {
 			struct RWSplitInfo {
 				uint32_t grp, bnd;
-				String var_name, dim_type, fmt;
+				String var_name, dim_type, fmt, declaration;
 			};
 			LocalVector<RWSplitInfo> rw_infos;
 
@@ -3700,6 +3712,17 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 					{ char buf[256]; int len = (int)(ne - vp); if (len > 255) len = 255; memcpy(buf, vp, len); buf[len] = '\0'; info.var_name = buf; }
 					{ char buf[256]; int len = (int)(lt - ts); if (len > 255) len = 255; memcpy(buf, ts, len); buf[len] = '\0'; info.dim_type = buf; }
 					{ char buf[64]; if (fmt_len > 63) fmt_len = 63; memcpy(buf, lt + 1, fmt_len); buf[fmt_len] = '\0'; info.fmt = String(buf).strip_edges(); }
+					bool core_rw = info.fmt == "r32float" || info.fmt == "r32uint" || info.fmt == "r32sint";
+					bool tier2_rw = info.fmt == "rgba8unorm" || info.fmt == "rgba8uint" || info.fmt == "rgba8sint" ||
+							info.fmt == "rgba16float" || info.fmt == "rgba16uint" || info.fmt == "rgba16sint" ||
+							info.fmt == "rgba32float" || info.fmt == "rgba32uint" || info.fmt == "rgba32sint" ||
+							info.fmt == "r8unorm" || info.fmt == "r8uint" || info.fmt == "r8sint" ||
+							info.fmt == "r16float" || info.fmt == "r16uint" || info.fmt == "r16sint";
+					if (has_rw_storage_textures && (core_rw || (has_texture_formats_tier2 && tier2_rw))) {
+						p = semi;
+						continue;
+					}
+					info.declaration = String::utf8(p, semi - p + 1);
 					rw_infos.push_back(info);
 					p = semi;
 				}
@@ -3708,6 +3731,12 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 			if (rw_infos.size() > 0) {
 				String ws(wgsl_str);
 				for (const RWSplitInfo &info : rw_infos) {
+					if (ws.find("textureLoad(" + info.var_name + ",") == -1) {
+						// A write-only use needs neither the optional format feature
+						// nor a copied read binding.
+						ws = ws.replace(info.declaration, info.declaration.replace("read_write>", "write>"));
+						continue;
+					}
 					uint32_t shadow_bnd = info.bnd + 1;
 					String shadow_name = info.var_name + "_rw_in";
 
@@ -3749,7 +3778,7 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 					// 4. Sampled textures need a mip level parameter in textureLoad.
 					// textureLoad(shadow, coords) → textureLoad(shadow, coords, 0)
 					{
-						String search = "textureLoad(" + shadow_name;
+						String search = "textureLoad(" + shadow_name + ",";
 						int64_t pos = 0;
 						while ((pos = ws.find(search, pos)) != -1) {
 							int64_t paren_start = pos + String("textureLoad").length();
@@ -4662,7 +4691,7 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 				continue;
 			}
 			uint32_t shadow_key = ((uint32_t)split_grp << 16) | shadow_bnd;
-			WGPUTextureFormat shadow_fmt = wgsl_storage_tex_format.has(shadow_key) ? wgsl_storage_tex_format[shadow_key] : WGPUTextureFormat_RGBA8Unorm;
+			WGPUTextureFormat shadow_fmt = wgsl_storage_tex_format.has(kv.key) ? wgsl_storage_tex_format[kv.key] : WGPUTextureFormat_RGBA8Unorm;
 			WGPUBindGroupLayoutEntry shadow_entry = {};
 			shadow_entry.binding = shadow_bnd;
 			shadow_entry.visibility = WGPUShaderStage_Compute;
@@ -4832,7 +4861,7 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 					uint32_t shadow_bnd = kv.value;
 					if (split_grp != i) { continue; }
 					uint32_t shadow_key = ((uint32_t)split_grp << 16) | shadow_bnd;
-					WGPUTextureFormat shadow_fmt = wgsl_storage_tex_format.has(shadow_key) ? wgsl_storage_tex_format[shadow_key] : WGPUTextureFormat_RGBA8Unorm;
+					WGPUTextureFormat shadow_fmt = wgsl_storage_tex_format.has(kv.key) ? wgsl_storage_tex_format[kv.key] : WGPUTextureFormat_RGBA8Unorm;
 					WGPUBindGroupLayoutEntry se = {};
 					se.binding = shadow_bnd;
 					se.visibility = WGPUShaderStage_Compute;
@@ -5414,7 +5443,7 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 		WGPUTextureDescriptor shadow_desc = {};
 		shadow_desc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
 		shadow_desc.dimension = orig_tex->dimension;
-		shadow_desc.size = { orig_tex->width, orig_tex->height, orig_tex->depth };
+		shadow_desc.size = { orig_tex->width, orig_tex->height, orig_tex->dimension == WGPUTextureDimension_3D ? orig_tex->depth : orig_tex->layers };
 		shadow_desc.format = orig_tex->format;
 		shadow_desc.mipLevelCount = orig_tex->mipmaps;
 		shadow_desc.sampleCount = orig_tex->sample_count;
@@ -5448,7 +5477,8 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 			// Register in the driver-level map so future texture_update calls
 			// on the source also copy to this shadow.
 			rw_shadow_copy_map[orig_tex->gpu_handle()].push_back(shadow_tex);
-			us->rw_shadow_registrations.push_back({ orig_tex->gpu_handle(), shadow_tex });
+			us->rw_shadow_registrations.push_back({ orig_tex->gpu_handle(), shadow_tex, write_bnd, orig_tex->base_mipmap, orig_tex->base_layer,
+					orig_tex->width, orig_tex->height, shadow_desc.size.depthOrArrayLayers, orig_tex->mipmaps, orig_tex->dimension == WGPUTextureDimension_3D });
 		} else {
 			wgpuTextureRelease(shadow_tex);
 		}
@@ -8222,6 +8252,16 @@ void RenderingDeviceDriverWebGPU::command_bind_compute_uniform_sets(CommandBuffe
 		if (us && us->handle) {
 			uint32_t set_idx = p_first_set_index + i;
 			WGPUBindGroup bg_to_bind = _get_compatible_bind_group(us, pipeline_shader, set_idx);
+			if (set_idx < WGCommandBuffer::MAX_BIND_GROUPS) {
+				WGUniformSet *resolved = us;
+				for (WGUniformSet *child : us->rebound_sets) {
+					if (child->handle == bg_to_bind) {
+						resolved = child;
+						break;
+					}
+				}
+				cmd->compute_bound_sets[set_idx] = resolved;
+			}
 
 			uint32_t set_dyn_offsets[MAX_DYNAMIC_BUFFERS] = {};
 			uint32_t num_dyn = us->dynamic_buffers.size();
@@ -8272,10 +8312,68 @@ void RenderingDeviceDriverWebGPU::command_bind_compute_uniform_sets(CommandBuffe
 	}
 }
 
+void RenderingDeviceDriverWebGPU::_prepare_compute_storage_reads(WGCommandBuffer *p_cmd) {
+	WGPipelineWrapper *pipeline = p_cmd->render_state.current_pipeline;
+	if (!pipeline || !pipeline->shader || pipeline->shader->rw_storage_splits.is_empty()) {
+		return;
+	}
+	LocalVector<const WGUniformSet::RWShadowRegistration *> copies;
+	for (uint32_t set = 0; set < WGCommandBuffer::MAX_BIND_GROUPS; set++) {
+		WGUniformSet *uniforms = p_cmd->compute_bound_sets[set];
+		if (!uniforms) {
+			continue;
+		}
+		for (const auto &copy : uniforms->rw_shadow_registrations) {
+			if (pipeline->shader->rw_storage_splits.has((set << 16) | copy.binding)) {
+				copies.push_back(&copy);
+			}
+		}
+	}
+	if (copies.is_empty()) {
+		return;
+	}
+	p_cmd->end_active_encoder();
+	for (const auto *copy : copies) {
+		for (uint32_t mip = 0; mip < copy->mipmaps; mip++) {
+			WGPUTexelCopyTextureInfo source = {};
+			source.texture = copy->source;
+			source.mipLevel = copy->base_mipmap + mip;
+			source.origin.z = copy->is_3d ? 0 : copy->base_layer;
+			source.aspect = WGPUTextureAspect_All;
+			WGPUTexelCopyTextureInfo destination = {};
+			destination.texture = copy->shadow;
+			destination.mipLevel = mip;
+			destination.aspect = WGPUTextureAspect_All;
+			WGPUExtent3D size = { MAX(1u, copy->width >> mip), MAX(1u, copy->height >> mip), copy->is_3d ? MAX(1u, copy->depth >> mip) : copy->depth };
+			wgpuCommandEncoderCopyTextureToTexture(p_cmd->encoder, &source, &destination, &size);
+		}
+	}
+	WGPUComputePassDescriptor descriptor = {};
+	p_cmd->compute_encoder = wgpuCommandEncoderBeginComputePass(p_cmd->encoder, &descriptor);
+	p_cmd->active_encoder = WGCommandBuffer::COMPUTE;
+	wgpuComputePassEncoderSetPipeline(p_cmd->compute_encoder, pipeline->compute_handle);
+	for (uint32_t gap : pipeline->shader->gap_bind_group_indices) {
+		wgpuComputePassEncoderSetBindGroup(p_cmd->compute_encoder, gap, empty_bind_group, 0, nullptr);
+	}
+	for (uint32_t set = 0; set < MIN(WGCommandBuffer::MAX_BIND_GROUPS, (uint32_t)pipeline->shader->bind_group_layouts.size()); set++) {
+		if (pipeline->shader->gap_bind_group_indices.has(set)) {
+			continue;
+		}
+		const auto &state = p_cmd->last_bound_state[set];
+		if (state.group) {
+			wgpuComputePassEncoderSetBindGroup(p_cmd->compute_encoder, set, state.group, state.dynamic_offset_count, state.dynamic_offset_count ? state.dynamic_offsets : nullptr);
+		}
+	}
+	// Rebind the PC ring after restarting the pass, including when the caller
+	// reuses the previous dispatch's push constants.
+	p_cmd->push_constants_dirty = p_cmd->push_constant_data_len > 0;
+}
+
 void RenderingDeviceDriverWebGPU::command_compute_dispatch(CommandBufferID p_cmd_buffer, uint32_t p_x_groups, uint32_t p_y_groups, uint32_t p_z_groups) {
 	WGCommandBuffer *cmd = (WGCommandBuffer *)(p_cmd_buffer.id);
 	ERR_FAIL_NULL(cmd);
 	ERR_FAIL_COND(!cmd->compute_encoder);
+	_prepare_compute_storage_reads(cmd);
 
 	if (cmd->render_state.current_pipeline) {
 		_flush_push_constants(cmd, cmd->render_state.current_pipeline->shader);
@@ -8290,6 +8388,7 @@ void RenderingDeviceDriverWebGPU::command_compute_dispatch_indirect(CommandBuffe
 	ERR_FAIL_NULL(cmd);
 	ERR_FAIL_NULL(indirect);
 	ERR_FAIL_COND(!cmd->compute_encoder);
+	_prepare_compute_storage_reads(cmd);
 
 	if (cmd->render_state.current_pipeline) {
 		_flush_push_constants(cmd, cmd->render_state.current_pipeline->shader);

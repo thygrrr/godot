@@ -285,6 +285,11 @@ struct WGUniformSet {
 	struct RWShadowRegistration {
 		WGPUTexture source;
 		WGPUTexture shadow;
+		uint32_t binding;
+		uint32_t base_mipmap;
+		uint32_t base_layer;
+		uint32_t width, height, depth, mipmaps;
+		bool is_3d;
 	};
 	LocalVector<RWShadowRegistration> rw_shadow_registrations;
 
@@ -422,6 +427,7 @@ struct WGCommandBuffer {
 		uint32_t dynamic_offset_count = 0;
 	};
 	BoundGroupState last_bound_state[MAX_BIND_GROUPS] = {};
+	WGUniformSet *compute_bound_sets[MAX_BIND_GROUPS] = {};
 
 	void invalidate_bind_groups() {
 		for (uint32_t i = 0; i < MAX_BIND_GROUPS; i++) {

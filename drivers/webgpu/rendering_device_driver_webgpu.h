@@ -88,6 +88,7 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 	WGPULimits device_limits = WGPU_LIMITS_INIT;
 	bool timestamp_supported = false;
 	bool has_texture_formats_tier1 = false;
+	bool has_texture_formats_tier2 = false;
 	bool has_rw_storage_textures = false; // readonly-and-readwrite-storage-textures
 
 	// Source WGPUTexture → shadow WGPUTexture handles for read_write storage splits.
@@ -191,6 +192,7 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 	WGPUTextureViewDimension _texture_type_to_view_dimension(TextureType p_type) const;
 
 	void _flush_push_constants(WGCommandBuffer *p_cmd_buf, WGShader *p_shader);
+	void _prepare_compute_storage_reads(WGCommandBuffer *p_cmd_buf);
 	WGPUShaderModule _create_module_with_spec_constants(const PackedByteArray &p_spirv, VectorView<PipelineSpecializationConstant> p_constants, ShaderStage p_stage);
 
 public:

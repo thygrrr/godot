@@ -131,6 +131,11 @@ Error RenderingContextDriverWebGPU::initialize_native() {
 		WGPUFeatureName_ImplicitDeviceSynchronization,
 	};
 	for (WGPUFeatureName feature : optional_features) {
+		// Exercise the core-format fallback on adapters that also expose tiers.
+		if (OS::get_singleton()->get_environment("GODOT_WEBGPU_FORCE_BASE_FORMATS") == "1" &&
+				(feature == WGPUFeatureName_TextureFormatsTier1 || feature == WGPUFeatureName_TextureFormatsTier2)) {
+			continue;
+		}
 		if (wgpuAdapterHasFeature(adapter, feature)) {
 			features.push_back(feature);
 		}
