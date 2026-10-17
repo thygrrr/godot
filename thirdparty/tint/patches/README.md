@@ -27,6 +27,7 @@ uv run --no-project python drivers/webgpu/dependencies.py --verify
 | 0007 | validator.cc | UBO layout | Extend `kAllowStructMemberSizeMismatch` to the struct TOTAL-size check (spec-constant-sized arrays leave `Size()` at its unfolded value) |
 | 0008 | parse_num.cc | Emscripten 3.x | Locale-independent floating-point parsing when libc++ deletes the `from_chars` overloads |
 | 0009 | parse_num.cc | macOS | Reuse locale-independent floating-point parsing below the macOS 26 availability of `from_chars` |
+| 0010 | parser.cc | Float classification | Lower SPIR-V `OpIsNan` and `OpIsInf` using IEEE-754 bit tests, including vectors |
 
 ## Logical Groups
 

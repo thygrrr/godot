@@ -186,7 +186,8 @@ Vector<uint8_t> run_pipeline(const Vector<uint8_t> &p_bytes) {
 	Vector<uint8_t> code = freeze_and_inline(p_bytes);
 	code = rewrite_copy_logical(code);
 	code = rewrite_terminate_invocation(code);
-	// Flattening first lets the split treat arrays of combined samplers as plain combined samplers.
+	// Removing the arrays first lets the split treat their elements as plain combined samplers.
+	code = scalarize_binding_arrays(code);
 	code = flatten_binding_arrays(code);
 	code = split_combined_samplers(code);
 	code = convert_push_constants_to_storage_buffers(code);
@@ -199,27 +200,78 @@ Vector<uint8_t> run_pipeline(const Vector<uint8_t> &p_bytes) {
 	return infer_readonly_storage(code);
 }
 
-Vector<uint8_t> freeze_and_inline(const Vector<uint8_t> &p_bytes) {
-	ERR_FAIL_COND_V_MSG(!is_well_formed(p_bytes), p_bytes, MALFORMED_SPIRV);
+// Runs the SPIRV-Tools passes p_register adds, returning the module unchanged when they fail.
+template <typename F>
+static Vector<uint8_t> optimize(const Vector<uint8_t> &p_bytes, F p_register, const char *p_error) {
 	spvtools::Optimizer optimizer(SPV_ENV_UNIVERSAL_1_6);
 	optimizer.SetMessageConsumer([](spv_message_level_t p_level, const char *, const spv_position_t &, const char *p_message) {
 		if (p_level <= SPV_MSG_ERROR) {
 			ERR_PRINT(p_message);
 		}
 	});
-	// The driver patches specialization values into the defaults first. Merged returns let opaque calls inline.
-	optimizer.RegisterPass(spvtools::CreateFreezeSpecConstantValuePass())
-			.RegisterPass(spvtools::CreateFoldSpecConstantOpAndCompositePass())
-			.RegisterPass(spvtools::CreateMergeReturnPass())
-			.RegisterPass(spvtools::CreateInlineOpaquePass())
-			.RegisterPass(spvtools::CreateEliminateDeadFunctionsPass());
+	p_register(optimizer);
 	std::vector<uint32_t> words;
 	const bool optimized = optimizer.Run(reinterpret_cast<const uint32_t *>(p_bytes.ptr()), p_bytes.size() / 4, &words);
-	ERR_FAIL_COND_V_MSG(!optimized, p_bytes, "SPIRV-Tools could not freeze specialization constants or inline opaque calls.");
+	ERR_FAIL_COND_V_MSG(!optimized, p_bytes, p_error);
 	Vector<uint8_t> out;
 	out.resize(words.size() * 4);
 	memcpy(out.ptrw(), words.data(), out.size());
 	return out;
+}
+
+Vector<uint8_t> freeze_and_inline(const Vector<uint8_t> &p_bytes) {
+	ERR_FAIL_COND_V_MSG(!is_well_formed(p_bytes), p_bytes, MALFORMED_SPIRV);
+	return optimize(p_bytes, [](spvtools::Optimizer &r_optimizer) {
+		// The driver patches specialization values into the defaults first. Merged returns let opaque calls inline.
+		r_optimizer.RegisterPass(spvtools::CreateFreezeSpecConstantValuePass())
+				.RegisterPass(spvtools::CreateFoldSpecConstantOpAndCompositePass())
+				.RegisterPass(spvtools::CreateMergeReturnPass())
+				.RegisterPass(spvtools::CreateInlineOpaquePass())
+				.RegisterPass(spvtools::CreateEliminateDeadFunctionsPass()); }, "SPIRV-Tools could not freeze specialization constants or inline opaque calls.");
+}
+
+Vector<uint8_t> remap_bindings(const Vector<uint8_t> &p_bytes, const HashMap<uint32_t, uint32_t> &p_bindings) {
+	ERR_FAIL_COND_V_MSG(!is_well_formed(p_bytes), p_bytes, MALFORMED_SPIRV);
+	HashMap<uint32_t, uint32_t> sets;
+	for (const Inst inst : SpirvView(p_bytes)) {
+		if (inst.op() == spv::OpDecorate && inst.count() >= 4 && inst[2] == spv::DecorationDescriptorSet) {
+			sets.insert(inst[1], inst[3]);
+		}
+	}
+	Vector<uint8_t> out = p_bytes; // Copied on the first write.
+	for (const Inst inst : SpirvView(p_bytes)) {
+		if (inst.op() == spv::OpDecorate && inst.count() >= 4 && inst[2] == spv::DecorationBinding && sets.has(inst[1])) {
+			const uint32_t *binding = p_bindings.getptr((sets[inst[1]] << 16) | inst[3]);
+			if (binding) {
+				write_word(out.ptrw(), inst.pos + 3, *binding);
+			}
+		}
+	}
+	return out;
+}
+
+Vector<uint8_t> scalarize_binding_arrays(const Vector<uint8_t> &p_bytes) {
+	ERR_FAIL_COND_V_MSG(!is_well_formed(p_bytes), p_bytes, MALFORMED_SPIRV);
+	HashSet<uint32_t> handle_types;
+	bool has_arrays = false;
+	for (const Inst inst : SpirvView(p_bytes)) {
+		if (inst.op() == spv::OpTypeImage || inst.op() == spv::OpTypeSampler || inst.op() == spv::OpTypeSampledImage) {
+			handle_types.insert(inst[1]);
+		} else if (inst.op() == spv::OpTypeArray && handle_types.has(inst[2])) {
+			has_arrays = true;
+		}
+	}
+	if (!has_arrays) {
+		return p_bytes;
+	}
+	return optimize(p_bytes, [](spvtools::Optimizer &r_optimizer) {
+		// The variable-index pass leaves the replaced access behind unless thirdparty/spirv-tools/patches/0001 applies.
+		r_optimizer.RegisterPass(spvtools::CreateReplaceDescArrayAccessUsingVarIndexPass())
+				.RegisterPass(spvtools::CreateAggressiveDCEPass())
+				.RegisterPass(spvtools::CreateDescriptorArrayScalarReplacementPass())
+				.RegisterPass(spvtools::CreateAggressiveDCEPass())
+				.RegisterPass(spvtools::CreateDeadVariableEliminationPass())
+				.RegisterPass(spvtools::CreateEliminateDeadConstantPass()); }, "SPIRV-Tools could not give the elements of a texture or sampler array their own bindings.");
 }
 
 Vector<uint8_t> rewrite_copy_logical(const Vector<uint8_t> &p_bytes) {
@@ -517,8 +569,8 @@ Vector<uint8_t> split_combined_samplers(const Vector<uint8_t> &p_bytes) {
 			case spv::OpDecorate:
 				if (inst.count() >= 4 && inst[2] == spv::DecorationBinding) {
 					split_index = split_of_var.getptr(inst[1]);
-					const bool image_of_split = split_index && splits[*split_index].sampler_var;
-					push_inst(out, spv::OpDecorate, { inst[1], spv::DecorationBinding, inst[3] * 2 + (image_of_split ? 1 : 0) });
+					// The bind group layouts expect every combined image at 2N+1, with or without a sampler.
+					push_inst(out, spv::OpDecorate, { inst[1], spv::DecorationBinding, inst[3] * 2 + (split_index ? 1 : 0) });
 					continue;
 				}
 				if (inst[2] == spv::DecorationNonWritable && split_of_var.has(inst[1])) {
@@ -763,7 +815,7 @@ Vector<uint8_t> strip_restrict_decoration(const Vector<uint8_t> &p_bytes) {
 	return strip_instructions(p_bytes, [](const Inst &p_inst) {
 		const uint32_t decoration = p_inst.op() == spv::OpDecorate ? p_inst[2] : p_inst.op() == spv::OpMemberDecorate ? p_inst[3]
 																													  : UINT32_MAX;
-		return decoration == spv::DecorationRestrict || decoration == spv::DecorationInputAttachmentIndex;
+		return decoration == spv::DecorationRestrict || decoration == spv::DecorationVolatile || decoration == spv::DecorationInputAttachmentIndex;
 	});
 }
 

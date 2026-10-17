@@ -346,6 +346,7 @@ const Engine = (function () {
 				'texture-formats-tier1',
 				'texture-formats-tier2',
 				'rg11b10ufloat-renderable',
+				'depth32float-stencil8',
 				'clip-distances',
 				'dual-source-blending',
 				'indirect-first-instance',

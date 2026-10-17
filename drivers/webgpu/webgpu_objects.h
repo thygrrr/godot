@@ -141,7 +141,7 @@ struct WGVertexFormat {
 struct WGShader {
 	// Per-stage shader modules. Indexed by RDD::ShaderStage enum value.
 	WGPUShaderModule stage_modules[6] = {}; // SHADER_STAGE_MAX = 6 (vertex/frag/tess×2/compute/max)
-	// Never reused, unlike the WGShader address or its layout handles; keys WGUniformSet::rebind_cache.
+	// Never reused, unlike the WGShader address or its layout handles; keys WGUniformSet::rebound_sets.
 	uint64_t uid = 0;
 
 	// Per-stage raw SPIR-V bytes. Stored for deferred specialization constant patching.
@@ -169,6 +169,13 @@ struct WGShader {
 		LocalVector<BindGroupEntry> entries;
 	};
 	LocalVector<BindGroupInfo> bind_group_infos;
+	// Texture, sampler and image arrays: (set << 16 | Godot binding) -> the bindings of their elements.
+	struct ResourceArray {
+		uint32_t binding = 0;
+		uint32_t length = 0;
+	};
+	HashMap<uint32_t, ResourceArray> resource_arrays;
+	HashSet<uint32_t> active_bindings; // (set << 16 | binding) of the entries in the bind group layouts.
 
 	// Depth alias bindings: maps (set << 16 | alias_binding) → depth_binding.
 	// Used by uniform_set_create to add extra bind group entries for split depth textures.
@@ -181,9 +188,8 @@ struct WGShader {
 	HashMap<uint32_t, uint32_t> rw_storage_splits;
 
 	// Read-only storage texture → sampled texture conversions.
-	// Set of (set << 16 | binding) keys. When readonly-and-readwrite-storage-textures
-	// is unavailable, read-only storage textures are converted to sampled textures
-	// in the WGSL and BGL so the shader compiles on Firefox/wgpu.
+	// Set of (set << 16 | binding) keys. Read-only storage textures are converted to sampled
+	// textures in the WGSL and BGL, see _postprocess_wgsl.
 	HashSet<uint32_t> read_storage_to_sampled;
 
 	// (set << 16 | binding) of storage buffers the vertex stage declares. Fragment read_write
@@ -286,15 +292,13 @@ struct WGUniformSet {
 	};
 	LocalVector<RWShadowRegistration> rw_shadow_registrations;
 
-	// Rebind cache: when a bind group is created with shader A's BGL but
-	// needs to be used with shader B's pipeline (different BGL), we
-	// re-create the bind group with the correct BGL and cache it.
-	LocalVector<WGPUBindGroupEntry> cached_entries;
+	// Rebind cache: when a uniform set created with shader A's BGL is used with shader B's pipeline,
+	// it is re-created for B from the original uniforms and cached.
+	LocalVector<RDD::BoundUniform> original_uniforms;
 	WGShader *source_shader = nullptr;
-	HashMap<uint64_t, WGPUBindGroup> rebind_cache; // Key: target WGShader::uid << 8 | set index.
+	HashMap<uint64_t, WGUniformSet *> rebound_sets; // Key: target WGShader::uid << 8 | set index.
 
-	// Maps binding index → WGTexture* for texture entries, used during rebind
-	// to create compatible views when the target BGL has a different dimension.
+	// Maps binding index → WGTexture* for texture entries, used to find the sources of read_write splits.
 	HashMap<uint32_t, WGTexture *> bound_textures;
 
 	// Dynamic buffers in binding order (Task 7.5). Populated by uniform_set_create

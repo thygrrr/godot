@@ -1072,6 +1072,9 @@ public:
 		bool no_input_attachments = false; // Subpass input attachments can't be read.
 		bool no_texture_swizzle = false; // Texture view component swizzles are ignored.
 		bool no_storage_render_targets = false; // Render targets can't be storage textures with sRGB views.
+		// No image atomics, format-reinterpreting views or 8/16-bit read-write storage; needs RENDER_DRIVER_WEBGPU
+		// shaders. SDFGI and motion vectors then use RGBA8, RGBA16F and R32F textures and a storage buffer.
+		bool restricted_storage_formats = false;
 		// Renderer policies for a high fixed cost per API call (WebGPU), needing RENDER_DRIVER_WEBGPU shaders.
 		bool force_omni_dual_paraboloid = false; // Fewer shadow passes than cubemaps.
 		bool merge_shadow_passes = false; // Draw shadow passes sharing a framebuffer in one render pass.

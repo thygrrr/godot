@@ -843,7 +843,8 @@ uint32_t RenderSceneBuffersRD::get_depth_usage_bits(bool p_resolve, bool p_msaa,
 }
 
 RD::DataFormat RenderSceneBuffersRD::get_velocity_format() {
-	return RD::DATA_FORMAT_R16G16_SFLOAT;
+	// Core WebGPU has no RG16F storage; the RENDER_DRIVER_WEBGPU shaders use RGBA16F.
+	return RD::get_singleton()->get_driver_workarounds().restricted_storage_formats ? RD::DATA_FORMAT_R16G16B16A16_SFLOAT : RD::DATA_FORMAT_R16G16_SFLOAT;
 }
 
 uint32_t RenderSceneBuffersRD::get_velocity_usage_bits(bool p_resolve, bool p_msaa, bool p_storage) {

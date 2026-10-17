@@ -475,6 +475,45 @@ console.log("\n=== Test 5: split_combined_samplers ===");
   assert(ok.wgsl !== null && ok.wgsl.includes("@binding(996") && !ok.stderr.includes("ERROR"), "binding 498 doubles to 996");
 }
 
+{
+  // 5f. A multisampled combined sampler gets no sampler, but its image keeps 2N+1 like the bind group layouts.
+  // IDs: 5=MS image, 6=sampled image, 8=sampler2DMS at binding 1, 12=coords, 14=output, 18..19=fetch.
+  const spv = buildSpirv(20, [
+    ...encodeInst(Op.Capability, 1),
+    ...encodeInst(Op.MemoryModel, 0, 1),
+    ...encodeEntryPoint(ExecModel.Fragment, 15, "main", 14),
+    ...encodeInst(Op.ExecutionMode, 15, 7), // OriginUpperLeft
+    ...encodeInst(Op.Decorate, 14, 30, 0), // Location 0
+    ...encodeInst(Op.Decorate, 8, Deco.DescriptorSet, 0),
+    ...encodeInst(Op.Decorate, 8, Deco.Binding, 1),
+    ...encodeInst(Op.TypeVoid, 1),
+    ...encodeInst(Op.TypeFunction, 2, 1),
+    ...encodeInst(Op.TypeFloat, 3, 32),
+    ...encodeInst(Op.TypeVector, 4, 3, 4),
+    ...encodeInst(25, 5, 3, 1, 0, 0, 1, 1, 0), // OpTypeImage 2D, multisampled, sampled, Unknown
+    ...encodeInst(27, 6, 5), // OpTypeSampledImage
+    ...encodeInst(Op.TypePointer, 7, 0, 6), // UniformConstant
+    ...encodeInst(Op.Variable, 7, 8, 0),
+    ...encodeInst(Op.TypeInt, 9, 32, 1),
+    ...encodeInst(Op.TypeVector, 10, 9, 2),
+    ...encodeInst(Op.Constant, 9, 11, 0),
+    ...encodeInst(44, 10, 12, 11, 11), // OpConstantComposite
+    ...encodeInst(Op.TypePointer, 13, SC.Output, 4),
+    ...encodeInst(Op.Variable, 13, 14, SC.Output),
+    ...encodeInst(Op.Function, 1, 15, 0, 2),
+    ...encodeInst(Op.Label, 16),
+    ...encodeInst(Op.Load, 6, 17, 8),
+    ...encodeInst(100, 5, 18, 17), // OpImage
+    ...encodeInst(95, 4, 19, 18, 12, 0x40, 11), // OpImageFetch with Sample 0
+    ...encodeInst(Op.Store, 14, 19),
+    ...encodeInst(Op.Return),
+    ...encodeInst(Op.FunctionEnd),
+  ]);
+  const wgsl = constructedWgsl(spv, "multisampled combined sampler");
+  assertEq(bindingsOf(wgsl), ["0,3"], "multisampled image at 2N+1 without a sampler");
+  assert(wgsl.includes("texture_multisampled_2d<f32>"), "image stays multisampled");
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Test 6: fix_depth2_images
 // ─────────────────────────────────────────────────────────────────────────────
@@ -570,21 +609,22 @@ console.log("\n=== Test 10: fix_nonfinite_literals ===");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Test 11: flatten_binding_arrays
+// Test 11: scalarize_binding_arrays
 // ─────────────────────────────────────────────────────────────────────────────
-console.log("\n=== Test 11: flatten_binding_arrays ===");
+console.log("\n=== Test 11: scalarize_binding_arrays ===");
 
 {
-  // 11a. A texture array becomes one texture; a dynamic index reads element 0 and warns.
+  // 11a. Each texture array element gets its own binding; a dynamic index selects one through a switch.
   const r = convertFixture("texture_array.spv");
   assert(r.wgsl !== null, `texture_array converts: ${r.error}`);
   const wgsl = r.wgsl ?? "";
-  assert(!wgsl.includes("binding_array") && /var layers : texture_2d<f32>;/.test(wgsl), "texture array flattened to texture_2d");
-  assert(r.stderr.includes("reads element 0"), "dynamic index warns");
+  assertEq(bindingsOf(wgsl), ["0,0", "0,2", "0,4", "0,6", "0,8", "3,999"], "texture_array: elements 0-3 and sampler 4, doubled");
+  assert(!wgsl.includes("binding_array") && /switch\(pc\.layer\)/.test(wgsl), "dynamic index selects an element");
+  assert(!r.stderr.includes("reads element 0"), "no element aliases element 0");
 }
 
 {
-  // 11b. An array of combined samplers is flattened, then split like a plain combined sampler.
+  // 11b. An array of combined samplers is scalarized, then split like a plain combined sampler.
   const r = convertFixture("sampler_array.spv");
   assert(r.wgsl !== null, `sampler_array converts: ${r.error}`);
   assertEq(bindingsOf(r.wgsl ?? ""), ["0,0", "0,1", "0,2", "0,3"], "sampler_array: sampler 0, image 1 for detail[]");

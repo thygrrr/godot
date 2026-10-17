@@ -3167,7 +3167,22 @@ void RenderForwardClustered::_render_sdfgi(Ref<RenderSceneBuffersRD> p_render_bu
 
 		HashMap<Size2i, RID>::Iterator E = sdfgi_framebuffer_size_cache.find(fb_size);
 		if (!E) {
-			RID fb = RD::get_singleton()->framebuffer_create_empty(fb_size);
+			RID fb;
+			if (!RD::get_singleton()->has_feature(RD::SUPPORTS_FRAGMENT_SHADER_WITH_ONLY_SIDE_EFFECTS)) {
+				// The SDF pass then writes a placeholder color output.
+				RD::TextureFormat tf;
+				tf.width = fb_size.width;
+				tf.height = fb_size.height;
+				tf.format = RD::DATA_FORMAT_R8G8B8A8_UNORM;
+				tf.usage_bits = RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT;
+				RID attachment = RD::get_singleton()->texture_create(tf, RD::TextureView());
+				sdfgi_raster_attachments.insert(fb_size, attachment);
+				Vector<RID> attachments;
+				attachments.push_back(attachment);
+				fb = RD::get_singleton()->framebuffer_create(attachments);
+			} else {
+				fb = RD::get_singleton()->framebuffer_create_empty(fb_size);
+			}
 			E = sdfgi_framebuffer_size_cache.insert(fb_size, fb);
 		}
 
@@ -3962,7 +3977,7 @@ RID RenderForwardClustered::_setup_sdfgi_render_pass_uniform_set(RID p_albedo_te
 	}
 	{
 		RD::Uniform u;
-		u.uniform_type = RD::UNIFORM_TYPE_IMAGE;
+		u.uniform_type = RD::get_singleton()->get_driver_workarounds().restricted_storage_formats ? RD::UNIFORM_TYPE_STORAGE_BUFFER : RD::UNIFORM_TYPE_IMAGE;
 		u.binding = 27;
 		u.append_id(p_geom_facing_texture);
 		uniforms.push_back(u);
@@ -4769,11 +4784,21 @@ void RenderForwardClustered::_mesh_compile_pipelines_for_surface(const SurfacePi
 	if (p_global.use_sdfgi) {
 		// Depth pass with SDFGI support.
 		pipeline_key.version = SceneShaderForwardClustered::PIPELINE_VERSION_DEPTH_PASS_WITH_SDF;
-		pipeline_key.framebuffer_format_id = _get_depth_framebuffer_format_for_pipeline(buffers_can_be_storage, RD::TextureSamples(p_global.texture_samples), false, false);
-		_mesh_compile_pipeline_for_surface(p_surface.shader, p_surface.mesh_surface, true, p_surface.instanced, p_source, pipeline_key, r_pipeline_pairs);
+		const bool side_effects_only = RD::get_singleton()->has_feature(RD::SUPPORTS_FRAGMENT_SHADER_WITH_ONLY_SIDE_EFFECTS);
+		if (side_effects_only) {
+			pipeline_key.framebuffer_format_id = _get_depth_framebuffer_format_for_pipeline(buffers_can_be_storage, RD::TextureSamples(p_global.texture_samples), false, false);
+			_mesh_compile_pipeline_for_surface(p_surface.shader, p_surface.mesh_surface, true, p_surface.instanced, p_source, pipeline_key, r_pipeline_pairs);
+		}
 
-		// Depth pass with SDFGI support for an empty framebuffer.
-		pipeline_key.framebuffer_format_id = RD::get_singleton()->framebuffer_format_create_empty();
+		// Depth pass with SDFGI support for an empty framebuffer, or for its placeholder color attachment.
+		if (!side_effects_only) {
+			Vector<RD::AttachmentFormat> attachments;
+			attachments.push_back(RD::AttachmentFormat());
+			attachments.write[0].usage_flags = RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT;
+			pipeline_key.framebuffer_format_id = RD::get_singleton()->framebuffer_format_create(attachments);
+		} else {
+			pipeline_key.framebuffer_format_id = RD::get_singleton()->framebuffer_format_create_empty();
+		}
 		_mesh_compile_pipeline_for_surface(p_surface.shader, p_surface.mesh_surface, true, p_surface.instanced, p_source, pipeline_key, r_pipeline_pairs);
 	}
 
@@ -5309,6 +5334,9 @@ RenderForwardClustered::~RenderForwardClustered() {
 	while (sdfgi_framebuffer_size_cache.begin()) {
 		RD::get_singleton()->free_rid(sdfgi_framebuffer_size_cache.begin()->value);
 		sdfgi_framebuffer_size_cache.remove(sdfgi_framebuffer_size_cache.begin());
+	}
+	for (const auto &attachment : sdfgi_raster_attachments) {
+		RD::get_singleton()->free_rid(attachment.value);
 	}
 	singleton = nullptr;
 }

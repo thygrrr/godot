@@ -49,6 +49,7 @@ ClusterBuilderSharedDataRD::ClusterBuilderSharedDataRD() {
 
 	{
 		RD::FramebufferFormatID fb_format;
+		RD::FramebufferFormatID fb_format_msaa;
 		RD::PipelineColorBlendState blend_state;
 		RD::PipelineRasterizationState rasterization_state;
 		RD::PipelineMultisampleState ms;
@@ -63,13 +64,17 @@ ClusterBuilderSharedDataRD::ClusterBuilderSharedDataRD() {
 		RenderingDevice *rd = RD::get_singleton();
 		if (rd->has_feature(RD::SUPPORTS_FRAGMENT_SHADER_WITH_ONLY_SIDE_EFFECTS)) {
 			fb_format = rd->framebuffer_format_create_empty();
+			fb_format_msaa = fb_format;
 			blend_state = RD::PipelineColorBlendState::create_disabled();
 			shader_variant = ClusterRender::SHADER_NORMAL;
 		} else {
+			// Matches the attachment setup() creates.
 			Vector<RD::AttachmentFormat> afs;
 			afs.push_back(RD::AttachmentFormat());
 			afs.write[0].usage_flags = RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT;
 			fb_format = rd->framebuffer_format_create(afs);
+			afs.write[0].samples = RD::TEXTURE_SAMPLES_4;
+			fb_format_msaa = rd->framebuffer_format_create(afs);
 			blend_state = RD::PipelineColorBlendState::create_blend();
 			shader_variant = ClusterRender::SHADER_USE_ATTACHMENT;
 		}
@@ -91,7 +96,7 @@ ClusterBuilderSharedDataRD::ClusterBuilderSharedDataRD() {
 			specialization_constants.push_back(sc);
 		}
 #endif
-		cluster_render.shader_pipelines[ClusterRender::PIPELINE_MSAA] = RD::get_singleton()->render_pipeline_create(cluster_render.shader, fb_format, vertex_format, RD::RENDER_PRIMITIVE_TRIANGLES, rasterization_state, ms, RD::PipelineDepthStencilState(), blend_state, 0, 0, specialization_constants);
+		cluster_render.shader_pipelines[ClusterRender::PIPELINE_MSAA] = RD::get_singleton()->render_pipeline_create(cluster_render.shader, fb_format_msaa, vertex_format, RD::RENDER_PRIMITIVE_TRIANGLES, rasterization_state, ms, RD::PipelineDepthStencilState(), blend_state, 0, 0, specialization_constants);
 	}
 	{
 		Vector<String> versions;
@@ -273,6 +278,10 @@ void ClusterBuilderRD::_clear() {
 
 	RD::get_singleton()->free_rid(framebuffer);
 	framebuffer = RID();
+	if (raster_attachment.is_valid()) {
+		RD::get_singleton()->free_rid(raster_attachment);
+		raster_attachment = RID();
+	}
 
 	cluster_render_uniform_set = RID();
 	cluster_store_uniform_set = RID();
@@ -313,7 +322,19 @@ void ClusterBuilderRD::setup(Size2i p_screen_size, uint32_t p_max_elements, RID 
 	element_buffer = RD::get_singleton()->storage_buffer_create(sizeof(RenderElementData) * render_element_max);
 
 	uint32_t div_value = 1 << divisor;
-	if (use_msaa) {
+	if (!RD::get_singleton()->has_feature(RD::SUPPORTS_FRAGMENT_SHADER_WITH_ONLY_SIDE_EFFECTS)) {
+		// The USE_ATTACHMENT variant writes a color output, which needs a real attachment.
+		RD::TextureFormat tf;
+		tf.format = RD::DATA_FORMAT_R8G8B8A8_UNORM;
+		tf.width = MAX(1, p_screen_size.width / div_value);
+		tf.height = MAX(1, p_screen_size.height / div_value);
+		tf.samples = use_msaa ? RD::TEXTURE_SAMPLES_4 : RD::TEXTURE_SAMPLES_1;
+		tf.usage_bits = RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT;
+		raster_attachment = RD::get_singleton()->texture_create(tf, RD::TextureView());
+		Vector<RID> attachments;
+		attachments.push_back(raster_attachment);
+		framebuffer = RD::get_singleton()->framebuffer_create(attachments);
+	} else if (use_msaa) {
 		framebuffer = RD::get_singleton()->framebuffer_create_empty(p_screen_size / div_value, RD::TEXTURE_SAMPLES_4);
 	} else {
 		framebuffer = RD::get_singleton()->framebuffer_create_empty(p_screen_size / div_value);

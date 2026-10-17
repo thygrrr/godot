@@ -39,8 +39,9 @@ isolates Dawn's compiler symbols from Godot's patched Tint.
 
 ## Runtime selection
 
-Select `--rendering-driver webgpu --rendering-method mobile` for the Mobile
-branch. The Forward+ branch also supports `--rendering-method forward_plus`.
+Select `--rendering-driver webgpu` with `--rendering-method forward_plus` or
+`mobile`; the Mobile branch supports only `mobile`. Web exports start WebGPU for
+either method when the template was built with `webgpu=yes`.
 Use the OpenGL driver when selecting `gl_compatibility`.
 
 A custom browser shell must set `renderingDriver: 'webgpu'` before Engine

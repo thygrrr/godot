@@ -71,6 +71,10 @@ char *tint_wrapper_spirv_to_wgsl(const uint32_t *p_spirv_words, size_t p_word_co
 			for (const auto &binding : inspector.GetResourceBindings(entry.name)) {
 				metadata += "//RESOURCE_USED:" + std::to_string(binding.bind_group) + "," + std::to_string(binding.binding) + "\n";
 			}
+			// Textures that are only loaded may use unfilterable layouts, which accept depth and float32 data.
+			for (const auto &pair : inspector.GetSamplerTextureUses(entry.name)) {
+				metadata += "//TEXTURE_SAMPLED:" + std::to_string(pair.texture_binding_point.group) + "," + std::to_string(pair.texture_binding_point.binding) + "\n";
+			}
 		}
 		if (inspector.has_error()) {
 			return tint::Failure{ inspector.error() };

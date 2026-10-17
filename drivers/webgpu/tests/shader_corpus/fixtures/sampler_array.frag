@@ -1,6 +1,6 @@
 #version 450
 
-// Array of combined samplers: flattened to one combined sampler, then split like any other.
+// Array of combined samplers: each used element becomes a combined sampler, then split like any other.
 
 layout(location = 0) in vec2 v_uv;
 layout(location = 0) out vec4 frag_color;

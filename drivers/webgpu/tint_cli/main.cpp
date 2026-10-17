@@ -30,7 +30,9 @@
 
 // tint_convert_cli — host SPIR-V → WGSL converter for the compiler tests.
 //
-// Runs spirv_preprocess::run_pipeline() and Tint exactly as the WebGPU driver does at runtime.
+// Runs spirv_preprocess::run_pipeline() and Tint exactly as the WebGPU driver does at runtime. The driver first
+// moves texture and sampler arrays above the other bindings of their set; without that, array elements can share
+// a binding with the following resources.
 //
 // Usage: tint_convert_cli <file.spv>   (WGSL on stdout, errors on stderr)
 

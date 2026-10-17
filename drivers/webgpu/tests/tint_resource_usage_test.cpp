@@ -115,6 +115,7 @@ OpFunctionEnd
 	CHECK(std::strstr(wgsl, "//RESOURCE_USED:0,0\n"));
 	CHECK(std::strstr(wgsl, "//RESOURCE_USED:0,2\n"));
 	CHECK(!std::strstr(wgsl, "//RESOURCE_USED:0,4\n"));
+	CHECK(std::strstr(wgsl, "//TEXTURE_SAMPLED:0,0\n"));
 	CHECK(std::strstr(wgsl, "textureSample("));
 	std::free(wgsl);
 	std::free(error);

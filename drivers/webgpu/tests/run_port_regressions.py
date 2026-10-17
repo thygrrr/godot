@@ -35,6 +35,8 @@ for name in (
     "storage_access",
     "binding_array_literals",
     "tint_resource_usage",
+    "tint_descriptor_arrays",
+    "tint_float_classification",
     "tint_legacy_parse",
 ):
     sources = [str(root / f"drivers/webgpu/tests/{name}_test.cpp")]

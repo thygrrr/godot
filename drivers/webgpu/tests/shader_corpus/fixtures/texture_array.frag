@@ -1,12 +1,12 @@
 #version 450
 
-// Texture array indexed by a constant and by a push constant; WebGPU binds only element 0.
+// Texture array indexed by a constant and by a push constant. The sampler leaves bindings 0-3 to the elements.
 
 layout(location = 0) in vec2 v_uv;
 layout(location = 0) out vec4 frag_color;
 
 layout(set = 0, binding = 0) uniform texture2D layers[4];
-layout(set = 0, binding = 1) uniform sampler layer_sampler;
+layout(set = 0, binding = 4) uniform sampler layer_sampler;
 
 layout(push_constant) uniform PushConstants {
     uint layer;

@@ -48,6 +48,11 @@
 #include "modules/modules_enabled.gen.h" // IWYU pragma: keep. For mono.
 #include "modules/svg/image_loader_svg.h"
 
+// Forward+ and Mobile render with WebGPU on templates built with webgpu=yes.
+static bool _is_webgpu_rendering_method(const String &p_rendering_method) {
+	return p_rendering_method == "forward_plus" || p_rendering_method == "mobile";
+}
+
 Error EditorExportPlatformWeb::_extract_template(const String &p_template, const String &p_dir, const String &p_name, bool pwa, Vector<String> &r_libgodot_files, bool &r_webgpu) {
 	Ref<FileAccess> io_fa;
 	zlib_filefunc_def io = zipio_create_io(&io_fa);
@@ -203,7 +208,7 @@ void EditorExportPlatformWeb::_fix_html(Vector<uint8_t> &p_html, const Ref<Edito
 	config["ensureCrossOriginIsolationHeaders"] = (bool)p_preset->get("progressive_web_app/ensure_cross_origin_isolation_headers");
 
 	// Pass the rendering driver so the HTML shell can pre-initialize WebGPU if needed.
-	const bool webgpu = p_webgpu && String(get_project_setting(p_preset, "rendering/renderer/rendering_method.web")) == "mobile";
+	const bool webgpu = p_webgpu && _is_webgpu_rendering_method(get_project_setting(p_preset, "rendering/renderer/rendering_method.web"));
 	config["renderingDriver"] = webgpu ? "webgpu" : "opengl3";
 
 	config["godotPoolSize"] = p_preset->get("threads/godot_pool_size");
@@ -528,12 +533,7 @@ bool EditorExportPlatformWeb::has_valid_project_configuration(const Ref<EditorEx
 		}
 	}
 
-	// WebGPU on this branch supports only the Mobile renderer.
-	const String rendering_method = get_project_setting(p_preset, "rendering/renderer/rendering_method.web");
-	if (rendering_method == "forward_plus") {
-		valid = false;
-		err += TTR("The Forward+ renderer is not supported on the Web. Use Mobile (WebGPU) or Compatibility.") + "\n";
-	} else if (rendering_method == "mobile") {
+	if (_is_webgpu_rendering_method(get_project_setting(p_preset, "rendering/renderer/rendering_method.web"))) {
 		err += TTR("WebGPU rendering is experimental. Ensure your target browsers support WebGPU.") + "\n";
 	}
 
@@ -588,8 +588,8 @@ Error EditorExportPlatformWeb::export_project(const Ref<EditorExportPreset> &p_p
 		// Message is supplied by the subroutine method.
 		return error;
 	}
-	if (!webgpu && String(get_project_setting(p_preset, "rendering/renderer/rendering_method.web")) == "mobile") {
-		add_message(EXPORT_MESSAGE_WARNING, TTR("Export"), TTR("The Mobile renderer requires a Web export template built with WebGPU support (webgpu=yes)."));
+	if (!webgpu && _is_webgpu_rendering_method(get_project_setting(p_preset, "rendering/renderer/rendering_method.web"))) {
+		add_message(EXPORT_MESSAGE_WARNING, TTR("Export"), TTR("The Forward+ and Mobile renderers require a Web export template built with WebGPU support (webgpu=yes)."));
 	}
 
 	ExportNotifier notifier(*this, p_preset, p_debug, p_path, p_flags, p_notify);

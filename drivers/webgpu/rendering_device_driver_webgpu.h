@@ -169,15 +169,8 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 	WGPUBuffer aliasing_stub_buffer = nullptr;
 	static constexpr uint64_t ALIASING_STUB_BUFFER_SIZE = 65536; // 64KB — large enough for any sub-emitter emission buffer
 
-	// --- Dummy Samplers for BGL Rebinding ---
-	// When a bind group must be re-created with a different BGL (e.g., because
-	// the original BGL has a Comparison sampler but the target has Filtering),
-	// these dummy samplers are used as substitutes.
-	WGPUSampler dummy_filtering_sampler = nullptr;
-	WGPUSampler dummy_comparison_sampler = nullptr;
-
 	// --- BGL Rebinding Helper ---
-	WGPUBindGroup _get_compatible_bind_group(WGUniformSet *p_us, WGShader *p_target_shader, uint32_t p_set_idx);
+	WGUniformSet *_get_compatible_uniform_set(WGUniformSet *p_us, WGShader *p_target_shader, uint32_t p_set_idx);
 
 	// --- Internal Helpers ---
 	void _check_capabilities();

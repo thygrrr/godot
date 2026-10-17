@@ -30,7 +30,8 @@ uv run python drivers/webgpu/tests/run_port_regressions.py --emscripten <emsdk>/
 ```
 
 These cover storage access and read-only inference, resource IDs colliding with
-literal operands, resource reflection and old-libc++ float parsing.
+literal operands, resource reflection and old-libc++ float parsing, and for
+Forward+ dynamically indexed texture and image arrays and NaN/infinity tests.
 `native_smoke/` provides a real-engine render/readback check; see
 [the driver notes](../drivers/webgpu/README.md) for build and renderer selection.
 

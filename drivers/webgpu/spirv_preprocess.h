@@ -30,6 +30,7 @@
 
 #pragma once
 
+#include "core/templates/hash_map.h"
 #include "core/templates/vector.h"
 
 #include <cstdint>
@@ -56,11 +57,20 @@ Vector<uint8_t> rewrite_copy_logical(const Vector<uint8_t> &p_bytes);
 // Rewrite OpTerminateInvocation to OpKill, which Tint translates to discard.
 Vector<uint8_t> rewrite_terminate_invocation(const Vector<uint8_t> &p_bytes);
 
-// Replace arrays of images, samplers and sampled images with their element type. Tint and the bind group
-// layouts have no binding arrays, so every element aliases element 0.
+// Rewrite Binding decorations; p_bindings maps (descriptor set << 16 | binding) to the new binding.
+Vector<uint8_t> remap_bindings(const Vector<uint8_t> &p_bytes, const HashMap<uint32_t, uint32_t> &p_bindings);
+
+// SPIRV-Tools passes: give element i of each array of images, samplers or sampled images binding B + i, selecting
+// dynamically indexed elements through switches. Callers first move the arrays to bindings that no other resource
+// of their set uses (see remap_bindings), so that the elements do not collide.
+Vector<uint8_t> scalarize_binding_arrays(const Vector<uint8_t> &p_bytes);
+
+// Replace the arrays scalarize_binding_arrays leaves (e.g. runtime arrays) with their element type. Tint and the
+// bind group layouts have no binding arrays, so every element aliases element 0.
 Vector<uint8_t> flatten_binding_arrays(const Vector<uint8_t> &p_bytes);
 
-// Split combined image samplers. Every binding N is doubled; a split sampler takes 2N and its image 2N+1.
+// Split combined image samplers. Every binding N is doubled; a split sampler takes 2N and its image 2N+1, also
+// for multisampled images, which get no sampler.
 // Combined samplers passed to functions must have been inlined by freeze_and_inline.
 Vector<uint8_t> split_combined_samplers(const Vector<uint8_t> &p_bytes);
 
@@ -74,7 +84,7 @@ Vector<uint8_t> fix_depth2_images(const Vector<uint8_t> &p_bytes);
 // Negate gl_Position.y before every vertex-shader return; Godot's SPIR-V targets Vulkan's flipped clip space.
 Vector<uint8_t> negate_position_y(const Vector<uint8_t> &p_bytes);
 
-// Strip Restrict and InputAttachmentIndex decorations, which Tint does not support.
+// Strip Restrict, Volatile and InputAttachmentIndex decorations, which Tint does not support.
 Vector<uint8_t> strip_restrict_decoration(const Vector<uint8_t> &p_bytes);
 
 // Remove OpMemoryBarrier, which Tint does not support; workgroup barriers come from OpControlBarrier.
