@@ -114,6 +114,10 @@ if env["accesskit"] and not env.msvc:
 if env["library_type"] == "static_library":
     prog = env.add_library("#bin/godot", sources, PROGSUFFIX=env["PROGSUFFIX"])
 elif env["library_type"] == "shared_library":
+    # Keep the standalone error callback object in non-SCU libgodot builds.
+    if env.msvc:
+        error_callback_symbol = "_libgodot_set_error_callback" if env["arch"] == "x86_32" else "libgodot_set_error_callback"
+        env.AppendUnique(LINKFLAGS=["/INCLUDE:" + error_callback_symbol])
     prog = env.add_shared_library("#bin/godot", sources, PROGSUFFIX=env["PROGSUFFIX"])
 else:
     prog = env.add_program("#bin/godot", sources, PROGSUFFIX=env["PROGSUFFIX"])
@@ -194,3 +198,11 @@ if not env.msvc:
             env.AddPostAction(prog_wrap, env.Run(platform_windows_builders.make_debug_mingw))
 
 env.platform_sources += sources
+
+# The native Dawn C API is an isolated shared dependency of this build.
+if env.get("webgpu_native_runtimes"):
+    from pathlib import Path
+
+    for dawn_runtime in env["webgpu_native_runtimes"]:
+        dawn_copy = env.Command("#bin/" + Path(dawn_runtime).name, dawn_runtime, Copy("$TARGET", "$SOURCE"))
+        env.Depends(prog, dawn_copy)

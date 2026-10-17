@@ -1236,6 +1236,21 @@ OS_MacOS_NSApp::OS_MacOS_NSApp(const char *p_execpath, int p_argc, char **p_argv
 #endif
 }
 
+OS_MacOS_NSApp::~OS_MacOS_NSApp() {
+#ifdef LIBGODOT_ENABLED
+	// A Godot-owned delegate holds a raw pointer to this OS instance. Remove
+	// its AppKit registration before destroying the OS, and avoid making the
+	// next instance mistake the old delegate for a host-owned delegate.
+	if (delegate) {
+		[NSApp unregisterUserInterfaceItemSearchHandler:delegate];
+		if ([NSApp delegate] == delegate) {
+			[NSApp setDelegate:nil];
+		}
+		delegate = nil;
+	}
+#endif
+}
+
 // MARK: - OS_MacOS_Headless
 
 void OS_MacOS_Headless::run() {

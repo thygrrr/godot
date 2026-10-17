@@ -5,6 +5,8 @@
 // 2dog: the host must export their imports because Emscripten's dynamic linker requires relocatable builds.
 const GodotDylink = {
 	$GodotDylink__deps: ['$addFunction', '$updateTableMap', '$functionsInTableMap', '$wasmTable', '$alignMemory', '$zeroMemory', '$UTF8ArrayToString', 'malloc'],
+	// 2dog: threaded builds: each pthread instantiates the loaded side modules before its entry point runs.
+	$GodotDylink__postset: 'if (typeof PThread !== "undefined") { PThread.tlsInitFunctions.push(() => wasmExports["godot_web_sync_side_modules"]()); }',
 	$GodotDylink: {
 		libs: [null],
 		lastError: '',
@@ -101,19 +103,64 @@ const GodotDylink = {
 			return GodotDylink.stackPointer;
 		},
 
-		load: function (name, bytes) {
-			// 2dog: reuse open libraries rather than instantiating them twice.
-			const open = GodotDylink.libs.findIndex((l) => l && l.name === name);
-			if (open > 0) {
-				GodotDylink.libs[open].refs++;
-				return open;
+		// 2dog: shared libraries give each GOT.func symbol and function export one fixed slot after the module's own
+		// table segment, so their function pointers are the same on every thread.
+		sharedSlots: function (module, base) {
+			const slots = new Map();
+			const add = (sym) => {
+				if (!slots.has(sym)) {
+					slots.set(sym, base + slots.size);
+				}
+			};
+			for (const imp of WebAssembly.Module.imports(module)) {
+				if (imp.module === 'GOT.func') {
+					add(imp.name);
+				}
+			}
+			for (const exp of WebAssembly.Module.exports(module)) {
+				if (exp.kind === 'function') {
+					add(exp.name);
+				}
+			}
+			return slots;
+		},
+
+		// 2dog: threaded hosts link with -sTABLE_BASE, which leaves the slots below the main module's functions empty on
+		// every thread. Shared libraries take theirs from there: the .NET jiterpreter reserves table slots per thread at
+		// the table's end and requires the same indices on every thread, so side modules must not grow the table.
+		sharedTableEnd: function () {
+			if (GodotDylink.tableEnd === undefined) {
+				let end = 1;
+				while (end < wasmTable.length && !wasmTable.get(end)) {
+					end++;
+				}
+				GodotDylink.tableEnd = end;
+			}
+			return GodotDylink.tableEnd;
+		},
+
+		// 2dog: shared is { index, layout } in threaded builds, where wasm tables are per thread: the first loader picks
+		// the memory and table layout, and every other thread instantiates the module again at that layout.
+		load: function (name, bytes, shared) {
+			if (shared) {
+				// 2dog: a worker keeps its instances across the pthreads it hosts.
+				if (GodotDylink.libs[shared.index + 1]) {
+					return shared.index + 1;
+				}
+			} else {
+				// 2dog: reuse open libraries rather than instantiating them twice.
+				const open = GodotDylink.libs.findIndex((l) => l && l.name === name);
+				if (open > 0) {
+					GodotDylink.libs[open].refs++;
+					return open;
+				}
 			}
 
 			// 2dog: compile before malloc can grow memory and detach the byte view.
 			const module = new WebAssembly.Module(bytes);
 			const meta = GodotDylink.metadata(module);
 			if (meta.tls.size > 0) {
-				throw new Error('thread-local exports are not supported (build the side module with threads=no)');
+				throw new Error('thread-local exports are not supported (avoid exported thread_local variables)');
 			}
 			const needed = meta.needed.map((lib) => {
 				const found = GodotDylink.libs.find((l) => l && l.name === lib);
@@ -131,17 +178,43 @@ const GodotDylink = {
 				return undefined;
 			};
 
+			const layout = shared && shared.layout;
 			const memAlign = Math.pow(2, meta.memoryAlign);
 			let memoryBase = 0;
-			if (meta.memorySize) {
+			if (layout) {
+				// 2dog: the first loader allocated the data in shared memory; its start function initialized it once.
+				memoryBase = layout.memoryBase;
+			} else if (meta.memorySize) {
 				const raw = _malloc(meta.memorySize + memAlign);
 				if (!raw) {
 					throw new Error('out of memory allocating the side module data');
 				}
 				memoryBase = alignMemory(zeroMemory(raw, meta.memorySize + memAlign), memAlign);
 			}
-			const tableBase = meta.tableSize ? wasmTable.length : 0;
-			if (meta.tableSize) {
+			let tableBase = 0;
+			let tableSize = meta.tableSize;
+			let slots = null;
+			if (shared) {
+				if (layout) {
+					tableBase = layout.tableBase;
+					GodotDylink.tableEnd = layout.tableEnd;
+				} else {
+					// 2dog: the loader has every earlier library, so the next free slot follows the last of them.
+					tableBase = GodotDylink.libs.reduce((next, l) => (l ? Math.max(next, l.layout.tableBase + l.layout.tableSize) : next), 1);
+				}
+				slots = GodotDylink.sharedSlots(module, tableBase + meta.tableSize);
+				tableSize += slots.size;
+				const tableEnd = GodotDylink.sharedTableEnd();
+				if (tableBase + tableSize > tableEnd) {
+					throw new Error(`needs ${tableSize} function table slots, but ${Math.max(tableEnd - tableBase, 0)} of those reserved for side modules are free (raise TwoDogWebSideModuleTableSlots)`);
+				}
+				for (let i = tableBase; i < tableBase + tableSize; i++) {
+					if (wasmTable.get(i)) {
+						throw new Error(`function table slot ${i} is already in use on this thread`);
+					}
+				}
+			} else if (meta.tableSize) {
+				tableBase = wasmTable.length;
 				wasmTable.grow(meta.tableSize);
 			}
 
@@ -214,6 +287,13 @@ const GodotDylink = {
 			if (functionsInTableMap) {
 				updateTableMap(tableBase, meta.tableSize);
 			}
+			if (slots) {
+				for (const [sym, slot] of slots) {
+					if (typeof exports[sym] === 'function') {
+						wasmTable.set(slot, exports[sym]);
+					}
+				}
+			}
 
 			// 2dog: prefer a module's own definitions so extensions never bind to each other's data.
 			for (const { entry, sym, func } of got) {
@@ -237,8 +317,13 @@ const GodotDylink = {
 					if (typeof value !== 'function') {
 						throw new Error(`symbol '${sym}' is not a function`);
 					}
-					// 2dog: reuse table slots through addFunction to preserve function-pointer equality.
-					entry.value = addFunction(value);
+					if (slots) {
+						entry.value = slots.get(sym);
+						wasmTable.set(entry.value, value);
+					} else {
+						// 2dog: reuse table slots through addFunction to preserve function-pointer equality.
+						entry.value = addFunction(value);
+					}
 				} else {
 					if (typeof value !== 'number') {
 						throw new Error(`symbol '${sym}' is not a data address`);
@@ -251,14 +336,25 @@ const GodotDylink = {
 				const sp = GodotDylink.sharedStackPointer();
 				instance.exports['__set_stack_limits'](sp.high, sp.low);
 			}
-			if (instance.exports['__wasm_apply_data_relocs']) {
-				instance.exports['__wasm_apply_data_relocs']();
+			if (slots && functionsInTableMap) {
+				updateTableMap(tableBase + meta.tableSize, slots.size);
 			}
-			if (instance.exports['__wasm_call_ctors']) {
-				instance.exports['__wasm_call_ctors']();
+			// 2dog: shared memory holds one copy of the data, so only its first loader relocates and constructs it.
+			if (!layout) {
+				if (instance.exports['__wasm_apply_data_relocs']) {
+					instance.exports['__wasm_apply_data_relocs']();
+				}
+				if (instance.exports['__wasm_call_ctors']) {
+					instance.exports['__wasm_call_ctors']();
+				}
 			}
 
-			GodotDylink.libs.push({ name, exports, refs: 1 });
+			const lib = { name, exports, refs: 1, slots, layout: { memoryBase, tableBase, tableSize, tableEnd: GodotDylink.tableEnd } };
+			if (shared) {
+				GodotDylink.libs[shared.index + 1] = lib;
+				return shared.index + 1;
+			}
+			GodotDylink.libs.push(lib);
 			return GodotDylink.libs.length - 1;
 		},
 
@@ -271,11 +367,14 @@ const GodotDylink = {
 				throw new Error(`symbol '${sym}' not found in '${lib.name}'`);
 			}
 			const value = lib.exports[sym];
-			return typeof value === 'function' ? addFunction(value) : value;
+			if (typeof value !== 'function') {
+				return value;
+			}
+			return lib.slots ? lib.slots.get(sym) : addFunction(value);
 		},
 	},
 
-	godot_js_dylink_open__proxy: 'sync',
+	// 2dog: the loader runs on the calling thread: with threads, wasm instances and function tables are per thread.
 	godot_js_dylink_open__sig: 'ippi',
 	godot_js_dylink_open: function (p_name, p_bytes, p_size) {
 		const name = UTF8ToString(p_name);
@@ -287,7 +386,24 @@ const GodotDylink = {
 		}
 	},
 
-	godot_js_dylink_symbol__proxy: 'sync',
+	// 2dog: threaded builds; p_layout is null for the first loader, which returns the layout other threads load at.
+	godot_js_dylink_thread_load__deps: ['$stringToNewUTF8'],
+	godot_js_dylink_thread_load__sig: 'pippip',
+	godot_js_dylink_thread_load: function (p_index, p_name, p_bytes, p_size, p_layout) {
+		const name = UTF8ToString(p_name);
+		try {
+			const layout = p_layout ? JSON.parse(UTF8ToString(p_layout)) : null;
+			const handle = GodotDylink.load(name, HEAPU8.subarray(p_bytes, p_bytes + p_size), { index: p_index, layout });
+			return p_layout || stringToNewUTF8(JSON.stringify(GodotDylink.libs[handle].layout));
+		} catch (e) {
+			GodotDylink.lastError = e.message || String(e);
+			if (p_layout) {
+				err(`GDExtension '${name}' failed to load on this thread (calls from it will fail): ${GodotDylink.lastError}`);
+			}
+			return 0;
+		}
+	},
+
 	godot_js_dylink_symbol__sig: 'pip',
 	godot_js_dylink_symbol: function (p_handle, p_symbol) {
 		try {
@@ -298,7 +414,6 @@ const GodotDylink = {
 		}
 	},
 
-	godot_js_dylink_close__proxy: 'sync',
 	godot_js_dylink_close__sig: 'vi',
 	godot_js_dylink_close: function (p_handle) {
 		// 2dog: drop closed handles; reopening creates a new instance because wasm instances cannot unload.
@@ -309,7 +424,6 @@ const GodotDylink = {
 	},
 
 	godot_js_dylink_error__deps: ['$stringToNewUTF8'],
-	godot_js_dylink_error__proxy: 'sync',
 	godot_js_dylink_error__sig: 'p',
 	godot_js_dylink_error: function () {
 		return stringToNewUTF8(GodotDylink.lastError);

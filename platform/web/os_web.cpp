@@ -39,15 +39,20 @@
 #include "core/config/project_settings.h"
 #include "core/io/file_access.h"
 #include "core/os/main_loop.h"
+#include "core/os/mutex.h"
 #include "core/os/os.h"
 #include "core/profiling/profiling.h"
 #include "core/templates/hash_map.h"
+#include "core/templates/safe_refcount.h"
 #include "drivers/unix/dir_access_unix.h"
 #include "drivers/unix/file_access_unix.h"
 #include "main/main.h"
 
 #include <dlfcn.h>
 #include <emscripten.h>
+#ifdef THREADS_ENABLED
+#include <emscripten/threading.h>
+#endif
 
 void OS_Web::alert(const String &p_alert, const String &p_title) {
 	godot_js_display_alert(p_alert.utf8().get_data());
@@ -304,15 +309,115 @@ static String _side_module_error() {
 	return message;
 }
 
+#ifdef THREADS_ENABLED
+// 2dog: wasm function tables are per thread, so every thread instantiates each side module at the memory and table
+// layout its first loader chose. Entries are append-only and never unloaded; the count publishes them.
+struct WebSideModule {
+	char *name = nullptr;
+	uint8_t *bytes = nullptr;
+	int size = 0;
+	char *layout = nullptr;
+};
+
+static constexpr int WEB_SIDE_MODULE_MAX = 256;
+static WebSideModule web_side_modules[WEB_SIDE_MODULE_MAX];
+static SafeNumeric<int> web_side_module_count;
+static thread_local int web_side_modules_synced = 0;
+static thread_local bool web_side_modules_syncing = false;
+
+static Mutex &_side_module_mutex() {
+	static Mutex mutex;
+	return mutex;
+}
+
+// 2dog: called at thread start (library_godot_dylink.js) and after every futex wait.
+extern "C" EMSCRIPTEN_KEEPALIVE void godot_web_sync_side_modules() {
+	if (web_side_modules_syncing) {
+		return;
+	}
+#ifdef PROXY_TO_PTHREAD_ENABLED
+	// 2dog: the page thread never runs extension code (Godot runs on workers), so it skips the synchronous compiles.
+	if (emscripten_is_main_browser_thread()) {
+		return;
+	}
+#endif
+	const int count = web_side_module_count.get();
+	if (web_side_modules_synced >= count) {
+		return;
+	}
+	web_side_modules_syncing = true;
+	for (int i = web_side_modules_synced; i < count; i++) {
+		const WebSideModule &module = web_side_modules[i];
+		// 2dog: failures are reported by the loader; a thread without the module fails only if it calls into it.
+		godot_js_dylink_thread_load(i, module.name, module.bytes, module.size, module.layout);
+	}
+	web_side_modules_synced = count;
+	web_side_modules_syncing = false;
+}
+
+// 2dog: threads that were blocked while a module loaded catch up when they wake, before running more code, like
+// emscripten's dlsync. Threaded 2dog hosts link with --wrap=emscripten_futex_wait.
+extern "C" int __real_emscripten_futex_wait(volatile void *p_addr, uint32_t p_val, double p_max_wait_ms);
+extern "C" int __wrap_emscripten_futex_wait(volatile void *p_addr, uint32_t p_val, double p_max_wait_ms) {
+	const int ret = __real_emscripten_futex_wait(p_addr, p_val, p_max_wait_ms);
+	godot_web_sync_side_modules();
+	return ret;
+}
+
+static Error _load_side_module(const String &p_path, const Vector<uint8_t> &p_bytes, int &r_handle) {
+	const CharString name = p_path.get_file().utf8();
+	MutexLock lock(_side_module_mutex());
+	// 2dog: dependencies resolve by name among the modules this thread has loaded.
+	godot_web_sync_side_modules();
+	const int count = web_side_module_count.get();
+	for (int i = 0; i < count; i++) {
+		if (strcmp(web_side_modules[i].name, name.get_data()) == 0) {
+			r_handle = i + 1;
+			return OK;
+		}
+	}
+	ERR_FAIL_COND_V_MSG(count == WEB_SIDE_MODULE_MAX, ERR_OUT_OF_MEMORY, vformat("Can't open dynamic library: %s. Too many side modules.", p_path));
+
+	// 2dog: threads load from these bytes whenever they catch up, so they are kept.
+	WebSideModule module;
+	module.name = strdup(name.get_data());
+	module.size = p_bytes.size();
+	module.bytes = static_cast<uint8_t *>(malloc(module.size));
+	memcpy(module.bytes, p_bytes.ptr(), module.size);
+	module.layout = godot_js_dylink_thread_load(count, module.name, module.bytes, module.size, nullptr);
+	if (module.layout == nullptr) {
+		free(module.name);
+		free(module.bytes);
+		ERR_FAIL_V_MSG(ERR_CANT_OPEN, vformat("Can't open dynamic library: %s. Error: %s.", p_path, _side_module_error()));
+	}
+	web_side_modules[count] = module;
+	web_side_modules_synced = count + 1;
+	web_side_module_count.set(count + 1);
+	r_handle = count + 1;
+	return OK;
+}
+
+static void _close_side_module(int) {
+	// 2dog: shared modules stay loaded: wasm instances cannot unload, and other threads may still run their code.
+}
+#else
+static Error _load_side_module(const String &p_path, const Vector<uint8_t> &p_bytes, int &r_handle) {
+	r_handle = godot_js_dylink_open(p_path.get_file().utf8().get_data(), p_bytes.ptr(), p_bytes.size());
+	ERR_FAIL_COND_V_MSG(r_handle == 0, ERR_CANT_OPEN, vformat("Can't open dynamic library: %s. Error: %s.", p_path, _side_module_error()));
+	return OK;
+}
+
+static void _close_side_module(int p_handle) {
+	godot_js_dylink_close(p_handle);
+}
+#endif
+
 static Error _open_side_module(const String &p_path, int &r_handle) {
 	const String path = _side_module_path(p_path);
 	ERR_FAIL_COND_V_MSG(path.is_empty(), ERR_FILE_NOT_FOUND, vformat("Can't open dynamic library, file not found: '%s'.", p_path));
 	const Vector<uint8_t> bytes = FileAccess::get_file_as_bytes(path);
 	ERR_FAIL_COND_V_MSG(bytes.is_empty(), ERR_CANT_OPEN, vformat("Can't read dynamic library: '%s'.", path));
-
-	r_handle = godot_js_dylink_open(path.get_file().utf8().get_data(), bytes.ptr(), bytes.size());
-	ERR_FAIL_COND_V_MSG(r_handle == 0, ERR_CANT_OPEN, vformat("Can't open dynamic library: %s. Error: %s.", path, _side_module_error()));
-	return OK;
+	return _load_side_module(path, bytes, r_handle);
 }
 
 // 2dog: close dependencies with their owning library handle.
@@ -342,7 +447,7 @@ Error OS_Web::open_dynamic_library(const String &p_path, void *&p_library_handle
 	}
 	if (err != OK) {
 		for (int dependency_handle : dependency_handles) {
-			godot_js_dylink_close(dependency_handle);
+			_close_side_module(dependency_handle);
 		}
 		return err;
 	}
@@ -360,10 +465,10 @@ Error OS_Web::open_dynamic_library(const String &p_path, void *&p_library_handle
 
 Error OS_Web::close_dynamic_library(void *p_library_handle) {
 	const int handle = static_cast<int>(reinterpret_cast<intptr_t>(p_library_handle));
-	godot_js_dylink_close(handle);
+	_close_side_module(handle);
 	if (const Vector<int> *dependencies = _side_module_dependencies().getptr(handle)) {
 		for (int dependency_handle : *dependencies) {
-			godot_js_dylink_close(dependency_handle);
+			_close_side_module(dependency_handle);
 		}
 		_side_module_dependencies().erase(handle);
 	}
@@ -371,7 +476,10 @@ Error OS_Web::close_dynamic_library(void *p_library_handle) {
 }
 
 Error OS_Web::get_dynamic_library_symbol_handle(void *p_library_handle, const String &p_name, void *&p_symbol_handle, bool p_optional) {
-	p_symbol_handle = godot_js_dylink_symbol(static_cast<int>(reinterpret_cast<intptr_t>(p_library_handle)), p_name.utf8().get_data());
+#ifdef THREADS_ENABLED
+	godot_web_sync_side_modules();
+#endif
+	p_symbol_handle =godot_js_dylink_symbol(static_cast<int>(reinterpret_cast<intptr_t>(p_library_handle)), p_name.utf8().get_data());
 	if (p_symbol_handle == nullptr) {
 		ERR_FAIL_COND_V_MSG(!p_optional, ERR_CANT_RESOLVE, vformat("Can't resolve symbol %s. Error: %s.", p_name, _side_module_error()));
 		return ERR_CANT_RESOLVE;

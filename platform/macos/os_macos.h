@@ -202,6 +202,7 @@ public:
 	virtual void run() override;
 
 	OS_MacOS_NSApp(const char *p_execpath, int p_argc, char **p_argv);
+	~OS_MacOS_NSApp() override;
 };
 
 class OS_MacOS_Headless : public OS_MacOS {

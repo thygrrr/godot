@@ -64,6 +64,7 @@ extern int godot_js_dylink_open(const char *p_name, const uint8_t *p_bytes, int 
 extern void *godot_js_dylink_symbol(int p_handle, const char *p_symbol);
 extern void godot_js_dylink_close(int p_handle);
 extern char *godot_js_dylink_error();
+extern char *godot_js_dylink_thread_load(int p_index, const char *p_name, const uint8_t *p_bytes, int p_size, const char *p_layout);
 #endif
 
 // Input

@@ -132,7 +132,12 @@ void main() {
 #define M_PI 3.14159265359
 
 	float side;
+#ifdef RENDER_DRIVER_WEBGPU
+	side = floor(uv.y * 2.0);
+	uv.y = uv.y * 2.0 - side;
+#else
 	uv.y = modf(uv.y * 2.0, side);
+#endif
 	side = side * 2.0 - 1.0;
 	vec3 normal = vec3(uv * 2.0 - 1.0, 0.0);
 	normal.z = 0.5 - 0.5 * ((normal.x * normal.x) + (normal.y * normal.y));
