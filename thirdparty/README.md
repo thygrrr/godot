@@ -4,6 +4,12 @@ Please keep categories (`##` level) listed alphabetically and matching their
 respective folder names. Use two empty lines to separate categories for
 readability.
 
+The WebGPU-only `tint`, `spirv-tools`, `spirv-headers-webgpu` and `emdawnwebgpu`
+sources use checksum-pinned upstream archive references. Their source snapshots
+and generated tables are restored to ignored paths; only local patches are
+tracked here. See [WebGPU dependency preparation](../drivers/webgpu/dependencies.md)
+and its lock file for the exact revisions, checksums and imported files.
+
 
 ## accesskit
 
@@ -1058,6 +1064,11 @@ Files extracted from upstream source:
 Separate headers used only by WebGPU's Tint and SPIRV-Tools. The engine's
 existing spirv-headers snapshot remains unchanged.
 
+Patches:
+
+- `0001-preserve-webgpu-header-compatibility.patch` — Reproduce the existing mixed
+  header snapshot and extension enumerants without changing compiler inputs.
+
 
 
 ## spirv-reflect
@@ -1090,7 +1101,7 @@ Files extracted from upstream source:
 
 - `source/` folder
 - `include/` folder
-- `generated/` folder (pre-generated from upstream build)
+- `generated/` folder (regenerated using the pinned upstream scripts and grammars)
 - `LICENSE`
 
 Required by Tint for SPIR-V parsing and validation. Version pinned by Dawn DEPS.
@@ -1117,11 +1128,12 @@ Files extracted from upstream source:
 
 Files extracted from upstream source:
 
-- `src/tint/` folder (extracted via `extract_tint.sh`)
+- `src/tint/` folder (restored using `drivers/webgpu/dependencies.py`)
 - `LICENSE`
 
 Patches:
 
+- `0000-atomic-aggregate-access.patch` — Preserve matrix/vector traversal in atomic access chains.
 - `0001-skip-block-layout-validation.patch` — `SetSkipBlockLayout(true)` for Godot UBO layout
 - `0002-allow-struct-member-size-mismatch.patch` — `kAllowStructMemberSizeMismatch` for specialization constants
 - `0003-decompose-strided-array-stride-guard.patch` — Skip padding when stride < element size

@@ -12,6 +12,7 @@ parser.add_argument("--archive", type=Path, required=True)
 parser.add_argument("--output", type=Path, required=True)
 args = parser.parse_args()
 root = Path(__file__).resolve().parent.parent
+subprocess.run([sys.executable, str(root / "drivers/webgpu/dependencies.py")], check=True)
 output = args.output.resolve()
 output.mkdir(parents=True, exist_ok=True)
 compiler = args.emscripten.resolve() / "em++.py"

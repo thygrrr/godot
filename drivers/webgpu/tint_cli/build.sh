@@ -12,6 +12,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 cd "$REPO_ROOT"
 
+uv run --no-project python drivers/webgpu/dependencies.py
+
 # Directories.
 TINT_DIR="thirdparty/tint"
 SPIRV_TOOLS_DIR="thirdparty/spirv-tools"
