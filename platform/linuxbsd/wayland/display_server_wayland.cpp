@@ -2283,6 +2283,12 @@ DisplayServerWayland::DisplayServerWayland(const String &p_rendering_driver, Dis
 	r_error = ERR_UNAVAILABLE;
 	context = p_context;
 
+	// 2dog: Wayland must map the main window while creating it, so --hidden-window falls back to X11.
+	if (OS::get_singleton()->is_hidden_window()) {
+		WARN_PRINT("The Wayland display driver cannot keep the main window hidden (--hidden-window).");
+		return;
+	}
+
 	String current_desk = OS::get_singleton()->get_environment("XDG_CURRENT_DESKTOP").to_lower();
 	String session_desk = OS::get_singleton()->get_environment("XDG_SESSION_DESKTOP").to_lower();
 	swap_cancel_ok = (current_desk.contains("kde") || session_desk.contains("kde") || current_desk.contains("lxqt") || session_desk.contains("lxqt"));
