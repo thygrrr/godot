@@ -1902,6 +1902,8 @@ uint32_t RenderingDevice::external_texture_get_supported_handle_types() {
 RID RenderingDevice::external_texture_create(ExternalTextureShareHandleType p_handle_type, DataFormat p_format, uint32_t p_width, uint32_t p_height, uint64_t p_import_handle) {
 	ERR_RENDER_THREAD_GUARD_V(RID());
 	ERR_FAIL_COND_V(p_width == 0 || p_height == 0, RID());
+	ERR_FAIL_INDEX_V(p_format, DATA_FORMAT_MAX, RID()); // 2dog: drivers index format tables with it unchecked.
+	ERR_FAIL_UNSIGNED_INDEX_V(uint32_t(p_handle_type), 32u, RID());
 	ERR_FAIL_COND_V_MSG(!(driver->external_texture_supported_handle_types() & (1u << p_handle_type)), RID(),
 			"The rendering driver does not support this external texture handle type.");
 
