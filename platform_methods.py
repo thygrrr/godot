@@ -185,17 +185,20 @@ def combine_libs_ar(target, source, env):
         if isinstance(lib, str) and (lib.endswith(".a") or lib.endswith(".lib")):
             paths.append(lib)
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".mri", delete_on_close=False) as fp:
-        fp.write(f'create "{lib_path}"\n')
-        for path in paths:
-            fp.write(f'addlib "{path}"\n')
-        fp.write("save\n")
-        fp.write("end")
-        fp.close()
+    fd, mri_path = tempfile.mkstemp(suffix=".mri")
+    try:
+        with os.fdopen(fd, "w") as fp:
+            fp.write(f'create "{lib_path}"\n')
+            for path in paths:
+                fp.write(f'addlib "{path}"\n')
+            fp.write("save\n")
+            fp.write("end")
 
-        result = env.Execute(f'$AR -M < "{fp.name}"')
+        result = env.Execute(f'$AR -M < "{mri_path}"')
         if result:
             return result
+    finally:
+        os.remove(mri_path)
 
     # 2dog: LLVM objcopy cannot rewrite wasm archives (llvm-project#50623).
     if env["platform"] != "web" and env["module_mono_enabled"]:
