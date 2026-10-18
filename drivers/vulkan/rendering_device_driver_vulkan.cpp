@@ -2534,6 +2534,8 @@ RDD::TextureID RenderingDeviceDriverVulkan::texture_create_shared(TextureID p_or
 	tex_info->vk_view = new_vk_image_view;
 	tex_info->vk_view_create_info = image_view_create_info;
 	tex_info->allocation = {};
+	tex_info->external_memory = VK_NULL_HANDLE; // 2dog: views never own the external allocation.
+	tex_info->external_memory_size = 0;
 
 #if PRINT_NATIVE_COMMANDS
 	print_line(vformat("vkCreateImageView: 0x%uX for 0x%uX", uint64_t(new_vk_image_view), uint64_t(owner_tex_info->vk_view_create_info.image)));
@@ -2587,6 +2589,8 @@ RDD::TextureID RenderingDeviceDriverVulkan::texture_create_shared_from_slice(Tex
 	tex_info->vk_view = new_vk_image_view;
 	tex_info->vk_view_create_info = image_view_create_info;
 	tex_info->allocation = {};
+	tex_info->external_memory = VK_NULL_HANDLE; // 2dog: views never own the external allocation.
+	tex_info->external_memory_size = 0;
 
 #if PRINT_NATIVE_COMMANDS
 	print_line(vformat("vkCreateImageView: 0x%uX for 0x%uX (%d %d %d %d)", uint64_t(new_vk_image_view), uint64_t(owner_tex_info->vk_view_create_info.image), p_mipmap, p_mipmaps, p_layer, p_layers));
