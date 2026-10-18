@@ -1236,6 +1236,19 @@ OS_MacOS_NSApp::OS_MacOS_NSApp(const char *p_execpath, int p_argc, char **p_argv
 #endif
 }
 
+OS_MacOS_NSApp::~OS_MacOS_NSApp() {
+	if (delegate == nullptr) {
+		return;
+	}
+	// 2dog: libgodot deletes this OS while NSApplication lives on; the delegate must not outlive it. Dropping it
+	// also lets the next engine instance install its own instead of treating it as a host delegate.
+	if ([NSApp delegate] == delegate) {
+		[NSApp setDelegate:nil];
+	}
+	[NSApp unregisterUserInterfaceItemSearchHandler:delegate];
+	delegate = nullptr;
+}
+
 // MARK: - OS_MacOS_Headless
 
 void OS_MacOS_Headless::run() {
