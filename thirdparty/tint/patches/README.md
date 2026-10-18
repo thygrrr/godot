@@ -1,22 +1,23 @@
 # Tint Patches for Godot WebGPU
 
-These patches modify the vendored Tint source for Godot's WebGPU backend.
-They are applied on top of clean upstream Tint extracted via `extract_tint.sh`.
+These patches modify the pinned upstream Tint source for Godot's WebGPU backend.
+Preparation extracts the locked source subset and applies these patches in order.
+See [dependency preparation](../../../drivers/webgpu/dependencies.md).
 
 ## Applying
 
 From the repository root:
 
-```bash
-for p in thirdparty/tint/patches/*.patch; do
-    patch -p1 < "$p"
-done
+```text
+uv run --no-project python drivers/webgpu/dependencies.py
+uv run --no-project python drivers/webgpu/dependencies.py --verify
 ```
 
 ## Patch Summary
 
 | Patch | Files | Group | Description |
 |-------|-------|-------|-------------|
+| 0000 | atomics.cc | Atomic access | Preserve matrix/vector element type traversal from the original snapshot |
 | 0001 | validate.cc | UBO layout | `SetSkipBlockLayout(true)` + improved error messages |
 | 0002 | validator.h, validator.cc, reader.cc | Spec constants | `kAllowStructMemberSizeMismatch` capability |
 | 0003 | decompose_strided_array.cc | Spec constants | Skip padding when stride < element size |
@@ -47,6 +48,7 @@ Always necessary when vendoring without Abseil.
 
 ## Upstream Source
 
-Tint is extracted from [Dawn](https://dawn.googlesource.com/dawn) using
-`extract_tint.sh`. The patches were generated against upstream `main` and verified
-to apply cleanly and produce identical output via round-trip testing.
+Tint is extracted from [Dawn](https://dawn.googlesource.com/dawn) at the exact
+revision in `drivers/webgpu/dependencies.json`. The patch stack reproduces the
+previous snapshot, including the atomic aggregate fix recorded during the move
+to upstream references.

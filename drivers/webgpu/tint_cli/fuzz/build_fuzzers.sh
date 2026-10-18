@@ -19,6 +19,8 @@ REPO_ROOT="$(cd "$TINT_CLI_DIR/../../../" && pwd)"
 BUILD_DIR="$TINT_CLI_DIR/.build"
 SHIM_DIR="$TINT_CLI_DIR"
 
+uv run --no-project python "$REPO_ROOT/drivers/webgpu/dependencies.py"
+
 # Parse args.
 CLEAN=false
 SMOKE_TEST=false

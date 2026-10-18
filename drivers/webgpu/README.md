@@ -14,7 +14,7 @@ code stays behind the non-WebGPU path; the new driver traits default to zero
 for other drivers. The Godot version remains 4.7.2.
 
 The spike keeps .NET's Emscripten **3.1.56** pin. A checksum-verified local
-Emdawnwebgpu port is vendored in `thirdparty/emdawnwebgpu`; its legacy JS copy
+Emdawnwebgpu port is prepared in `thirdparty/emdawnwebgpu`; its legacy JS copy
 uses the 3.x stack dependency names. Tint has a tested, locale-independent
 float-parsing fallback for the older libc++. Newer SDKs use the original Dawn
 JS library and `std::from_chars` path. WebGPU's newer SPIR-V headers are kept
@@ -62,19 +62,23 @@ The isolated Godot fork branch is `2dog-4.7.2-webgpu`.
 
 ### Building the spike
 
+WebGPU dependencies use [pinned upstream archive references](dependencies.md)
+with checked-in local patches. SCons prepares them automatically for
+`webgpu=yes`; the source files themselves are not tracked in Git.
+
 From the 2dog repository root, replace `<godot-checkout>` with this worktree:
 
 ```text
 uv run scons -C <godot-checkout> platform=web target=template_debug library_type=static_library module_mono_enabled=yes disable_crash_handler=yes disable_path_overrides=no threads=no lto=none webgpu=yes webgpu_precompile=no
 ```
 
-`webgpu_port=auto` selects the vendored Dawn port. An explicit local `.py` port
+`webgpu_port=auto` selects the prepared Dawn port. An explicit local `.py` port
 or `webgpu_port=emdawnwebgpu` can be supplied for other toolchains. The remote
 port requires Emscripten 4.0.10 or later; do not change the .NET SDK pin to use
 it. On Windows, use an Emscripten cache on the SDK's drive: this avoids the
 3.1.56 system-library builder's cross-drive `os.path.relpath` failure.
 Keep native SCons and .NET link caches separate. The .NET Emscripten workload's
-default frozen cache cannot build the vendored port; set a writable
+default frozen cache cannot build the local port; set a writable
 `WasmCachePath` for the host project.
 
 `webgpu_precompile=no` leaves the optional build-time shader cache empty; the
@@ -85,7 +89,7 @@ default to runtime translation without requiring the host shader tools.
 
 A custom .NET browser shell must set `renderingDriver: 'webgpu'` on its Engine
 configuration before `init()` or `startGame()`, and select the Mobile renderer.
-Its final emcc link must also use the vendored Dawn port (and the bundled
+Its final emcc link must also use the prepared Dawn port (and the bundled
 Closure externs on Emscripten 3.1.56). The ordinary 2dog native packages/build
 script do not enable or package this experimental payload automatically.
 
