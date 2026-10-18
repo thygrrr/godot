@@ -2346,7 +2346,10 @@ void ClassDB::cleanup() {
 	//OBJTYPE_LOCK; hah not here
 
 	if (CoreGlobals::engine_reinit_enabled) {
-		// 2dog: GDCLASS registration has process lifetime in reinit mode.
+		// 2dog: GDCLASS registration has process lifetime in reinit mode; the next lifetime registers its classes
+		// under the initial API again, and their hashes may change with it.
+		current_api = API_CORE;
+		api_hashes_cache.clear();
 		return;
 	}
 
