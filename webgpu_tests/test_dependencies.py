@@ -114,6 +114,26 @@ class DependencyTests(unittest.TestCase):
             dependencies.extract(archive_path, self.root / "destination", prefixes=[""])
         self.assertFalse((self.root / "escape.txt").exists())
 
+    def test_source_selection_excludes_unused_files(self):
+        archive_path = self.root / "selection.zip"
+        with zipfile.ZipFile(archive_path, "w") as archive:
+            for name in ("src/library.cc", "src/library_test.cc", "src/readme.md", "other/library.cc"):
+                archive.writestr("upstream/" + name, "content")
+        files = dependencies.extract(
+            archive_path,
+            self.root / "selected",
+            selection={"roots": ["src"], "extensions": [".cc"], "exclude": ["*_test.cc"]},
+        )
+        self.assertEqual(files, ["src/library.cc"])
+
+    def test_optional_binary_assets_preserve_crlf_bytes(self):
+        archive_path = self.root / "binary.zip"
+        data = b"\x89PNG\r\n\x00binary"
+        with zipfile.ZipFile(archive_path, "w") as archive:
+            archive.writestr("upstream/test.png", data)
+        dependencies.extract(archive_path, self.root / "binary", files=["test.png"], normalize=False)
+        self.assertEqual((self.root / "binary/test.png").read_bytes(), data)
+
 
 if __name__ == "__main__":
     unittest.main()

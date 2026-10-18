@@ -1,12 +1,8 @@
-# WebGPU header compatibility
+# Required SPIR-V extension enums
 
-`0001-preserve-webgpu-header-compatibility.patch` records the differences between
-the pinned SPIRV-Headers revision and the existing WebGPU snapshot. That snapshot
-combined older C/C++ headers with a newer C++11 header and additional extension
-enumerants. The patch preserves those inputs during the move to upstream archive
-references; it introduces no new compiler behavior. It also retains the snapshot's
-trimmed license text.
+`0001-add-required-extension-enums.patch` adds extension definitions referenced by
+the pinned SPIRV-Tools sources but missing from Dawn's pinned C++11 header:
+`FragmentCoverageMESA`, `PredicatedIOINTEL` and `RoundedDivideSqrtINTEL`.
 
-The unpatched upstream grammar files generate SPIRV-Tools' tables. They are
-independent of these header compatibility changes. The engine's existing
-`thirdparty/spirv-headers` remains separate.
+The other headers, upstream result/type flags, license and generator grammars
+are used unchanged. The engine's `thirdparty/spirv-headers` remains separate.

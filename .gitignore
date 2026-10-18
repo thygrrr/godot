@@ -41,6 +41,15 @@
 /thirdparty/emdawnwebgpu/README.md
 /thirdparty/emdawnwebgpu/VERSION.txt
 
+# Optional upstream tools restored by webgpu_tests/prepare_upstream.py.
+/webgpu_tests/benchmark/
+/webgpu_tests/driver_unit_tests/
+/webgpu_tests/resource_lifecycle/
+/webgpu_tests/scene_smoketest/
+/webgpu_tests/screenshot_comparison/
+/webgpu_tests/test_project/
+/webgpu_tests/profile_startup.mjs
+
 #############################
 ### Godot generated files ###
 #############################

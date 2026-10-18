@@ -1,6 +1,7 @@
 """Prepare the checksum-pinned WebGPU sources without vendoring them in Git."""
 
 import argparse
+import fnmatch
 import hashlib
 import json
 import os
@@ -52,35 +53,46 @@ def download(spec, cache, offline):
     return archive
 
 
-def extract(archive, destination, files=(), prefixes=()):
+def extract(archive, destination, files=(), prefixes=(), selection=None, normalize=True):
     """Copy regular files only, stripping the archive's single top directory."""
     wanted = set(files)
     found = set()
 
-    def copy(name, read):
+    def copy(name, read, mode):
         safe_path(name)
         _, separator, relative = name.partition("/")
         if not separator or not relative:
             return
-        if relative not in wanted and not any(relative.startswith(prefix) for prefix in prefixes):
+        selected = any(relative.startswith(prefix) for prefix in prefixes)
+        if selection:
+            selected = (
+                any(relative.startswith(root + "/") for root in selection.get("roots", []))
+                and (not selection.get("extensions") or PurePosixPath(relative).suffix in selection["extensions"])
+                and not any(fnmatch.fnmatchcase(relative, pattern) for pattern in selection.get("exclude", []))
+            )
+        if relative not in wanted and not selected:
             return
         output = destination / safe_path(relative)
         output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_bytes(read().replace(b"\r\n", b"\n"))
+        data = read()
+        output.write_bytes(data.replace(b"\r\n", b"\n") if normalize else data)
+        if mode:
+            output.chmod(mode & 0o777)
         found.add(relative)
 
     if archive.suffix == ".zip":
         with zipfile.ZipFile(archive) as source:
             for member in source.infolist():
                 if not member.is_dir():
-                    copy(member.filename, lambda: source.read(member))
+                    copy(member.filename, lambda: source.read(member), member.external_attr >> 16)
     else:
         with tarfile.open(archive) as source:
             for member in source:
                 if member.isfile():
-                    copy(member.name, lambda: source.extractfile(member).read())
+                    copy(member.name, lambda: source.extractfile(member).read(), member.mode)
     if missing := wanted - found:
         raise ValueError(f"Files missing from {archive.name}: {sorted(missing)}")
+    return sorted(found)
 
 
 def generate_spirv_tables(stage, archives, specs):
@@ -156,7 +168,7 @@ def prepare(root=ROOT, cache=None, offline=False, verify=False):
         state = json.loads(stamp.read_text(encoding="utf-8")) if stamp.is_file() else {}
         states[name] = state
         if state.get("fingerprint") != fingerprints[name] or any(
-            not (directory / file).is_file() for file in spec["files"]
+            not (directory / file).is_file() for file in state.get("files", {})
         ):
             pending.append(name)
         elif verify:
@@ -174,13 +186,14 @@ def prepare(root=ROOT, cache=None, offline=False, verify=False):
     archives = {name: download(specs[name], cache, offline) for name in sorted(needed)}
     with tempfile.TemporaryDirectory(prefix="prepare-", dir=cache) as directory:
         stage = Path(directory)
+        selected_files = {}
         for name in pending:
-            files = [
-                file
-                for file in specs[name]["files"]
-                if not file.startswith("generated/") and file != "webgpu/src/library_webgpu_legacy.js"
-            ]
-            extract(archives[name], stage / "thirdparty" / name, files=files)
+            spec = specs[name]
+            selected_files[name] = extract(
+                archives[name], stage / "thirdparty" / name, files=spec["files"], selection=spec
+            ) + spec.get("generated", [])
+            if "file_count" in spec and len(selected_files[name]) != spec["file_count"]:
+                raise ValueError(f"Unexpected source selection for {name}: {len(selected_files[name])} files")
         if "spirv-tools" in pending:
             generate_spirv_tables(stage, archives, specs)
         if "emdawnwebgpu" in pending:
@@ -201,14 +214,14 @@ def prepare(root=ROOT, cache=None, offline=False, verify=False):
         for name in pending:
             hashes = {}
             for file, previous in states[name].get("files", {}).items():
-                if file in specs[name]["files"]:
+                if file in selected_files[name]:
                     continue
                 obsolete = root / "thirdparty" / name / safe_path(file)
                 if obsolete.is_file():
                     if digest(obsolete.read_bytes().replace(b"\r\n", b"\n")) != previous:
                         raise ValueError(f"Locally modified WebGPU dependency: {obsolete}; preserve changes first")
                     obsolete.unlink()
-            for file in specs[name]["files"]:
+            for file in selected_files[name]:
                 data = (stage / "thirdparty" / name / file).read_bytes().replace(b"\r\n", b"\n")
                 output = root / "thirdparty" / name / safe_path(file)
                 output.parent.mkdir(parents=True, exist_ok=True)

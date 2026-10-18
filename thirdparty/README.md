@@ -1066,8 +1066,8 @@ existing spirv-headers snapshot remains unchanged.
 
 Patches:
 
-- `0001-preserve-webgpu-header-compatibility.patch` — Reproduce the existing mixed
-  header snapshot and extension enumerants without changing compiler inputs.
+- `0001-add-required-extension-enums.patch` — Add legacy extension definitions
+  required by the pinned SPIRV-Tools sources to the upstream C++11 header.
 
 
 
