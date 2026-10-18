@@ -100,6 +100,7 @@ void libgodot_destroy_godot_instance(GDExtensionObjectPtr p_godot_instance) {
 		Main::cleanup();
 		delete os;
 		os = nullptr;
+		CoreGlobals::global_init_func_libgodot = nullptr;
 	}
 }
 
@@ -110,6 +111,10 @@ int libgodot_import_project(const char *p_project_path, int p_extra_argc, const 
 	ERR_FAIL_NULL_V(p_project_path, EXIT_FAILURE);
 	ERR_FAIL_COND_V_MSG(instance != nullptr || os != nullptr, EXIT_FAILURE,
 			"libgodot_import_project cannot run while a Godot instance exists in this process.");
+
+	// 2dog: keep ClassDB valid for later engine instances; never load a previous host's extension.
+	CoreGlobals::global_init_func_libgodot = nullptr;
+	CoreGlobals::engine_reinit_enabled = true;
 
 	Vector<char *> argv;
 	argv.push_back(const_cast<char *>("--headless"));
@@ -139,6 +144,10 @@ int libgodot_export_pack(const char *p_project_path, const char *p_preset, const
 	ERR_FAIL_COND_V_MSG(instance != nullptr || os != nullptr, EXIT_FAILURE,
 			"libgodot_export_pack cannot run while a Godot instance exists in this process.");
 
+	// 2dog: keep ClassDB valid for later engine instances; never load a previous host's extension.
+	CoreGlobals::global_init_func_libgodot = nullptr;
+	CoreGlobals::engine_reinit_enabled = true;
+
 	Vector<char *> argv;
 	argv.push_back(const_cast<char *>("--headless"));
 	argv.push_back(const_cast<char *>("--export-pack"));
@@ -149,6 +158,9 @@ int libgodot_export_pack(const char *p_project_path, const char *p_preset, const
 	for (int i = 0; i < p_extra_argc; i++) {
 		argv.push_back(const_cast<char *>(p_extra_argv[i]));
 	}
+	// 2dog: marks a host pack export; see EditorExportPlatform::export_pack and GodotTools' ExportPlugin.
+	argv.push_back(const_cast<char *>("++"));
+	argv.push_back(const_cast<char *>("--2dog-host-pack"));
 
 	// 2dog: OS_MacOS_Headless::run owns setup and cleanup.
 	OS_MacOS_Headless export_os("libgodot", argv.size(), argv.ptrw());

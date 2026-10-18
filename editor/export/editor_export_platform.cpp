@@ -2463,8 +2463,11 @@ Error EditorExportPlatform::save_zip_patch(const Ref<EditorExportPreset> &p_pres
 
 Error EditorExportPlatform::export_pack(const Ref<EditorExportPreset> &p_preset, bool p_debug, const String &p_path, BitField<EditorExportPlatform::DebugFlags> p_flags) {
 	ExportNotifier notifier(*this, p_preset, p_debug, p_path, p_flags);
-	// 2dog: pack-only exports copy desktop GDExtensions beside the pack for host lookup.
-	// 2dog: web presets embed their side modules in the pack.
+	// 2dog: host pack exports (libgodot_export_pack) copy desktop GDExtensions beside the pack for host lookup;
+	// web presets embed their side modules in the pack.
+	if (!OS::get_singleton()->get_cmdline_user_args().find("--2dog-host-pack")) {
+		return save_pack(p_preset, p_debug, p_path);
+	}
 	Vector<SharedObject> so_files;
 	Error err = save_pack(p_preset, p_debug, p_path, &so_files);
 	if (err != OK || get_os_name() == "Web") {

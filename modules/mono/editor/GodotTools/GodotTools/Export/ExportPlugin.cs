@@ -179,10 +179,10 @@ namespace GodotTools.Export
             if (!TryDeterminePlatformFromOSName(osName, out string? platform))
                 throw new NotSupportedException("Target platform not supported.");
 
-            if (path.EndsWith(".pck", StringComparison.OrdinalIgnoreCase)
+            if (Godot.OS.GetCmdlineUserArgs().Contains("--2dog-host-pack")
                 || (platform == OS.Platforms.Web && !path.EndsWith(".html", StringComparison.OrdinalIgnoreCase)))
             {
-                // 2dog: pack-only exports use host-published assemblies and runtimes, excluding .NET build outputs.
+                // 2dog: host pack exports (libgodot_export_pack) use host-published assemblies and runtimes.
                 return;
             }
 

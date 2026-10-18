@@ -95,6 +95,7 @@ void libgodot_destroy_godot_instance(GDExtensionObjectPtr p_godot_instance) {
 		Main::cleanup();
 		delete os;
 		os = nullptr;
+		CoreGlobals::global_init_func_libgodot = nullptr;
 		godot_cleanup_profiler();
 #ifndef PROXY_TO_PTHREAD_ENABLED
 		target_ticks = 0;
