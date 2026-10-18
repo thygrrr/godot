@@ -25,6 +25,9 @@ namespace Godot.Bridge
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static void OnAlcUnloading(AssemblyLoadContext alc)
         {
+            // 2dog: never keep an unloading context alive for engine restarts.
+            _scriptAssemblies.RemoveWhere(assembly => AssemblyLoadContext.GetLoadContext(assembly) == alc);
+
             if (_alcData.TryRemove(alc, out var typesInAlc))
             {
                 foreach (var type in typesInAlc.Keys)
@@ -322,6 +325,8 @@ namespace Godot.Bridge
         public static void LookupScriptsInAssembly(Assembly assembly)
         {
             _scriptAssemblies.Add(assembly);
+            if (assembly.IsCollectible && AssemblyLoadContext.GetLoadContext(assembly) is { } assemblyAlc)
+                TrackAlcForUnloading(assemblyAlc);
 
             [UnconditionalSuppressMessage("Trimming", "IL2067",
                 Justification = "Types reaching this boundary come from AssemblyHasScriptsAttribute or Assembly.GetTypes(). " + TrimJustifications.ScriptTypesAreRooted)]
