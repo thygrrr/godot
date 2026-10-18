@@ -32,6 +32,10 @@
 
 #include "core/extension/gdextension_interface.gen.h"
 
+#ifndef __cplusplus
+#include <stdbool.h> // 2dog: libgodot_error_callback takes a bool.
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif // __cplusplus
