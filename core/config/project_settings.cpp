@@ -48,6 +48,10 @@
 #include "core/variant/variant_parser.h"
 #include "core/version.h"
 
+#ifdef UNIX_ENABLED
+#include <cstdlib>
+#endif
+
 #ifdef TOOLS_ENABLED
 #include "core/config/engine.h"
 
@@ -823,6 +827,13 @@ Error ProjectSettings::_setup(const String &p_path, const String &p_main_pack, b
 	const String simplified = p_path.simplify_path();
 	if (simplified.is_absolute_path()) {
 		current_dir = simplified;
+#ifdef UNIX_ENABLED
+		// 2dog: canonicalize like upstream's getcwd() so symlinked paths (e.g. macOS /tmp) still localize.
+		if (char *real_path = ::realpath(simplified.utf8().get_data(), nullptr)) {
+			current_dir = String::utf8(real_path);
+			::free(real_path);
+		}
+#endif
 	} else {
 		d = DirAccess::create(DirAccess::ACCESS_FILESYSTEM);
 		ERR_FAIL_COND_V_MSG(d.is_null(), ERR_CANT_CREATE, vformat("Cannot create DirAccess for path '%s'.", p_path));
