@@ -29,8 +29,11 @@
 /**************************************************************************/
 
 const GodotWebXR = {
-	// 2dog: use the Emscripten 3.1.56 Browser API; switch back to MainLoop when .NET reaches 4.x.
-	$GodotWebXR__deps: ['$Browser', '$GL', '$GodotRuntime', '$GodotOS', '$runtimeKeepalivePush', '$runtimeKeepalivePop'],
+	// 2dog: mono builds use Emscripten 3.1.56 (Browser.mainLoop), others need 4.x (MainLoop).
+	$GodotWebXRMainLoop__deps: ['{{{ parseInt(EMSCRIPTEN_VERSION) >= 4 ? "$MainLoop" : "$Browser" }}}'],
+	$GodotWebXRMainLoop: '={{{ parseInt(EMSCRIPTEN_VERSION) >= 4 ? "{ loop: MainLoop, raf: MainLoop }" : "{ loop: Browser.mainLoop, raf: Browser }" }}}',
+
+	$GodotWebXR__deps: ['$GodotWebXRMainLoop', '$GL', '$GodotRuntime', '$GodotOS', '$runtimeKeepalivePush', '$runtimeKeepalivePop'],
 	// 2dog: engine shutdown must clear active XR sessions and restore requestAnimationFrame.
 	$GodotWebXR__postset: 'GodotOS.atexit(function(resolve, reject) { GodotWebXR.reset(); resolve(); });',
 	$GodotWebXR: {
@@ -67,9 +70,9 @@ const GodotWebXR = {
 		},
 		monkeyPatchRequestAnimationFrame: (enable) => {
 			if (GodotWebXR.orig_requestAnimationFrame === null) {
-				GodotWebXR.orig_requestAnimationFrame = Browser.requestAnimationFrame;
+				GodotWebXR.orig_requestAnimationFrame = GodotWebXRMainLoop.raf.requestAnimationFrame;
 			}
-			Browser.requestAnimationFrame = enable
+			GodotWebXRMainLoop.raf.requestAnimationFrame = enable
 				? GodotWebXR.requestAnimationFrame
 				: GodotWebXR.orig_requestAnimationFrame;
 		},
@@ -102,11 +105,11 @@ const GodotWebXR = {
 			// enabled or disabled. When using the WebXR API Emulator, this
 			// gets picked up automatically, however, in the Oculus Browser
 			// on the Quest, we need to pause and resume the main loop.
-			Browser.mainLoop.pause();
+			GodotWebXRMainLoop.loop.pause();
 			runtimeKeepalivePush();
 			window.setTimeout(function () {
 				runtimeKeepalivePop();
-				Browser.mainLoop.resume();
+				GodotWebXRMainLoop.loop.resume();
 			}, 0);
 		},
 
