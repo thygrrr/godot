@@ -44,6 +44,7 @@ GDExtensionObjectPtr libgodot_create_godot_instance(int p_argc, char *p_argv[], 
 
 	CoreGlobals::global_init_func_libgodot = p_init_func;
 	CoreGlobals::engine_reinit_enabled = true;
+	CoreGlobals::libgodot_host_instance = true;
 
 	// 2dog: avoid AppKit when the embedded host requests a headless display driver.
 	bool is_headless = false;
@@ -101,6 +102,7 @@ void libgodot_destroy_godot_instance(GDExtensionObjectPtr p_godot_instance) {
 		delete os;
 		os = nullptr;
 		CoreGlobals::global_init_func_libgodot = nullptr;
+		CoreGlobals::libgodot_host_instance = false;
 	}
 }
 
@@ -115,6 +117,7 @@ int libgodot_import_project(const char *p_project_path, int p_extra_argc, const 
 	// 2dog: keep ClassDB valid for later engine instances; never load a previous host's extension.
 	CoreGlobals::global_init_func_libgodot = nullptr;
 	CoreGlobals::engine_reinit_enabled = true;
+	CoreGlobals::libgodot_host_instance = false;
 
 	Vector<char *> argv;
 	argv.push_back(const_cast<char *>("--headless"));
@@ -147,6 +150,7 @@ int libgodot_export_pack(const char *p_project_path, const char *p_preset, const
 	// 2dog: keep ClassDB valid for later engine instances; never load a previous host's extension.
 	CoreGlobals::global_init_func_libgodot = nullptr;
 	CoreGlobals::engine_reinit_enabled = true;
+	CoreGlobals::libgodot_host_instance = false;
 
 	Vector<char *> argv;
 	argv.push_back(const_cast<char *>("--headless"));

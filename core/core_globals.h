@@ -68,4 +68,7 @@ public:
 
 	// 2dog: preserve process-lifetime metadata across libgodot engine restarts.
 	static inline bool engine_reinit_enabled = false;
+
+	// 2dog: the running engine was created by libgodot_create_godot_instance, so its host publishes the game.
+	static inline bool libgodot_host_instance = false;
 };

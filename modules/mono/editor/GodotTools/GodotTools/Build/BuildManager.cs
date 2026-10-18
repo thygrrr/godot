@@ -293,8 +293,7 @@ namespace GodotTools.Build
             string platform,
             string runtimeIdentifier,
             string publishOutputDir,
-            bool includeDebugSymbols = true,
-            Godot.Collections.Array? customProperties = null
+            bool includeDebugSymbols = true
         )
         {
             var buildInfo = new BuildInfo(GodotSharpDirs.ProjectSlnPath, GodotSharpDirs.ProjectCsProjPath, configuration,
@@ -310,9 +309,6 @@ namespace GodotTools.Build
 
             if (Internal.GodotIsRealTDouble())
                 buildInfo.CustomProperties.Add("GodotFloat64=true");
-
-            if (customProperties != null)
-                buildInfo.CustomProperties.AddRange(customProperties);
 
             return buildInfo;
         }
@@ -333,10 +329,9 @@ namespace GodotTools.Build
             string platform,
             string runtimeIdentifier,
             string publishOutputDir,
-            bool includeDebugSymbols = true,
-            Godot.Collections.Array? customProperties = null
+            bool includeDebugSymbols = true
         ) => PublishProjectBlocking(CreatePublishBuildInfo(configuration,
-            platform, runtimeIdentifier, publishOutputDir, includeDebugSymbols, customProperties));
+            platform, runtimeIdentifier, publishOutputDir, includeDebugSymbols));
 
         public static bool GenerateXCFrameworkBlocking(
             List<string> outputPaths,

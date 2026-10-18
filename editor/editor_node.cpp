@@ -1391,6 +1391,9 @@ void EditorNode::_fs_changed() {
 						ERR_PRINT(vformat("Export path \"%s\" doesn't end with a supported extension.", export_path));
 						err = FAILED;
 					}
+				} else if (EditorExport::is_full_export_blocked()) {
+					ERR_PRINT(EditorExport::get_full_export_blocked_message());
+					err = ERR_UNAVAILABLE;
 				} else { // Normal project export.
 					String config_error;
 					bool missing_templates;

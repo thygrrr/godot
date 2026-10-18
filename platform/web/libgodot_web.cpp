@@ -53,6 +53,7 @@ GDExtensionObjectPtr libgodot_create_godot_instance(int p_argc, char *p_argv[], 
 	// 2dog: retain process metadata across restarts; each engine lifetime needs a fresh canvas.
 	CoreGlobals::global_init_func_libgodot = p_init_func;
 	CoreGlobals::engine_reinit_enabled = true;
+	CoreGlobals::libgodot_host_instance = true;
 #ifndef PROXY_TO_PTHREAD_ENABLED
 	target_ticks = 0;
 #endif
@@ -96,6 +97,7 @@ void libgodot_destroy_godot_instance(GDExtensionObjectPtr p_godot_instance) {
 		delete os;
 		os = nullptr;
 		CoreGlobals::global_init_func_libgodot = nullptr;
+		CoreGlobals::libgodot_host_instance = false;
 		godot_cleanup_profiler();
 #ifndef PROXY_TO_PTHREAD_ENABLED
 		target_ticks = 0;
