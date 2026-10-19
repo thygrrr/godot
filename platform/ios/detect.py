@@ -51,7 +51,8 @@ def get_flags():
         "target": "template_debug",
         "use_volk": False,
         "metal": True,
-        "supported": ["metal", "mono"],
+        # 2dog: the archive is always static; library_type=static_library adds the libgodot entry points.
+        "supported": ["metal", "mono", "library"],
         "builtin_pcre2_with_jit": False,
     }
 

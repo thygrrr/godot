@@ -661,8 +661,8 @@ bool GDMono::should_initialize() {
 #if defined(TOOLS_ENABLED) || defined(LIBGODOT_HOSTFXR)
 	// 2dog: editor and libgodot builds always initialize the .NET module.
 	return true;
-#elif defined(GD_MONO_LIBGODOT_ENABLED) && defined(WEB_ENABLED)
-	// 2dog: web libraries are linked into .NET, so initialization does not require a feature tag.
+#elif defined(GD_MONO_LIBGODOT_ENABLED) && (defined(WEB_ENABLED) || defined(APPLE_EMBEDDED_ENABLED))
+	// 2dog: web and iOS libraries are linked into .NET, so initialization does not require a feature tag.
 	return true;
 #else
 	return OS::get_singleton()->has_feature("dotnet");
