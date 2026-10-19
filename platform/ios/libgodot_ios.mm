@@ -53,6 +53,10 @@ static libgodot_ios_callback quit_callback = nullptr;
 static void *callback_userdata = nullptr;
 static id lifecycle_observer = nil;
 
+// Godot's Xcode export generates these for its .gdip plugins; a libgodot app has none (GDExtensions still load).
+void godot_apple_embedded_plugins_initialize() {}
+void godot_apple_embedded_plugins_deinitialize() {}
+
 @interface TwoDogLifecycleObserver : NSObject
 @end
 
