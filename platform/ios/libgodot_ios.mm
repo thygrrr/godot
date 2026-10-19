@@ -35,6 +35,7 @@
 #include "core/os/main_loop.h"
 #include "core/profiling/profiling.h"
 #import "drivers/apple_embedded/app_delegate_service.h"
+#import "drivers/apple_embedded/display_server_apple_embedded.h"
 #import "drivers/apple_embedded/godot_view_controller.h"
 #import "drivers/apple_embedded/main_utilities.h"
 #include "main/main.h"
@@ -91,6 +92,11 @@ static id lifecycle_observer = nil;
 }
 
 @end
+
+// OS_AppleEmbedded overrides get_main_loop privately; the OS interface keeps it public.
+static MainLoop *main_loop() {
+	return os ? static_cast<OS *>(os)->get_main_loop() : nullptr;
+}
 
 static void on_main_loop_started(void *p_userdata) {
 	if (started_callback) {
@@ -214,12 +220,13 @@ bool libgodot_ios_is_created(void) {
 }
 
 bool libgodot_ios_is_running(void) {
-	return os != nullptr && os->get_main_loop() != nullptr;
+	return main_loop() != nullptr;
 }
 
 void libgodot_ios_request_quit(void) {
-	if (os && os->get_main_loop()) {
-		os->get_main_loop()->notification(MainLoop::NOTIFICATION_WM_CLOSE_REQUEST);
+	DisplayServerAppleEmbedded *display_server = DisplayServerAppleEmbedded::get_singleton();
+	if (display_server && main_loop()) {
+		display_server->send_window_event(DisplayServerEnums::WINDOW_EVENT_CLOSE_REQUEST);
 	}
 }
 
@@ -248,8 +255,8 @@ void libgodot_ios_on_exit_background(void) {
 }
 
 void libgodot_ios_on_memory_warning(void) {
-	if (os && os->get_main_loop()) {
-		os->get_main_loop()->notification(MainLoop::NOTIFICATION_OS_MEMORY_WARNING);
+	if (MainLoop *loop = main_loop()) {
+		loop->notification(MainLoop::NOTIFICATION_OS_MEMORY_WARNING);
 	}
 }
 

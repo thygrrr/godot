@@ -58,7 +58,8 @@ LIBGODOT_API void libgodot_ios_set_callbacks(libgodot_ios_callback p_started, li
 LIBGODOT_API bool libgodot_ios_is_created(void);
 LIBGODOT_API bool libgodot_ios_is_running(void);
 
-// Like closing the window: the main loop receives NOTIFICATION_WM_CLOSE_REQUEST.
+// Like closing the window: the main window receives WINDOW_EVENT_CLOSE_REQUEST, so the scene tree sees
+// NOTIFICATION_WM_CLOSE_REQUEST and quits unless the game handles it.
 LIBGODOT_API void libgodot_ios_request_quit(void);
 
 // UIApplication lifecycle. libgodot_ios_create registers NSNotificationCenter observers that call these, so hosts
