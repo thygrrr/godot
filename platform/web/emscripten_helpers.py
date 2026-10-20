@@ -50,9 +50,10 @@ def create_template_zip(env, js, wasm, side, libgodot):
     if side is not None:
         in_files.append(side)  # Side wasm (contains the actual Godot code).
         out_files.append(zip_dir.File(binary_name + ".side.wasm"))
-
-    # WebGPU SPIR-V→WGSL conversion is now handled by Tint, compiled directly
-    # into the engine WASM binary. No separate translator module needed.
+    if env["webgpu"]:
+        # Web export enables WebGPU startup only for templates containing this marker.
+        in_files.append("#thirdparty/emdawnwebgpu/VERSION.txt")
+        out_files.append(zip_dir.File("webgpu.txt"))
 
     service_worker = "#misc/dist/html/service-worker.js"
     if env.editor_build:

@@ -68,3 +68,23 @@ test('unsupported WebGPU rejects before instantiating the .NET runtime', async (
     await assert.rejects(new Engine({ renderingDriver: 'webgpu' }).init('godot'), /WebGPU is not supported/);
     assert.equal(modules.length, 0);
 });
+
+test('the browser requests the same optional features and all limits as the native backend', async () => {
+    let descriptor = null;
+    const device = { lost: new Promise(() => {}), addEventListener() {} };
+    const { Engine } = harness({
+        async requestAdapter() {
+            return {
+                features: new Set(['indirect-first-instance', 'timestamp-query']),
+                limits: { maxComputeWorkgroupSizeX: 256 },
+                async requestDevice(value) {
+                    descriptor = value;
+                    return device;
+                },
+            };
+        },
+    });
+    await new Engine({ renderingDriver: 'webgpu' }).init('godot');
+    assert.deepEqual([...descriptor.requiredFeatures], ['indirect-first-instance']);
+    assert.equal(descriptor.requiredLimits.maxComputeWorkgroupSizeX, 256);
+});

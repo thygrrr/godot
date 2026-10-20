@@ -338,52 +338,27 @@ const Engine = (function () {
 			const desc = deviceDescriptor || {
 				requiredFeatures: [],
 			};
-			// Request timestamp-query if available.
-			if (adapter.features.has('timestamp-query')) {
-				desc.requiredFeatures = (desc.requiredFeatures || []).concat(['timestamp-query']);
-			}
-			// Request optional texture format tiers used by Godot (r16snorm, rg16snorm, etc.).
-			var optionalFeatures = [
-				'readonly-and-readwrite-storage-textures',
-				'texture-formats-tier1',
-				'texture-formats-tier2',
+			// Keep in sync with the native list in rendering_context_driver_webgpu_native.cpp.
+			// Without the compression features, compressed textures are decompressed to RGBA8 on the CPU.
+			const optionalFeatures = [
 				'float32-filterable',
 				'float32-blendable',
+				'texture-formats-tier1',
+				'texture-formats-tier2',
 				'rg11b10ufloat-renderable',
 				'clip-distances',
 				'dual-source-blending',
-				// Texture compression families — without these, Godot's DXT5/ETC2/ASTC
-				// assets get decompressed on the CPU to RGBA8, which triggers a warning
-				// and wastes VRAM. The driver only reports the formats as supported
-				// when the corresponding feature is actually enabled here.
+				'indirect-first-instance',
 				'texture-compression-bc',
 				'texture-compression-etc2',
 				'texture-compression-astc',
 			];
-			for (var i = 0; i < optionalFeatures.length; i++) {
-				if (adapter.features.has(optionalFeatures[i])) {
-					desc.requiredFeatures = (desc.requiredFeatures || []).concat([optionalFeatures[i]]);
-				}
-			}
-			// Request higher limits that Godot's renderer needs.
-			// The adapter may support more than the default; request what it offers.
-			var adapterLimits = adapter.limits || {};
+			desc.requiredFeatures = (desc.requiredFeatures || []).concat(optionalFeatures.filter((feature) => adapter.features.has(feature)));
+			// Like the native backend, request every limit the adapter supports.
 			desc.requiredLimits = desc.requiredLimits || {};
-			var limitsToMax = [
-				'maxStorageBuffersPerShaderStage',
-				'maxStorageBufferBindingSize',
-				'maxBufferSize',
-				'maxUniformBufferBindingSize',
-				'maxUniformBuffersPerShaderStage',
-				'maxSampledTexturesPerShaderStage',
-				'maxSamplersPerShaderStage',
-				'maxColorAttachments',
-				'maxBindGroups',
-			];
-			for (var li = 0; li < limitsToMax.length; li++) {
-				var key = limitsToMax[li];
-				if (adapterLimits[key] !== undefined) {
-					desc.requiredLimits[key] = adapterLimits[key];
+			for (const key in adapter.limits) {
+				if (adapter.limits[key] !== undefined) {
+					desc.requiredLimits[key] = adapter.limits[key];
 				}
 			}
 			return adapter.requestDevice(desc).then(function (device) {

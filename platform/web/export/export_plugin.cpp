@@ -48,7 +48,7 @@
 #include "modules/modules_enabled.gen.h" // IWYU pragma: keep. For mono.
 #include "modules/svg/image_loader_svg.h"
 
-Error EditorExportPlatformWeb::_extract_template(const String &p_template, const String &p_dir, const String &p_name, bool pwa, Vector<String> &r_libgodot_files) {
+Error EditorExportPlatformWeb::_extract_template(const String &p_template, const String &p_dir, const String &p_name, bool pwa, Vector<String> &r_libgodot_files, bool &r_webgpu) {
 	Ref<FileAccess> io_fa;
 	zlib_filefunc_def io = zipio_create_io(&io_fa);
 	unzFile pkg = unzOpen2(p_template.utf8().get_data(), &io);
@@ -79,6 +79,11 @@ Error EditorExportPlatformWeb::_extract_template(const String &p_template, const
 
 		// Skip service worker and offline page if not exporting pwa.
 		if (!pwa && (file == "godot.service.worker.js" || file == "godot.offline.html")) {
+			continue;
+		}
+		// Templates built with webgpu=yes carry this marker.
+		if (file == "webgpu.txt") {
+			r_webgpu = true;
 			continue;
 		}
 		Vector<uint8_t> data;
@@ -176,7 +181,7 @@ void EditorExportPlatformWeb::_replace_strings(const HashMap<String, String> &p_
 	}
 }
 
-void EditorExportPlatformWeb::_fix_html(Vector<uint8_t> &p_html, const Ref<EditorExportPreset> &p_preset, const String &p_name, bool p_debug, BitField<EditorExportPlatform::DebugFlags> p_flags, const Vector<SharedObject> p_shared_objects, const Dictionary &p_file_sizes) {
+void EditorExportPlatformWeb::_fix_html(Vector<uint8_t> &p_html, const Ref<EditorExportPreset> &p_preset, const String &p_name, bool p_debug, BitField<EditorExportPlatform::DebugFlags> p_flags, const Vector<SharedObject> p_shared_objects, const Dictionary &p_file_sizes, bool p_webgpu) {
 	// Engine.js config
 	Dictionary config;
 	Array libs;
@@ -198,12 +203,8 @@ void EditorExportPlatformWeb::_fix_html(Vector<uint8_t> &p_html, const Ref<Edito
 	config["ensureCrossOriginIsolationHeaders"] = (bool)p_preset->get("progressive_web_app/ensure_cross_origin_isolation_headers");
 
 	// Pass the rendering driver so the HTML shell can pre-initialize WebGPU if needed.
-	String rendering_method = get_project_setting(p_preset, "rendering/renderer/rendering_method.web");
-	if (rendering_method == "forward_plus" || rendering_method == "mobile") {
-		config["renderingDriver"] = "webgpu";
-	} else {
-		config["renderingDriver"] = "opengl3";
-	}
+	const bool webgpu = p_webgpu && String(get_project_setting(p_preset, "rendering/renderer/rendering_method.web")) == "mobile";
+	config["renderingDriver"] = webgpu ? "webgpu" : "opengl3";
 
 	config["godotPoolSize"] = p_preset->get("threads/godot_pool_size");
 	config["emscriptenPoolSize"] = p_preset->get("threads/emscripten_pool_size");
@@ -527,9 +528,12 @@ bool EditorExportPlatformWeb::has_valid_project_configuration(const Ref<EditorEx
 		}
 	}
 
-	// Warn if WebGPU rendering is selected.
-	String rendering_method = get_project_setting(p_preset, "rendering/renderer/rendering_method.web");
-	if (rendering_method == "forward_plus" || rendering_method == "mobile") {
+	// WebGPU on this branch supports only the Mobile renderer.
+	const String rendering_method = get_project_setting(p_preset, "rendering/renderer/rendering_method.web");
+	if (rendering_method == "forward_plus") {
+		valid = false;
+		err += TTR("The Forward+ renderer is not supported on the Web. Use Mobile (WebGPU) or Compatibility.") + "\n";
+	} else if (rendering_method == "mobile") {
 		err += TTR("WebGPU rendering is experimental. Ensure your target browsers support WebGPU.") + "\n";
 	}
 
@@ -578,10 +582,14 @@ Error EditorExportPlatformWeb::export_project(const Ref<EditorExportPreset> &p_p
 
 	// Extract templates.
 	Vector<String> libgodot_files;
-	Error error = _extract_template(template_path, base_dir, base_name, pwa, libgodot_files);
+	bool webgpu = false;
+	Error error = _extract_template(template_path, base_dir, base_name, pwa, libgodot_files, webgpu);
 	if (error) {
 		// Message is supplied by the subroutine method.
 		return error;
+	}
+	if (!webgpu && String(get_project_setting(p_preset, "rendering/renderer/rendering_method.web")) == "mobile") {
+		add_message(EXPORT_MESSAGE_WARNING, TTR("Export"), TTR("The Mobile renderer requires a Web export template built with WebGPU support (webgpu=yes)."));
 	}
 
 	ExportNotifier notifier(*this, p_preset, p_debug, p_path, p_flags, p_notify);
@@ -636,7 +644,7 @@ Error EditorExportPlatformWeb::export_project(const Ref<EditorExportPreset> &p_p
 	f.unref(); // close file.
 
 	// Generate HTML file with replaced strings.
-	_fix_html(html, p_preset, base_name, p_debug, p_flags, shared_objects, file_sizes);
+	_fix_html(html, p_preset, base_name, p_debug, p_flags, shared_objects, file_sizes, webgpu);
 	Error err = _write_or_error(html.ptr(), html.size(), p_path);
 	if (err != OK) {
 		// Message is supplied by the subroutine method.
