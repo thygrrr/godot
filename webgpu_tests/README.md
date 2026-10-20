@@ -6,8 +6,6 @@ JavaScript. Run them from the Godot checkout:
 ```text
 uv run --no-project python -m unittest discover -s webgpu_tests -p "test_*.py" -v
 node --test webgpu_tests/engine_boot.test.mjs
-uv run --no-project python webgpu_tests/wgsl_cache/test_wgsl_precompile.py
-node webgpu_tests/wgsl_cache/test_wgsl_cache.mjs
 ```
 
 `drivers/webgpu/tint_cli/build.sh` builds a host converter on Linux/macOS using

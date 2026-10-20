@@ -19,7 +19,7 @@ For the .NET browser host, keep Emscripten **3.1.56** and build from the outer
 2dog checkout with the Godot worktree substituted below:
 
 ```text
-uv run scons -C <godot-checkout> platform=web target=template_debug library_type=static_library module_mono_enabled=yes disable_crash_handler=yes disable_path_overrides=no threads=no lto=none webgpu=yes webgpu_precompile=no
+uv run scons -C <godot-checkout> platform=web target=template_debug library_type=static_library module_mono_enabled=yes disable_crash_handler=yes disable_path_overrides=no threads=no lto=none webgpu=yes
 ```
 
 `webgpu_port=auto` uses the prepared Emdawnwebgpu port. Its legacy JavaScript
@@ -31,10 +31,6 @@ other toolchains; the remote port requires Emscripten 4.0.10 or later.
 On Windows, keep the Emscripten cache on the SDK's drive to avoid the 3.1.56
 system-library builder's cross-drive path limitation. Use separate native and
 .NET link caches and a writable `WasmCachePath` for the browser host.
-
-`webgpu_precompile=no` uses runtime shader translation. Optional build-time
-precompilation requires the POSIX host Tint tool and glslang. It is disabled by
-default for Windows and native builds.
 
 For desktop builds, use `webgpu=yes webgpu_native_path=<boundary-sdk>`.
 [Native setup](native/README.md) describes the separately pinned Dawn SDK,

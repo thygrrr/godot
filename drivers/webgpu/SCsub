@@ -3,7 +3,6 @@ from misc.utility.scons_hints import *
 
 Import("env")
 
-import wgsl_precompile
 import native_loader
 import sources
 
@@ -131,13 +130,3 @@ if env["platform"] != "web":
 # Add thirdparty objects to the driver.
 env.drivers_sources += spirv_tools_obj
 env.drivers_sources += tint_obj
-
-# Generate precompiled SPIR-V → WGSL lookup table at build time.
-# The generated header is #included by rendering_device_driver_webgpu.cpp.
-precompiled_header = env.CommandNoCache(
-    "#drivers/webgpu/wgsl_precompiled.gen.h",
-    "#drivers/webgpu/wgsl_precompile.py",
-    env.Run(wgsl_precompile.build_wgsl_precompiled),
-)
-
-env.Depends(precompiled_header, env.Value(env["webgpu_precompile"]))
