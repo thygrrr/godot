@@ -144,6 +144,8 @@ struct WGShader {
 	// Never reused, unlike the WGShader address or its layout handles; keys WGUniformSet::rebind_cache.
 	uint64_t uid = 0;
 
+	HashMap<uint64_t, uint32_t> binding_remaps; // (set << 32 | Godot binding) -> first scalar binding.
+
 	// Per-stage raw SPIR-V bytes. Stored for deferred specialization constant patching.
 	PackedByteArray stage_spirv[6];
 

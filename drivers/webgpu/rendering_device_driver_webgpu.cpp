@@ -32,10 +32,15 @@
 
 #include "rendering_device_driver_webgpu.h"
 
+#include "core/config/engine.h"
+#include "core/config/project_settings.h"
+#include "core/io/dir_access.h"
+#include "core/io/file_access.h"
 #include "core/os/mutex.h"
 #include "core/os/os.h"
 #include "core/templates/hash_map.h"
 #include "core/templates/hashfuncs.h"
+#include "core/version.h"
 #include "drivers/webgpu/pixel_formats_webgpu.h"
 #include "drivers/webgpu/rendering_context_driver_webgpu.h"
 #include "drivers/webgpu/rendering_shader_container_webgpu.h"
@@ -205,7 +210,7 @@ static char *_translate_spirv_to_wgsl(const uint8_t *p_spv_ptr, int p_spv_size) 
 }
 
 // Returns a malloc'd null-terminated WGSL string (caller must free), or nullptr on
-// failure. Checks the in-memory cache before translating with Tint.
+// failure. Reuses translated shaders from memory or the persistent shader cache before invoking Tint.
 static char *_spv_to_wgsl_cached(const uint8_t *p_spv_ptr, int p_spv_size) {
 	MutexLock lock(_spv_to_wgsl_cache_mutex);
 	uint32_t hash_lo = hash_murmur3_buffer(p_spv_ptr, p_spv_size);
@@ -213,6 +218,24 @@ static char *_spv_to_wgsl_cached(const uint8_t *p_spv_ptr, int p_spv_size) {
 	uint64_t spv_hash = ((uint64_t)hash_hi << 32) | hash_lo;
 
 	const String *cached = _spv_to_wgsl_cache.getptr(spv_hash);
+	String cache_path;
+	if (!cached && GLOBAL_GET("rendering/shader_compiler/shader_cache/enabled")) {
+		String cache_dir = Engine::get_singleton()->get_shader_cache_path();
+		if (cache_dir.is_empty()) {
+			cache_dir = "user://";
+		}
+		cache_dir = cache_dir.path_join("shader_cache/webgpu_wgsl_v2").path_join(GODOT_VERSION_HASH);
+		if (DirAccess::make_dir_recursive_absolute(cache_dir) == OK) {
+			cache_path = cache_dir.path_join(String::num_uint64(spv_hash, 16) + ".wgsl");
+		}
+	}
+	if (!cache_path.is_empty() && FileAccess::exists(cache_path)) {
+		String code = FileAccess::get_file_as_string(cache_path);
+		if (!code.is_empty()) {
+			_spv_to_wgsl_cache[spv_hash] = code;
+			cached = _spv_to_wgsl_cache.getptr(spv_hash);
+		}
+	}
 	if (cached) {
 		_spv_to_wgsl_cache_hits++;
 		CharString cs = cached->utf8();
@@ -231,6 +254,16 @@ static char *_spv_to_wgsl_cached(const uint8_t *p_spv_ptr, int p_spv_size) {
 
 	if (wgsl_str) {
 		_spv_to_wgsl_cache[spv_hash] = String(wgsl_str);
+		if (!cache_path.is_empty()) {
+			// Other host processes must never observe a partially written shader.
+			String temporary_path = cache_path + "." + itos(OS::get_singleton()->get_process_id()) + ".tmp";
+			Ref<FileAccess> file = FileAccess::open(temporary_path, FileAccess::WRITE);
+			if (file.is_valid()) {
+				file->store_string(String(wgsl_str));
+				file.unref();
+				DirAccess::rename_absolute(temporary_path, cache_path);
+			}
+		}
 	}
 
 	WEBGPU_DIAG({
@@ -1501,6 +1534,10 @@ RDD::TextureID RenderingDeviceDriverWebGPU::texture_create(const TextureFormat &
 	tex->layers = p_format.array_layers;
 	tex->sample_count = 1 << p_format.samples;
 	tex->usage = _texture_usage_to_wgpu(p_format.usage_bits);
+	// Format aliases can use RD's copy fallback even when callers do not request readback.
+	if (tex->sample_count == 1 && p_format.shareable_formats.size() > 1) {
+		tex->usage |= WGPUTextureUsage_CopySrc;
+	}
 
 	// WebGPU does not support R8/RG8/R16/RG16 as storage texel formats.
 	// Upgrade to 32-bit equivalents when storage binding is needed.
@@ -3645,6 +3682,12 @@ CharString RenderingDeviceDriverWebGPU::_postprocess_wgsl(const char *p_wgsl, Sh
 	return cs;
 }
 
+static bool _is_handle_uniform(RDD::UniformType p_type) {
+	return p_type == RDD::UNIFORM_TYPE_SAMPLER || p_type == RDD::UNIFORM_TYPE_TEXTURE ||
+			p_type == RDD::UNIFORM_TYPE_SAMPLER_WITH_TEXTURE || p_type == RDD::UNIFORM_TYPE_IMAGE ||
+			p_type == RDD::UNIFORM_TYPE_INPUT_ATTACHMENT;
+}
+
 RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Ref<RenderingShaderContainer> &p_shader_container, const Vector<ImmutableSampler> &p_immutable_samplers) {
 	ERR_FAIL_COND_V(p_shader_container.is_null(), ShaderID());
 
@@ -3659,6 +3702,30 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 	shader->push_constant_bind_group = wg_container->get_push_constant_bind_group();
 	shader->push_constant_binding = wg_container->get_push_constant_binding();
 	shader->push_constant_size = shader_refl.push_constant_size;
+
+	// Reserve the same scalar bindings for both stages, including resources unused by one stage.
+	for (int set = 0; set < shader_refl.uniform_sets.size(); set++) {
+		Vector<RenderingDeviceCommons::ShaderUniform> expanded;
+		uint32_t next_binding = 0;
+		for (const auto &source : shader_refl.uniform_sets[set]) {
+			next_binding = MAX(next_binding, source.binding);
+			shader->binding_remaps[(uint64_t(set) << 32) | source.binding] = next_binding;
+			const uint32_t count = _is_handle_uniform(source.type) ? MAX(source.length, 1u) : 1;
+			for (uint32_t element = 0; element < count; element++) {
+				auto uniform = source;
+				uniform.binding = next_binding++;
+				if (_is_handle_uniform(source.type)) {
+					uniform.length = 1;
+				}
+				expanded.push_back(uniform);
+			}
+		}
+		if (next_binding * 2 >= spirv_preprocess::PUSH_CONSTANT_BINDING) {
+			memdelete(shader);
+			ERR_FAIL_V_MSG(ShaderID(), "WebGPU descriptor arrays exceed the binding range.");
+		}
+		shader_refl.uniform_sets.write[set] = expanded;
+	}
 
 	print_verbose(vformat("WebGPU: shader_create_from_container '%s' (%d stages, push_const_size=%d)", shader->name, (int)p_shader_container->shaders.size(), (int)shader_refl.push_constant_size));
 
@@ -3728,7 +3795,7 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 		const RenderingShaderContainer::Shader &s = stage_shaders[i];
 
 		// The code_compressed_bytes holds raw SPIR-V (no compression — code_decompressed_size == 0).
-		const PackedByteArray &spv_bytes = s.code_compressed_bytes;
+		const PackedByteArray spv_bytes = spirv_preprocess::remap_bindings(s.code_compressed_bytes, shader->binding_remaps);
 		if (spv_bytes.is_empty()) {
 			error_text = "WebGPU: empty SPIR-V for shader stage.";
 			break;
@@ -4283,8 +4350,7 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 						entry = {};
 						entry.binding = u.binding * 2; // Preprocessing doubles all non-combined bindings.
 						entry.visibility = vis;
-						// FLATTEN-BA pass removes all binding_array<T,N> from WGSL,
-						// so layout entries are always non-array (no bindingArraySize).
+						// Descriptor arrays were expanded into scalar uniforms before translation.
 						{
 							uint32_t k = ((uint32_t)set << 16) | (u.binding * 2);
 							entry.sampler.type = (wgsl_is_comparison_sampler.has(k) && wgsl_is_comparison_sampler[k])
@@ -4301,8 +4367,7 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 						entry = {};
 						entry.binding = u.binding * 2; // Preprocessing doubles all non-combined bindings.
 						entry.visibility = vis;
-						// FLATTEN-BA pass removes all binding_array<T,N> from WGSL,
-						// so layout entries are always non-array (no bindingArraySize).
+						// Descriptor arrays were expanded into scalar uniforms before translation.
 						{
 							uint32_t k = ((uint32_t)set << 16) | (u.binding * 2);
 							bool is_ms = wgsl_is_multisampled_texture.has(k) && wgsl_is_multisampled_texture[k];
@@ -4892,9 +4957,32 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 		layout = shader->merged_pc_group_layout;
 	}
 
+	LocalVector<BoundUniform> expanded_uniforms;
+	for (uint32_t source_index = 0; source_index < p_uniforms.size(); source_index++) {
+		const BoundUniform &source = p_uniforms[source_index];
+		const uint32_t *binding = shader->binding_remaps.getptr((uint64_t(p_set_index) << 32) | source.binding);
+		ERR_FAIL_NULL_V(binding, UniformSetID());
+		const uint32_t stride = source.type == UNIFORM_TYPE_SAMPLER_WITH_TEXTURE ? 2 : 1;
+		const uint32_t count = _is_handle_uniform(source.type) ? source.ids.size() / stride : 1;
+		for (uint32_t element = 0; element < count; element++) {
+			BoundUniform uniform;
+			uniform.type = source.type;
+			uniform.binding = *binding + element;
+			uniform.immutable_sampler = source.immutable_sampler;
+			if (_is_handle_uniform(source.type)) {
+				for (uint32_t id = 0; id < stride; id++) {
+					uniform.ids.push_back(source.ids[element * stride + id]);
+				}
+			} else {
+				uniform.ids = source.ids;
+			}
+			expanded_uniforms.push_back(uniform);
+		}
+	}
+
 	// Each BoundUniform may expand to one or two WGPUBindGroupEntry items.
 	LocalVector<WGPUBindGroupEntry> entries;
-	entries.reserve(p_uniforms.size() * 2);
+	entries.reserve(expanded_uniforms.size() * 2);
 
 	// Allocate the uniform set early so texture handlers can store temp views.
 	WGUniformSet *us = memnew(WGUniformSet);
@@ -4906,16 +4994,13 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 	// redirect it to aliasing_stub_buffer so the bind group passes validation.
 	HashMap<WGPUBuffer, uint32_t> dup_storage_seen; // buffer handle → first uniform index
 
-	for (uint32_t i = 0; i < p_uniforms.size(); i++) {
-		const BoundUniform &uniform = p_uniforms[i];
+	for (uint32_t i = 0; i < expanded_uniforms.size(); i++) {
+		const BoundUniform &uniform = expanded_uniforms[i];
 		// WebGPU has no immutable sampler concept — always provide the sampler
 		// in the bind group (unlike Vulkan where it's baked into the pipeline layout).
 
 		switch (uniform.type) {
 			case UNIFORM_TYPE_SAMPLER: {
-				// Tint flattens binding arrays to single resources, so only provide
-				// the first sampler. Multiple IDs at the same binding means a
-				// binding array which is reduced to 1 element.
 				if (uniform.ids.size() > 0) {
 					WGPUBindGroupEntry entry = {};
 					entry.binding = uniform.binding * 2;
@@ -4926,8 +5011,6 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 
 			case UNIFORM_TYPE_TEXTURE:
 			case UNIFORM_TYPE_INPUT_ATTACHMENT: {
-				// Tint flattens binding arrays to single resources.
-				// Only provide the first texture for array bindings.
 				WGPUTextureViewDimension expected_dim = WGPUTextureViewDimension_Undefined;
 				WGPUTextureSampleType expected_sample = WGPUTextureSampleType_Undefined;
 				if (p_set_index < (uint32_t)shader->bind_group_infos.size()) {
@@ -5104,8 +5187,6 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 			} break;
 
 			case UNIFORM_TYPE_IMAGE: {
-				// Tint flattens binding arrays to single resources.
-				// Only provide the first image for array bindings.
 				if (uniform.ids.size() > 0) {
 					WGTexture *tex = (WGTexture *)(uniform.ids[0].id);
 					if (tex != nullptr) {

@@ -46,6 +46,8 @@ OpExecutionMode %main OriginUpperLeft
 OpDecorate %color Location 0
 OpDecorate %resources DescriptorSet 0
 OpDecorate %resources Binding 112
+OpDecorate %texture DescriptorSet 0
+OpDecorate %texture Binding 5
 OpDecorate %block Block
 OpMemberDecorate %block 0 Offset 0
 OpMemberDecorate %block 1 Offset 112
@@ -55,6 +57,13 @@ OpDecorate %data Binding 3
 %float = OpTypeFloat 32
 %uint = OpTypeInt 32 0
 %v4 = OpTypeVector %float 4
+%v2 = OpTypeVector %float 2
+%half = OpConstant %float 0.5
+%uv = OpConstantComposite %v2 %half %half
+%image = OpTypeImage %float 2D 0 0 0 1 Unknown
+%pimage = OpTypePointer UniformConstant %image
+%texture = OpVariable %pimage UniformConstant
+%sampled_type = OpTypeSampledImage %image
 %zero = OpConstant %uint 0
 %one = OpConstant %uint 1
 %two = OpConstant %uint 2
@@ -77,7 +86,13 @@ OpDecorate %data Binding 3
 %loaded = OpLoad %sampler %element
 %field = OpAccessChain %pvec %data %one
 %value = OpLoad %v4 %field
-OpStore %color %value
+%image_value = OpLoad %image %texture
+%combined = OpSampledImage %sampled_type %image_value %loaded
+%pixel = OpImageSampleImplicitLod %v4 %combined %uv
+%weighted = OpFMul %v4 %pixel %value
+%literal_float = OpConvertUToF %float %literal
+%result = OpVectorTimesScalar %v4 %weighted %literal_float
+OpStore %color %result
 OpReturn
 OpFunctionEnd
 )";

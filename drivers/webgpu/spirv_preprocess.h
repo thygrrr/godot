@@ -30,6 +30,7 @@
 
 #pragma once
 
+#include "core/templates/hash_map.h"
 #include "core/templates/vector.h"
 
 #include <cstdint>
@@ -56,8 +57,11 @@ Vector<uint8_t> rewrite_copy_logical(const Vector<uint8_t> &p_bytes);
 // Rewrite OpTerminateInvocation to OpKill, which Tint translates to discard.
 Vector<uint8_t> rewrite_terminate_invocation(const Vector<uint8_t> &p_bytes);
 
-// Replace arrays of images, samplers and sampled images with their element type. Tint and the bind group
-// layouts have no binding arrays, so every element aliases element 0.
+// Reserve binding ranges shared by all stages before scalarizing their descriptor arrays.
+using BindingMap = HashMap<uint64_t, uint32_t>; // (set << 32 | original binding) -> reserved binding.
+Vector<uint8_t> remap_bindings(const Vector<uint8_t> &p_bytes, const BindingMap &p_bindings);
+
+// Lower fixed-size descriptor arrays to individual bindings, using switches for dynamic indices.
 Vector<uint8_t> flatten_binding_arrays(const Vector<uint8_t> &p_bytes);
 
 // Split combined image samplers. Every binding N is doubled; a split sampler takes 2N and its image 2N+1.

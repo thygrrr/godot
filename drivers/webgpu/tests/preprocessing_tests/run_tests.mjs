@@ -575,19 +575,21 @@ console.log("\n=== Test 10: fix_nonfinite_literals ===");
 console.log("\n=== Test 11: flatten_binding_arrays ===");
 
 {
-  // 11a. A texture array becomes one texture; a dynamic index reads element 0 and warns.
+  // 11a. A dynamic texture index selects one of four separately bound textures.
   const r = convertFixture("texture_array.spv");
   assert(r.wgsl !== null, `texture_array converts: ${r.error}`);
   const wgsl = r.wgsl ?? "";
-  assert(!wgsl.includes("binding_array") && /var layers : texture_2d<f32>;/.test(wgsl), "texture array flattened to texture_2d");
-  assert(r.stderr.includes("reads element 0"), "dynamic index warns");
+  assert(!wgsl.includes("binding_array"), "no unsupported binding array remains");
+  assertEq(bindingsOf(wgsl), ["0,0", "0,2", "0,4", "0,6", "0,8", "3,999"], "all four textures and the relocated sampler have distinct bindings");
+  assert(wgsl.includes("switch(pc.layer)") && wgsl.includes("case 3u:"), "dynamic index selects every array element");
+  assert(!r.stderr.includes("WARNING"), "dynamic indexing does not alias or warn");
 }
 
 {
-  // 11b. An array of combined samplers is flattened, then split like a plain combined sampler.
+  // 11b. A constant-indexed combined-sampler array keeps the selected element and a separate following binding.
   const r = convertFixture("sampler_array.spv");
   assert(r.wgsl !== null, `sampler_array converts: ${r.error}`);
-  assertEq(bindingsOf(r.wgsl ?? ""), ["0,0", "0,1", "0,2", "0,3"], "sampler_array: sampler 0, image 1 for detail[]");
+  assertEq(bindingsOf(r.wgsl ?? ""), ["0,0", "0,1", "0,4", "0,5"], "sampler_array reserves both elements without colliding with the following binding");
   assert(!r.stderr.includes("WARNING"), "constant index 0 does not warn");
 }
 

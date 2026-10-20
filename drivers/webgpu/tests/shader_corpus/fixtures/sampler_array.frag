@@ -1,6 +1,6 @@
 #version 450
 
-// Array of combined samplers: flattened to one combined sampler, then split like any other.
+// Array of combined samplers with a following binding that must not collide.
 
 layout(location = 0) in vec2 v_uv;
 layout(location = 0) out vec4 frag_color;

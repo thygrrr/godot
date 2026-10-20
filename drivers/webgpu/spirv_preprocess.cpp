@@ -42,6 +42,7 @@
 #include <cmath>
 #include <cstring>
 #include <initializer_list>
+#include <map>
 #include <vector>
 
 namespace spirv_preprocess {
@@ -212,6 +213,8 @@ Vector<uint8_t> freeze_and_inline(const Vector<uint8_t> &p_bytes) {
 			.RegisterPass(spvtools::CreateFoldSpecConstantOpAndCompositePass())
 			.RegisterPass(spvtools::CreateMergeReturnPass())
 			.RegisterPass(spvtools::CreateInlineOpaquePass())
+			.RegisterPass(spvtools::CreateDeadBranchElimPass())
+			.RegisterPass(spvtools::CreateCFGCleanupPass())
 			.RegisterPass(spvtools::CreateEliminateDeadFunctionsPass());
 	std::vector<uint32_t> words;
 	const bool optimized = optimizer.Run(reinterpret_cast<const uint32_t *>(p_bytes.ptr()), p_bytes.size() / 4, &words);
@@ -230,138 +233,121 @@ Vector<uint8_t> rewrite_terminate_invocation(const Vector<uint8_t> &p_bytes) {
 	return replace_opcode(p_bytes, spv::OpTerminateInvocation, spv::OpKill);
 }
 
-// Tint rejects arrays of handle types regardless of size: array type IDs become their element type, pointer
-// types that become identical are merged, and access chains into handle arrays become the variable itself.
-// SPIRV-Tools locates the ID operands, so literal operands with the same value are left alone.
+Vector<uint8_t> remap_bindings(const Vector<uint8_t> &p_bytes, const BindingMap &p_bindings) {
+	ERR_FAIL_COND_V_MSG(!is_well_formed(p_bytes), p_bytes, MALFORMED_SPIRV);
+	HashMap<uint32_t, uint32_t> sets;
+	for (const Inst inst : SpirvView(p_bytes)) {
+		if (inst.op() == spv::OpDecorate && inst[2] == spv::DecorationDescriptorSet) {
+			sets[inst[1]] = inst[3];
+		}
+	}
+	Vector<uint8_t> out = p_bytes;
+	for (const Inst inst : SpirvView(p_bytes)) {
+		if (inst.op() == spv::OpDecorate && inst[2] == spv::DecorationBinding && sets.has(inst[1])) {
+			const uint32_t *binding = p_bindings.getptr((uint64_t(sets[inst[1]]) << 32) | inst[3]);
+			if (binding) {
+				write_word(out.ptrw(), inst.pos + 3, *binding);
+			}
+		}
+	}
+	return out;
+}
+
 Vector<uint8_t> flatten_binding_arrays(const Vector<uint8_t> &p_bytes) {
 	ERR_FAIL_COND_V_MSG(!is_well_formed(p_bytes), p_bytes, MALFORMED_SPIRV);
-	const SpirvView code(p_bytes);
-
-	HashSet<uint32_t> handle_types;
-	HashSet<uint32_t> int_types;
-	HashSet<uint32_t> zero_constants;
-	HashMap<uint32_t, uint32_t> array_to_elem;
-	HashSet<uint32_t> handle_array_ptr_types;
-	HashSet<uint32_t> handle_array_vars;
-	HashMap<uint64_t, uint32_t> canonical_ptrs; // (storage class, pointee after flattening) -> first pointer.
-	HashMap<uint32_t, uint32_t> ptr_remap; // Later duplicate pointer -> canonical pointer.
-	HashMap<uint32_t, uint32_t> chain_to_var;
-	bool aliased_element = false;
-	for (const Inst inst : code) {
+	HashSet<uint32_t> handles;
+	HashMap<uint32_t, uint32_t> constants, lengths, pointees, variables, sets, bindings;
+	for (const Inst inst : SpirvView(p_bytes)) {
 		switch (inst.op()) {
 			case spv::OpTypeImage:
 			case spv::OpTypeSampler:
 			case spv::OpTypeSampledImage:
-				handle_types.insert(inst[1]);
-				break;
-			case spv::OpTypeInt:
-				int_types.insert(inst[1]);
+				handles.insert(inst[1]);
 				break;
 			case spv::OpConstant:
-				if (int_types.has(inst[1]) && inst[3] == 0 && inst[4] == 0) {
-					zero_constants.insert(inst[2]);
-				}
-				break;
-			case spv::OpConstantNull:
-				if (int_types.has(inst[1])) {
-					zero_constants.insert(inst[2]);
-				}
+				constants[inst[2]] = inst[3];
 				break;
 			case spv::OpTypeArray:
+				if (handles.has(inst[2])) {
+					lengths[inst[1]] = constants[inst[3]];
+				}
+				break;
 			case spv::OpTypeRuntimeArray:
-				if (handle_types.has(inst[2])) {
-					array_to_elem.insert(inst[1], inst[2]);
-				}
+				ERR_FAIL_COND_V_MSG(handles.has(inst[2]), p_bytes, "WebGPU requires fixed-size texture and sampler arrays.");
 				break;
-			case spv::OpTypePointer: {
-				const uint32_t *elem = array_to_elem.getptr(inst[3]);
-				if (elem) {
-					handle_array_ptr_types.insert(inst[1]);
-				}
-				const uint64_t key = (uint64_t(inst[2]) << 32) | (elem ? *elem : inst[3]);
-				const uint32_t *canonical = canonical_ptrs.getptr(key);
-				if (canonical) {
-					ptr_remap.insert(inst[1], *canonical);
-				} else {
-					canonical_ptrs.insert(key, inst[1]);
-				}
-			} break;
+			case spv::OpTypePointer:
+				pointees[inst[1]] = inst[3];
+				break;
 			case spv::OpVariable:
-				if (handle_array_ptr_types.has(inst[1])) {
-					handle_array_vars.insert(inst[2]);
-				}
+				variables[inst[2]] = inst[1];
 				break;
-			case spv::OpAccessChain:
-			case spv::OpInBoundsAccessChain:
-				if (inst.count() >= 5 && handle_array_vars.has(inst[3])) {
-					chain_to_var.insert(inst[2], inst[3]);
-					aliased_element = aliased_element || !zero_constants.has(inst[4]);
+			case spv::OpDecorate:
+				if (inst[2] == spv::DecorationDescriptorSet) {
+					sets[inst[1]] = inst[3];
+				} else if (inst[2] == spv::DecorationBinding) {
+					bindings[inst[1]] = inst[3];
 				}
 				break;
 			default:
 				break;
 		}
 	}
-	if (array_to_elem.is_empty()) {
+	if (lengths.is_empty()) {
 		return p_bytes;
 	}
-	// shortcut: every element of a handle array aliases element 0 because the bind group layouts hold one
-	// resource per array; index the elements once browsers support WebGPU binding arrays.
-	if (aliased_element) {
-		WARN_PRINT("WebGPU: a shader indexes a texture or sampler array with a dynamic or nonzero index; it reads element 0 instead.");
-	}
-
-	struct IdPositions {
-		HashSet<uint32_t> ids;
-		uint32_t position = 5;
-	} id_positions;
-	auto record_ids = [](void *p_positions, const spv_parsed_instruction_t *p_instruction) -> spv_result_t {
-		IdPositions &positions = *static_cast<IdPositions *>(p_positions);
-		for (uint16_t i = 0; i < p_instruction->num_operands; i++) {
-			const spv_parsed_operand_t &operand = p_instruction->operands[i];
-			if (operand.type == SPV_OPERAND_TYPE_ID || operand.type == SPV_OPERAND_TYPE_TYPE_ID ||
-					operand.type == SPV_OPERAND_TYPE_MEMORY_SEMANTICS_ID || operand.type == SPV_OPERAND_TYPE_SCOPE_ID) {
-				positions.ids.insert(positions.position + operand.offset);
-			}
-		}
-		positions.position += p_instruction->num_words;
-		return SPV_SUCCESS;
-	};
-	spv_context context = spvContextCreate(SPV_ENV_UNIVERSAL_1_6);
-	const spv_result_t parsed = spvBinaryParse(context, &id_positions, reinterpret_cast<const uint32_t *>(code.data), code.word_count, nullptr, record_ids, nullptr);
-	spvContextDestroy(context);
-	ERR_FAIL_COND_V_MSG(parsed != SPV_SUCCESS, p_bytes, "SPIRV-Tools could not parse the module; leaving binding arrays unchanged.");
-
-	Vector<uint8_t> out;
-	append_bytes(out, code.data, 0, 20);
-	for (const Inst inst : code) {
-		const uint16_t op = inst.op();
-		if (((op == spv::OpTypeArray || op == spv::OpTypeRuntimeArray) && array_to_elem.has(inst[1])) ||
-				(op == spv::OpTypePointer && ptr_remap.has(inst[1])) ||
-				((op == spv::OpAccessChain || op == spv::OpInBoundsAccessChain) && chain_to_var.has(inst[2]))) {
+	// Reserve consecutive bindings before SPIRV-Tools expands each descriptor array.
+	// This is idempotent when the driver already reserved space using both stages' reflection.
+	std::map<uint32_t, std::map<uint32_t, uint32_t>> ranges;
+	for (const KeyValue<uint32_t, uint32_t> &binding : bindings) {
+		if (!sets.has(binding.key) || !variables.has(binding.key)) {
 			continue;
 		}
-		push_word(out, code.word(inst.pos));
-		for (uint32_t i = 1; i < inst.count(); i++) {
-			uint32_t word = inst[i];
-			if (id_positions.ids.has(inst.pos + i)) {
-				if (const uint32_t *elem = array_to_elem.getptr(word)) {
-					word = *elem;
-				} else if (const uint32_t *var = chain_to_var.getptr(word)) {
-					word = *var;
-				} else if (const uint32_t *canonical = ptr_remap.getptr(word)) {
-					word = *canonical;
-				}
-			}
-			push_word(out, word);
+		const uint32_t *length = lengths.getptr(pointees[variables[binding.key]]);
+		ranges[sets[binding.key]][binding.value] = length ? *length : 1;
+	}
+	BindingMap mapping;
+	for (const auto &set : ranges) {
+		uint32_t next = 0;
+		for (const auto &binding : set.second) {
+			next = std::max(next, binding.first);
+			mapping[(uint64_t(set.first) << 32) | binding.first] = next;
+			next += binding.second;
+			ERR_FAIL_COND_V_MSG(next * 2 >= PUSH_CONSTANT_BINDING, p_bytes, "WebGPU descriptor arrays exceed the binding range.");
 		}
 	}
-	return out;
+	Vector<uint8_t> input = remap_bindings(p_bytes, mapping);
+	spvtools::Optimizer optimizer(SPV_ENV_UNIVERSAL_1_6);
+	optimizer.SetMessageConsumer([](spv_message_level_t p_level, const char *, const spv_position_t &, const char *p_message) {
+		if (p_level <= SPV_MSG_ERROR) {
+			ERR_PRINT(p_message);
+		}
+	});
+	optimizer.RegisterPass(spvtools::CreateReplaceDescArrayAccessUsingVarIndexPass())
+			.RegisterPass(spvtools::CreateAggressiveDCEPass())
+			.RegisterPass(spvtools::CreateDescriptorArrayScalarReplacementPass())
+			.RegisterPass(spvtools::CreateCFGCleanupPass());
+	std::vector<uint32_t> words;
+	const bool optimized = optimizer.Run(reinterpret_cast<const uint32_t *>(input.ptr()), input.size() / 4, &words);
+	ERR_FAIL_COND_V_MSG(!optimized, p_bytes, "SPIRV-Tools could not lower descriptor arrays to individual bindings.");
+	Vector<uint8_t> out;
+	out.resize(words.size() * 4);
+	memcpy(out.ptrw(), words.data(), out.size());
+	// Scalar replacement leaves unused handle-array types, which Tint still rejects.
+	HashSet<uint32_t> removed_types;
+	for (const KeyValue<uint32_t, uint32_t> &length : lengths) {
+		removed_types.insert(length.key);
+	}
+	for (const KeyValue<uint32_t, uint32_t> &pointee : pointees) {
+		if (lengths.has(pointee.value)) {
+			removed_types.insert(pointee.key);
+		}
+	}
+	return strip_instructions(out, [&](const Inst &inst) {
+		return ((inst.op() == spv::OpTypeArray || inst.op() == spv::OpTypePointer) && removed_types.has(inst[1])) ||
+				((inst.op() == spv::OpName || inst.op() == spv::OpDecorate) && removed_types.has(inst[1]));
+	});
 }
 
-// Combined samplers passed to functions are inlined by freeze_and_inline beforehand, so only global variables
-// and their loads need rewriting. Each load becomes separate image and sampler loads recombined by
-// OpSampledImage. Multisampled images cannot be sampled and get no sampler.
 Vector<uint8_t> split_combined_samplers(const Vector<uint8_t> &p_bytes) {
 	ERR_FAIL_COND_V_MSG(!is_well_formed(p_bytes), p_bytes, MALFORMED_SPIRV);
 	const SpirvView code(p_bytes);

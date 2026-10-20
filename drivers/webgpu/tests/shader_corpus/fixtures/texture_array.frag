@@ -1,6 +1,6 @@
 #version 450
 
-// Texture array indexed by a constant and by a push constant; WebGPU binds only element 0.
+// Texture array indexed by a constant and by a push constant.
 
 layout(location = 0) in vec2 v_uv;
 layout(location = 0) out vec4 frag_color;

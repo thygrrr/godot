@@ -31,8 +31,15 @@ uv run python drivers/webgpu/tests/run_port_regressions.py --emscripten <emsdk>/
 
 These cover storage access and read-only inference, resource IDs colliding with
 literal operands, resource reflection and old-libc++ float parsing.
-`native_smoke/` provides a real-engine render/readback check; see
-[the driver notes](../drivers/webgpu/README.md) for build and renderer selection.
+`native_smoke/` checks material color, ambient and directional light by readback.
+Its `binding_arrays.gd` checks dynamic indexing of four differently colored textures
+through the actual shader, layout and uniform-set paths:
+
+```text
+<godot> --rendering-driver webgpu --path drivers/webgpu/tests/native_smoke --script res://binding_arrays.gd
+```
+
+See [the driver notes](../README.md) for build and renderer selection.
 
 ## Optional upstream diagnostics and demos
 
