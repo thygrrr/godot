@@ -41,7 +41,7 @@
 /thirdparty/emdawnwebgpu/README.md
 /thirdparty/emdawnwebgpu/VERSION.txt
 
-# Optional upstream tools restored by webgpu_tests/prepare_upstream.py.
+# Optional upstream tools restored by drivers/webgpu/tests/prepare_upstream.py.
 /webgpu_tests/benchmark/
 /webgpu_tests/driver_unit_tests/
 /webgpu_tests/resource_lifecycle/

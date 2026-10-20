@@ -4366,7 +4366,7 @@ Vector<uint8_t> RenderingDevice::shader_compile_binary_from_spirv(const Vector<S
 	ERR_FAIL_COND_V(shader_container.is_null(), Vector<uint8_t>());
 
 #ifdef DEV_ENABLED
-	// For webgpu_tests/shader_corpus/validate_spirv_dump.mjs. The hash keeps versions with equal names apart.
+	// For drivers/webgpu/tests/shader_corpus/validate_spirv_dump.mjs. The hash keeps versions with equal names apart.
 	static const String dump_dir = OS::get_singleton()->get_environment("GODOT_DUMP_SPIRV");
 	if (!dump_dir.is_empty()) {
 		static const char *stage_suffixes[] = { "vert", "frag", "tesc", "tese", "comp" };

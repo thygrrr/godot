@@ -3,7 +3,7 @@ import unittest
 from pathlib import Path
 
 spec = importlib.util.spec_from_file_location(
-    "native_loader", Path(__file__).resolve().parents[1] / "drivers/webgpu/native_loader.py"
+    "native_loader", Path(__file__).resolve().parents[3] / "drivers/webgpu/native_loader.py"
 )
 native_loader = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(native_loader)

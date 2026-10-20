@@ -77,7 +77,7 @@ original behavior.
 Windows x64 shared libgodot passes two engine lifetimes, lit-cube pixel readback,
 and L8/LA8 texture round trips using existing GodotSharp bindings, with WebGPU,
 Vulkan Mobile, Vulkan Forward+, and OpenGL Compatibility. Linux X11 and Wayland
-are exercised with `webgpu_tests/native_smoke`; the WSL host uses llvmpipe Vulkan
+are exercised with `drivers/webgpu/tests/native_smoke`; the WSL host uses llvmpipe Vulkan
 software rendering. macOS integration is implemented but has not been built or
 run locally. Forward+ on WebGPU, native GPU interop, export packaging, release
 builds, and the wider renderer feature set remain outside these smoke checks.
@@ -85,10 +85,10 @@ builds, and the wider renderer feature set remain outside these smoke checks.
 Run the dependency configuration checks with:
 
 ```text
-uv run python -m unittest discover -s webgpu_tests -p test_native_config.py -v
+uv run python -m unittest discover -s drivers/webgpu/tests -p test_native_config.py -v
 ```
 
 To run the native scene, launch a template with path overrides enabled and pass
-`--path webgpu_tests/native_smoke --rendering-driver webgpu --rendering-method mobile`.
+`--path drivers/webgpu/tests/native_smoke --rendering-driver webgpu --rendering-method mobile`.
 For 2dog templates with path overrides disabled, place the three smoke project
 files beside the executable instead.

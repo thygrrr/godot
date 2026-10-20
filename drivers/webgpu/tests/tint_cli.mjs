@@ -6,7 +6,7 @@ import { existsSync } from "fs";
 import { dirname, join } from "path";
 import { fileURLToPath } from "url";
 
-export const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+export const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
 
 export function findTintCli() {
   for (const name of ["tint_convert_cli", "tint_convert_cli.exe"]) {

@@ -218,7 +218,7 @@ done
 # 5. Set up seed corpus from fixtures.
 # ─────────────────────────────────────────────────────────────────────────────
 CORPUS_DIR="$SCRIPT_DIR/corpus"
-FIXTURES_DIR="$REPO_ROOT/webgpu_tests/shader_corpus/fixtures"
+FIXTURES_DIR="$REPO_ROOT/drivers/webgpu/tests/shader_corpus/fixtures"
 
 if [[ ! -d "$CORPUS_DIR" ]]; then
     echo ""

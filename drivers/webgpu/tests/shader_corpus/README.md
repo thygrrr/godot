@@ -34,8 +34,8 @@ WebGPU shaders. `compile_fixtures.sh` regenerates it with `glslangValidator`.
 written by a WebGPU engine run with `GODOT_DUMP_SPIRV=<directory>`:
 
 ```text
-node webgpu_tests/shader_corpus/validate_spirv_dump.mjs <directory>
-node webgpu_tests/shader_corpus/validate_spirv_dump.mjs <directory> --update-baseline
+node drivers/webgpu/tests/shader_corpus/validate_spirv_dump.mjs <directory>
+node drivers/webgpu/tests/shader_corpus/validate_spirv_dump.mjs <directory> --update-baseline
 ```
 
 `expected_failures.json` lists dumped variants the Mobile renderer does not use; only

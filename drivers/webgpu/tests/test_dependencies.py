@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 spec = importlib.util.spec_from_file_location(
-    "webgpu_dependencies", Path(__file__).resolve().parents[1] / "drivers/webgpu/dependencies.py"
+    "webgpu_dependencies", Path(__file__).resolve().parents[3] / "drivers/webgpu/dependencies.py"
 )
 dependencies = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(dependencies)

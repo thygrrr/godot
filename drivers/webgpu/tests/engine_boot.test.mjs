@@ -3,8 +3,8 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import vm from 'node:vm';
 
-const configSource = readFileSync(new URL('../platform/web/js/engine/config.js', import.meta.url), 'utf8');
-const engineSource = readFileSync(new URL('../platform/web/js/engine/engine.js', import.meta.url), 'utf8');
+const configSource = readFileSync(new URL('../../../platform/web/js/engine/config.js', import.meta.url), 'utf8');
+const engineSource = readFileSync(new URL('../../../platform/web/js/engine/engine.js', import.meta.url), 'utf8');
 
 function harness(gpu) {
     const modules = [];

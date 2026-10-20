@@ -11,7 +11,7 @@ parser.add_argument("--emscripten", type=Path, required=True)
 parser.add_argument("--archive", type=Path, required=True)
 parser.add_argument("--output", type=Path, required=True)
 args = parser.parse_args()
-root = Path(__file__).resolve().parent.parent
+root = Path(__file__).resolve().parents[3]
 subprocess.run([sys.executable, str(root / "drivers/webgpu/dependencies.py")], check=True)
 output = args.output.resolve()
 output.mkdir(parents=True, exist_ok=True)
@@ -36,7 +36,7 @@ for name in (
     "tint_resource_usage",
     "tint_legacy_parse",
 ):
-    sources = [str(root / f"webgpu_tests/{name}_test.cpp")]
+    sources = [str(root / f"drivers/webgpu/tests/{name}_test.cpp")]
     if name != "tint_legacy_parse":
         sources.append(str(driver / "spirv_preprocess.cpp"))
     target = output / f"{name}.js"
@@ -54,7 +54,7 @@ subprocess.run(
     [
         sys.executable,
         str(compiler),
-        str(root / "webgpu_tests/texel_convert_test.cpp"),
+        str(root / "drivers/webgpu/tests/texel_convert_test.cpp"),
         f"-I{root}",
         f"-I{root / 'platform/web'}",
         f"-I{driver}",

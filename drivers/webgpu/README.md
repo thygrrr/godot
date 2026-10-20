@@ -54,7 +54,7 @@ use the same driver-selection mechanism as the other backends.
 
 ## Verification
 
-[Port checks](../../webgpu_tests/README.md) cover real compiler transformations,
+[Port checks](tests/README.md) cover real compiler transformations,
 resource reflection, SDK configuration, JavaScript engine startup and native
 render/readback. Optional upstream diagnostics and demos are fetched separately.
 

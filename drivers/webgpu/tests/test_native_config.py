@@ -32,7 +32,7 @@ class FakeEnvironment(dict):
 class NativeConfigTests(unittest.TestCase):
     def setUp(self):
         spec = importlib.util.spec_from_file_location(
-            "native_config_under_test", Path(__file__).resolve().parents[1] / "drivers/webgpu/native_config.py"
+            "native_config_under_test", Path(__file__).resolve().parents[3] / "drivers/webgpu/native_config.py"
         )
         self.module = importlib.util.module_from_spec(spec)
         self.messages = []

@@ -11,7 +11,7 @@ import { join } from "path";
 import { tmpdir } from "os";
 import { REPO_ROOT, convertSpirvFile, findTintCli } from "../tint_cli.mjs";
 
-const FIXTURES_DIR = join(REPO_ROOT, "webgpu_tests", "shader_corpus", "fixtures");
+const FIXTURES_DIR = join(REPO_ROOT, "drivers", "webgpu", "tests", "shader_corpus", "fixtures");
 const TINT_CLI = findTintCli();
 
 // ─────────────────────────────────────────────────────────────────────────────

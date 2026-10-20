@@ -6,7 +6,7 @@ import shutil
 import tempfile
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[3]
 SPEC = {
     "url": "https://codeload.github.com/dwalter/godotwebgpu/tar.gz/f329e39ce8db7acaa5c9d6628a530fb769969228",
     "sha256": "974ac186c7717e34313e43141805087a5e1a37f639a265792dd993062ffdb718",
