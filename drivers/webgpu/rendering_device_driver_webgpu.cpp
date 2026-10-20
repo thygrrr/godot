@@ -8322,6 +8322,7 @@ void RenderingDeviceDriverWebGPU::_sync_compute_storage_shadows(WGCommandBuffer 
 		}
 	}
 	_restart_pass_after_push_constant_page(p_cmd, true);
+	p_cmd->push_constants_dirty = true;
 }
 
 void RenderingDeviceDriverWebGPU::command_compute_dispatch(CommandBufferID p_cmd_buffer, uint32_t p_x_groups, uint32_t p_y_groups, uint32_t p_z_groups) {
