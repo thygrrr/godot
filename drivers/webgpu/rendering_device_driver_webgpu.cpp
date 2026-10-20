@@ -6878,7 +6878,7 @@ void RenderingDeviceDriverWebGPU::command_bind_render_uniform_sets(CommandBuffer
 					pipeline_shader->merged_pc_group_layout != nullptr);
 
 			if (is_pc_merged) {
-				// PC ring buffer is at PUSH_CONSTANT_RING_BINDING (120) — the highest
+				// PC ring buffer is at PUSH_CONSTANT_RING_BINDING, the highest
 				// binding in the merged group, so its dynamic offset is appended last.
 				// Save the material offsets so _flush_push_constants can preserve them
 				// while patching in the real PC ring offset before each draw.
