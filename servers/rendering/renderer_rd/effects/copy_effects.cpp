@@ -48,6 +48,8 @@ CopyEffects *CopyEffects::get_singleton() {
 CopyEffects::CopyEffects(BitField<RasterEffects> p_raster_effects) {
 	singleton = this;
 	raster_effects = p_raster_effects;
+	// Without RGB10_A2 storage, nothing uses those variants, and WebGPU can't even create their pipelines.
+	const bool packed_storage = RD::get_singleton()->texture_is_format_supported_for_usage(RD::DATA_FORMAT_A2B10G10R10_UNORM_PACK32, RD::TEXTURE_USAGE_STORAGE_BIT);
 
 	if (raster_effects.has_flag(RASTER_EFFECT_GAUSSIAN_BLUR)) {
 		// init blur shader (on compute use copy shader)
@@ -186,9 +188,14 @@ CopyEffects::CopyEffects(BitField<RasterEffects> p_raster_effects) {
 			}
 
 			octmap_downsampler.compute_shader.initialize(downsampler_modes);
+			if (!packed_storage) {
+				octmap_downsampler.compute_shader.set_variant_enabled(DOWNSAMPLER_MODE_FLAG_RGB10_A2, false);
+			}
 			octmap_downsampler.shader_version = octmap_downsampler.compute_shader.version_create();
 			for (int i = 0; i < DOWNSAMPLER_MODE_COMPUTE_MAX; i++) {
-				octmap_downsampler.compute_pipelines[i].create_compute_pipeline(octmap_downsampler.compute_shader.version_get_shader(octmap_downsampler.shader_version, i));
+				if (octmap_downsampler.compute_shader.is_variant_enabled(i)) {
+					octmap_downsampler.compute_pipelines[i].create_compute_pipeline(octmap_downsampler.compute_shader.version_get_shader(octmap_downsampler.shader_version, i));
+				}
 			}
 		}
 	}
@@ -253,10 +260,17 @@ CopyEffects::CopyEffects(BitField<RasterEffects> p_raster_effects) {
 			}
 
 			filter.compute_shader.initialize(cubemap_filter_modes);
+			for (int i = 0; i < FILTER_MODE_COMPUTE_MAX; i++) {
+				if (!packed_storage && (i & FILTER_MODE_FLAG_RGB10_A2)) {
+					filter.compute_shader.set_variant_enabled(i, false);
+				}
+			}
 			filter.shader_version = filter.compute_shader.version_create();
 
 			for (int i = 0; i < FILTER_MODE_COMPUTE_MAX; i++) {
-				filter.compute_pipelines[i].create_compute_pipeline(filter.compute_shader.version_get_shader(filter.shader_version, i));
+				if (filter.compute_shader.is_variant_enabled(i)) {
+					filter.compute_pipelines[i].create_compute_pipeline(filter.compute_shader.version_get_shader(filter.shader_version, i));
+				}
 			}
 
 			Vector<RD::Uniform> uniforms;
@@ -288,11 +302,16 @@ CopyEffects::CopyEffects(BitField<RasterEffects> p_raster_effects) {
 			cubemap_roughness_modes.push_back("\n#define OCTMAP_FORMAT rgb10_a2\n");
 
 			roughness.compute_shader.initialize(cubemap_roughness_modes);
+			if (!packed_storage) {
+				roughness.compute_shader.set_variant_enabled(ROUGHNESS_MODE_RGB10_A2, false);
+			}
 
 			roughness.shader_version = roughness.compute_shader.version_create();
 
 			for (int i = 0; i < ROUGHNESS_MODE_MAX; i++) {
-				roughness.compute_pipelines[i].create_compute_pipeline(roughness.compute_shader.version_get_shader(roughness.shader_version, i));
+				if (roughness.compute_shader.is_variant_enabled(i)) {
+					roughness.compute_pipelines[i].create_compute_pipeline(roughness.compute_shader.version_get_shader(roughness.shader_version, i));
+				}
 			}
 		}
 	}

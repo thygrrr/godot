@@ -133,7 +133,12 @@ Error RenderingContextDriverWebGPU::initialize_native() {
 		WGPUFeatureName_TextureCompressionASTC,
 		WGPUFeatureName_ImplicitDeviceSynchronization,
 	};
+	// Exercises the fallbacks for adapters without the optional format tiers.
+	const bool base_formats = OS::get_singleton()->get_environment("GODOT_WEBGPU_FORCE_BASE_FORMATS") == "1";
 	for (WGPUFeatureName feature : optional_features) {
+		if (base_formats && (feature == WGPUFeatureName_TextureFormatsTier1 || feature == WGPUFeatureName_TextureFormatsTier2)) {
+			continue;
+		}
 		if (wgpuAdapterHasFeature(adapter, feature)) {
 			features.push_back(feature);
 		}

@@ -89,6 +89,7 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 	FragmentDensityMapCapabilities fdm_capabilities;
 	WGPULimits device_limits = WGPU_LIMITS_INIT;
 	bool has_texture_formats_tier1 = false;
+	bool has_texture_formats_tier2 = false; // read_write access to more storage formats
 	bool has_rw_storage_textures = false; // readonly-and-readwrite-storage-textures
 
 	// Source WGPUTexture → shadow WGPUTexture handles for read_write storage splits.
@@ -187,7 +188,8 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 	WGPUTextureViewDimension _texture_type_to_view_dimension(TextureType p_type) const;
 
 	void _flush_push_constants(WGCommandBuffer *p_cmd_buf, WGShader *p_shader);
-	void _restart_pass_after_push_constant_page(WGCommandBuffer *p_cmd_buf, bool p_compute);
+	void _restart_pass(WGCommandBuffer *p_cmd_buf, bool p_compute);
+	void _prepare_compute_storage_reads(WGCommandBuffer *p_cmd_buf);
 	void _rebind_render_state(WGCommandBuffer *p_cmd_buf);
 
 	// Region clears, as in the Metal driver: WebGPU's loadOp=Clear always covers the whole attachment,
