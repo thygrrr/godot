@@ -634,25 +634,6 @@ public:
 	virtual void command_copy_buffer_to_texture(CommandBufferID p_cmd_buffer, BufferID p_src_buffer, TextureID p_dst_texture, TextureLayout p_dst_texture_layout, VectorView<BufferTextureCopyRegion> p_regions) = 0;
 	virtual void command_copy_texture_to_buffer(CommandBufferID p_cmd_buffer, TextureID p_src_texture, TextureLayout p_src_texture_layout, BufferID p_dst_buffer, VectorView<BufferTextureCopyRegion> p_regions) = 0;
 
-	// Multi-layer buffer→texture copy: covers `p_layer_count` consecutive
-	// array layers starting at `p_base_region.texture_subresource.layer`,
-	// with source data laid out contiguously in the staging buffer at
-	// `p_base_region.buffer_offset` with stride `p_per_layer_byte_stride`.
-	//
-	// Backends that support a single multi-layer copy (e.g. WebGPU's
-	// `extent.depthOrArrayLayers`, Vulkan's `imageSubresource.layerCount`)
-	// should override to issue one driver call. The default implementation
-	// fans out to per-layer `command_copy_buffer_to_texture`, mirroring the
-	// pre-existing per-layer behavior — safe for all current backends.
-	virtual void command_copy_buffer_to_texture_layered(CommandBufferID p_cmd_buffer, BufferID p_src_buffer, TextureID p_dst_texture, TextureLayout p_dst_texture_layout, const BufferTextureCopyRegion &p_base_region, uint32_t p_layer_count, uint64_t p_per_layer_byte_stride) {
-		for (uint32_t i = 0; i < p_layer_count; i++) {
-			BufferTextureCopyRegion r = p_base_region;
-			r.texture_subresource.layer += i;
-			r.buffer_offset += i * p_per_layer_byte_stride;
-			command_copy_buffer_to_texture(p_cmd_buffer, p_src_buffer, p_dst_texture, p_dst_texture_layout, r);
-		}
-	}
-
 	// Direct CPU->GPU layered texture initialization. Writes `p_layer_count`
 	// consecutive array layers into `p_dst_texture` from a contiguous CPU
 	// buffer at `p_cpu_data`. Used by RenderingDevice::_texture_initialize_layered

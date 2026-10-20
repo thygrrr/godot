@@ -423,7 +423,7 @@ Error RenderingDeviceDriverWebGPU::initialize(uint32_t p_device_index, uint32_t 
 	}
 
 	// Create a universal push constant bind group layout:
-	//   PUSH_CONSTANT_RING_BINDING, all stages, uniform buffer with dynamic offset.
+	//   PUSH_CONSTANT_RING_BINDING, all stages, read-only storage buffer with dynamic offset.
 	// All shaders with push constants use this same layout for their push
 	// constant slot in the pipeline layout (hasDynamicOffset=true allows
 	// reusing one bind group with different ring buffer offsets per draw).
@@ -4313,7 +4313,7 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 	for (uint32_t i = 0; i < total_groups; i++) {
 		if (has_pc && i == pc_group) {
 			// Build a merged layout: the shader's own group entries (material uniforms,
-			// textures, etc.) PLUS the PC ring-buffer entry at binding 0 with hasDynamicOffset.
+			// textures, etc.) PLUS the PC ring-buffer entry at PUSH_CONSTANT_RING_BINDING with hasDynamicOffset.
 			// This is needed because calling setBindGroup() twice for the same group index
 			// overrides the first binding — we must combine both into one layout/bind group.
 			bool has_existing = (i < set_count && i < (uint32_t)shader->bind_group_infos.size() &&
@@ -4357,7 +4357,7 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 						merged_entries.push_back(shader->bind_group_infos[i].entries[u_idx2].layout_entry);
 					}
 				}
-				// Add the PC ring-buffer entry: PUSH_CONSTANT_RING_BINDING, uniform, hasDynamicOffset=true.
+				// Add the PC ring-buffer entry: PUSH_CONSTANT_RING_BINDING, read-only storage, hasDynamicOffset=true.
 				// Safety: skip if any existing entry is already at PUSH_CONSTANT_RING_BINDING.
 				bool has_pc_binding = false;
 				for (const auto &me : merged_entries) { if (me.binding == PUSH_CONSTANT_RING_BINDING) { has_pc_binding = true; break; } }
@@ -5610,43 +5610,6 @@ void RenderingDeviceDriverWebGPU::command_copy_buffer_to_texture(CommandBufferID
 	}
 
 	// The copied regions were flushed above; skip buffer_unmap()'s full-buffer flush.
-	src->map_dirty = false;
-}
-
-// Single-call multi-layer buffer→texture upload. Consecutive layers sit at
-// `rowsPerImage * bytesPerRow` byte stride in the staging buffer, so one copy with
-// extent.depthOrArrayLayers = N replaces N per-layer copies (each one a wasm→JS→WebGPU
-// crossing) during initial Texture2DArray uploads.
-void RenderingDeviceDriverWebGPU::command_copy_buffer_to_texture_layered(CommandBufferID p_cmd_buffer, BufferID p_src_buffer, TextureID p_dst_texture, TextureLayout p_dst_texture_layout, const BufferTextureCopyRegion &p_base_region, uint32_t p_layer_count, uint64_t p_per_layer_byte_stride) {
-	WGCommandBuffer *cmd = (WGCommandBuffer *)(p_cmd_buffer.id);
-	WGBuffer *src = (WGBuffer *)(p_src_buffer.id);
-	WGTexture *dst = (WGTexture *)(p_dst_texture.id);
-	ERR_FAIL_NULL(cmd);
-	ERR_FAIL_NULL(src);
-	ERR_FAIL_NULL(dst);
-
-	if (p_layer_count == 0) {
-		return;
-	}
-
-	uint32_t block_w = 1, block_h = 1;
-	if (dst->rd_format != DATA_FORMAT_MAX) {
-		get_compressed_image_format_block_dimensions(dst->rd_format, block_w, block_h);
-	}
-	const uint64_t expected_stride = (uint64_t)STEPIFY(p_base_region.row_pitch, 256u) * (STEPIFY((uint32_t)p_base_region.texture_region_size.y, block_h) / block_h);
-	if (p_per_layer_byte_stride != expected_stride) {
-		// Layers aren't where one copy expects them; fall back to per-layer copies.
-		for (uint32_t i = 0; i < p_layer_count; i++) {
-			BufferTextureCopyRegion r = p_base_region;
-			r.texture_subresource.layer += i;
-			r.buffer_offset += i * p_per_layer_byte_stride;
-			command_copy_buffer_to_texture(p_cmd_buffer, p_src_buffer, p_dst_texture, p_dst_texture_layout, r);
-		}
-		return;
-	}
-
-	cmd->end_active_encoder();
-	_copy_buffer_to_texture(cmd, src, dst, p_base_region, p_layer_count);
 	src->map_dirty = false;
 }
 

@@ -471,9 +471,6 @@ public:
 	virtual void command_clear_depth_stencil_texture(CommandBufferID p_cmd_buffer, TextureID p_texture, TextureLayout p_texture_layout, float p_depth, uint8_t p_stencil, const TextureSubresourceRange &p_subresources) override final;
 	/// Copy data from a buffer to a texture.
 	virtual void command_copy_buffer_to_texture(CommandBufferID p_cmd_buffer, BufferID p_src_buffer, TextureID p_dst_texture, TextureLayout p_dst_texture_layout, VectorView<BufferTextureCopyRegion> p_regions) override final;
-	/// Multi-layer copy from staging buffer to texture: one copy covering N layers
-	/// (extent.depthOrArrayLayers = N) instead of N per-layer copies.
-	virtual void command_copy_buffer_to_texture_layered(CommandBufferID p_cmd_buffer, BufferID p_src_buffer, TextureID p_dst_texture, TextureLayout p_dst_texture_layout, const BufferTextureCopyRegion &p_base_region, uint32_t p_layer_count, uint64_t p_per_layer_byte_stride) override final;
 	/// Direct CPU->GPU multi-layer texture write via wgpuQueueWriteTexture.
 	/// Skips the transfer-worker GPU staging buffer and command encoder
 	/// entirely — saves N bytes of peak VRAM per Texture2DArray upload (e.g.
