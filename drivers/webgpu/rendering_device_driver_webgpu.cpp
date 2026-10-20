@@ -2418,14 +2418,9 @@ WGPUTextureViewDimension RenderingDeviceDriverWebGPU::_texture_type_to_view_dime
 }
 
 WGPUTextureFormat RenderingDeviceDriverWebGPU::_data_format_to_wgpu(DataFormat p_format) const {
-	// O(1) lookup into the static table from pixel_formats_webgpu.h.
-	if ((uint32_t)p_format < (uint32_t)DATA_FORMAT_MAX) {
-		WGPUTextureFormat fmt = RD_TO_WGPU_FORMAT[(uint32_t)p_format];
-		if (fmt != WGPUTextureFormat_Undefined) {
-			return fmt;
-		}
-		// The table maps some formats to Undefined that we can approximate.
-		// Fall through to handle these special cases.
+	WGPUTextureFormat fmt = data_format_to_wgpu(p_format);
+	if (fmt != WGPUTextureFormat_Undefined) {
+		return fmt;
 	}
 
 	// Fallback approximations for formats not in the base WebGPU spec.
