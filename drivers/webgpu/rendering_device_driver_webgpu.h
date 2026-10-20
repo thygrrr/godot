@@ -653,6 +653,7 @@ public:
 	virtual uint64_t api_trait_get(ApiTrait p_trait) override final;
 	/// Check if a feature is supported (multiview, VRS, etc.).
 	virtual bool has_feature(Features p_feature) override final;
+	virtual DriverWorkarounds get_driver_workarounds() const override final;
 	/// Get multiview capabilities. Not supported in WebGPU.
 	virtual const MultiviewCapabilities &get_multiview_capabilities() override final;
 	/// Get fragment shading rate capabilities. Not supported in WebGPU.

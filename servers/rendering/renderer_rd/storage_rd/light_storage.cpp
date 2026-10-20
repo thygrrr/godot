@@ -48,7 +48,7 @@ LightStorage *LightStorage::get_singleton() {
 LightStorage::LightStorage() {
 	singleton = this;
 
-	force_omni_dual_paraboloid = RD::get_singleton()->force_omni_dual_paraboloid_shadows();
+	force_omni_dual_paraboloid = RD::get_singleton()->get_driver_workarounds().force_omni_dual_paraboloid;
 
 	TextureStorage *texture_storage = TextureStorage::get_singleton();
 

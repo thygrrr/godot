@@ -996,14 +996,8 @@ public:
 		API_TRAIT_SHADER_GROUP_HANDLE_SIZE,
 		API_TRAIT_SHADER_GROUP_BASE_ALIGNMENT,
 		API_TRAIT_SHADER_GROUP_HANDLE_ALIGNMENT,
-		// If non-zero, RenderingDevice::texture_get_data() routes through
-		// driver->texture_get_data() instead of the synchronous draw-graph +
-		// buffer_map path. WebGPU sets this because mapAsync requires a JS
-		// event-loop tick to complete; the driver's texture_get_data keeps a
-		// persistent staging buffer per (texture, layer) and returns cached
-		// data once the async map fires.
+		// If non-zero, buffer_map() returns CPU shadow memory that buffer_unmap() flushes to the GPU.
 		API_TRAIT_BUFFER_MAP_REQUIRES_FLUSH,
-		API_TRAIT_TEXTURE_GET_DATA_VIA_DRIVER,
 		// If non-zero, RenderingDevice::_texture_initialize_layered uses a
 		// CPU-only staging path that bypasses transfer workers entirely (no
 		// GPU staging buffer, no command encoder, no barriers). The driver
@@ -1025,29 +1019,6 @@ public:
 		// avoids wasting memory after the loading spike subsides. The pool
 		// handles overflow correctly via stall-and-reuse.
 		API_TRAIT_STAGING_BUFFER_MAX_SIZE_MB,
-		// If non-zero, skeleton bone buffer updates use direct queue writes
-		// (e.g. wgpuQueueWriteBuffer) instead of going through staging buffers
-		// and command encoder copies. This halves bridge crossings on backends
-		// like WebGPU where each API call crosses a WASM→JS boundary. Safe
-		// because skeleton data is fully updated before any draw commands.
-		API_TRAIT_SKELETON_BUFFER_DIRECT_WRITE,
-		// If non-zero, omni light shadows are forced to dual-paraboloid mode
-		// regardless of the configured shadow mode. This avoids expensive
-		// cubemap rendering (6 render pass encoder cycles + 2 copy operations
-		// per light) on backends where per-pass IPC overhead dominates, such
-		// as WebGPU. Dual-paraboloid renders 2 passes directly into the shadow
-		// atlas, which can then be merged into a single render pass.
-		API_TRAIT_FORCE_OMNI_DUAL_PARABOLOID,
-		// If non-zero, the renderer batches consecutive shadow draws of the
-		// same mesh/pipeline into single instanced draw calls. This drastically
-		// reduces per-draw IPC crossings on WebGPU where each SetBindGroup +
-		// DrawIndexed pair costs ~0.4us of bridge overhead.
-		API_TRAIT_BATCH_INSTANCE_DRAWS,
-		// If non-zero, the renderer passes the instance base index via the
-		// firstInstance parameter of drawIndexed instead of through push constants.
-		// This eliminates the per-draw SetBindGroup call for push constant rebinding.
-		// On WebGPU, each SetBindGroup IPC crossing costs ~0.3us; this saves one per draw.
-		API_TRAIT_FIRST_INSTANCE_INDEX,
 	};
 
 	enum ShaderChangeInvalidation {

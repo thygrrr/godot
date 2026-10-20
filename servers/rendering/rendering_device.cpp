@@ -1181,27 +1181,11 @@ Error RenderingDevice::buffer_update(RID p_buffer, uint32_t p_offset, uint32_t p
 }
 
 void RenderingDevice::buffer_update_direct(RID p_buffer, uint32_t p_offset, uint32_t p_size, const void *p_data) {
-    ERR_RENDER_THREAD_GUARD();
+	ERR_RENDER_THREAD_GUARD();
 	Buffer *buffer = _get_buffer_from_owner(p_buffer);
 	ERR_FAIL_NULL(buffer);
 	ERR_FAIL_COND(p_offset > buffer->size || p_size > buffer->size - p_offset);
 	driver->buffer_write_direct(buffer->driver_id, p_offset, p_size, p_data);
-}
-
-bool RenderingDevice::supports_buffer_direct_write() {
-	return driver->api_trait_get(RDD::API_TRAIT_SKELETON_BUFFER_DIRECT_WRITE) != 0;
-}
-
-bool RenderingDevice::force_omni_dual_paraboloid_shadows() {
-	return driver->api_trait_get(RDD::API_TRAIT_FORCE_OMNI_DUAL_PARABOLOID) != 0;
-}
-
-bool RenderingDevice::supports_batch_instance_draws() {
-	return driver->api_trait_get(RDD::API_TRAIT_BATCH_INSTANCE_DRAWS) != 0;
-}
-
-bool RenderingDevice::supports_first_instance_index() {
-	return driver->api_trait_get(RDD::API_TRAIT_FIRST_INSTANCE_INDEX) != 0;
 }
 
 Error RenderingDevice::driver_callback_add(RDD::DriverCallback p_callback, void *p_userdata, VectorView<CallbackResource> p_resources) {
@@ -1736,6 +1720,7 @@ RID RenderingDevice::texture_create(const TextureFormat &p_format, const Texture
 	tv.swizzle_a = p_view.swizzle_a;
 
 	// Create.
+
 	Texture texture;
 	format.usage_bits |= forced_usage_bits;
 	texture.driver_id = driver->texture_create(format, tv);
@@ -1791,16 +1776,11 @@ RID RenderingDevice::texture_create(const TextureFormat &p_format, const Texture
 	if (data.size()) {
 		const bool use_general_in_copy_queues = driver->api_trait_get(RDD::API_TRAIT_USE_GENERAL_IN_COPY_QUEUES);
 		const RDD::TextureLayout dst_layout = use_general_in_copy_queues ? RDD::TEXTURE_LAYOUT_GENERAL : RDD::TEXTURE_LAYOUT_COPY_DST_OPTIMAL;
-
-		// Multi-layer fast path for 2D arrays with no mipmaps: coalesce N
-		// per-layer staging+barrier+driver-call sequences into a single
-		// transfer-worker acquisition with a layered driver call. On WebGPU
-		// the override collapses N writeTexture calls into one (the dominant
-		// cost on web). Other backends fall back to per-layer driver commands
-		// internally via the default override, but still benefit from the
-		// shared staging buffer and pipeline barrier.
-		if (format.array_layers > 1 && format.mipmaps == 1 && format.texture_type == TEXTURE_TYPE_2D_ARRAY) {
-			_texture_initialize_layered(id, data, dst_layout, immediate_flush);
+		if (format.texture_type == TEXTURE_TYPE_2D_ARRAY && format.mipmaps == 1 && driver->api_trait_get(RDD::API_TRAIT_TEXTURE_INITIALIZE_DIRECT_WRITE)) {
+			if (_texture_initialize_layered(id, data, dst_layout) != OK) {
+				free_rid(id);
+				ERR_FAIL_V_MSG(RID(), "Failed to upload the initial texture data.");
+			}
 		} else {
 			for (uint32_t i = 0; i < format.array_layers; i++) {
 				_texture_initialize(id, i, data[i], dst_layout, immediate_flush);
@@ -1811,6 +1791,7 @@ RID RenderingDevice::texture_create(const TextureFormat &p_format, const Texture
 			texture.draw_tracker->usage = use_general_in_copy_queues ? RDG::RESOURCE_USAGE_GENERAL : RDG::RESOURCE_USAGE_COPY_TO;
 		}
 	}
+
 	return id;
 }
 
@@ -2399,192 +2380,50 @@ Error RenderingDevice::_texture_initialize(RID p_texture, uint32_t p_layer, cons
 	return OK;
 }
 
-// Multi-layer initial-data path for 2D array textures with mipmaps == 1.
-// Coalesces N per-layer uploads (transfer-worker acquire, staging buffer
-// map, pipeline barrier, copy command) into a single staging allocation,
-// single barrier, and single layered driver call. Backends that override
-// command_copy_buffer_to_texture_layered (e.g. WebGPU) can additionally
-// collapse the N driver-level texture writes into one; backends that don't
-// override fall back to the per-layer command path with no behavior change.
-Error RenderingDevice::_texture_initialize_layered(RID p_texture, const Vector<Vector<uint8_t>> &p_layers, RDD::TextureLayout p_dst_layout, bool p_immediate_flush) {
+// Uploads 2D array layers without mipmaps with few direct writes, see API_TRAIT_TEXTURE_INITIALIZE_DIRECT_WRITE.
+Error RenderingDevice::_texture_initialize_layered(RID p_texture, const Vector<Vector<uint8_t>> &p_layers, RDD::TextureLayout p_dst_layout) {
+	// Bounds the temporary copy. Each write covers at least one layer.
+	constexpr uint64_t MAX_WRITE_SIZE = 64 * 1024 * 1024;
+
 	Texture *texture = texture_owner.get_or_null(p_texture);
 	ERR_FAIL_NULL_V(texture, ERR_INVALID_PARAMETER);
-
-	if (texture->owner != RID()) {
-		p_texture = texture->owner;
-		texture = texture_owner.get_or_null(texture->owner);
-		ERR_FAIL_NULL_V(texture, ERR_BUG);
-	}
-
-	uint32_t layer_count = (uint32_t)p_layers.size();
-	ERR_FAIL_COND_V(layer_count == 0, ERR_INVALID_PARAMETER);
-	ERR_FAIL_COND_V(layer_count > _texture_layer_count(texture), ERR_INVALID_PARAMETER);
-	ERR_FAIL_COND_V_MSG(texture->mipmaps != 1, ERR_INVALID_PARAMETER, "_texture_initialize_layered only supports mipmaps == 1");
+	ERR_FAIL_COND_V(texture->mipmaps != 1 || (uint32_t)p_layers.size() != texture->layers, ERR_INVALID_PARAMETER);
 
 	uint32_t width, height;
-	uint32_t tight_mip_size = get_image_format_required_size(texture->format, texture->width, texture->height, texture->depth, texture->mipmaps, &width, &height);
-	uint32_t per_layer_required_size = tight_mip_size;
-	uint32_t required_align = _texture_alignment(texture);
-
-	for (uint32_t i = 0; i < layer_count; i++) {
-		ERR_FAIL_COND_V_MSG((uint32_t)p_layers[i].size() != per_layer_required_size, ERR_INVALID_PARAMETER,
-				"Layer " + itos(i) + " data size (" + itos(p_layers[i].size()) + ") does not match expected (" + itos(per_layer_required_size) + ").");
-	}
+	get_image_format_required_size(texture->format, texture->width, texture->height, texture->depth, 1, &width, &height);
 
 	uint32_t block_w, block_h;
 	get_compressed_image_format_block_dimensions(texture->format, block_w, block_h);
+	const uint32_t pixel_size = get_image_format_pixel_size(texture->format);
+	const uint32_t pixel_rshift = get_compressed_image_format_pixel_rshift(texture->format);
+	const uint32_t block_size = get_compressed_image_format_block_byte_size(texture->format);
+	const uint32_t gpu_pixel_size = driver->texture_get_gpu_pixel_size(texture->driver_id);
 
-	uint32_t pixel_size = get_image_format_pixel_size(texture->format);
-	uint32_t pixel_rshift = get_compressed_image_format_pixel_rshift(texture->format);
-	uint32_t block_size = get_compressed_image_format_block_byte_size(texture->format);
+	// Same row layout as _texture_initialize(), layers packed back to back.
+	uint32_t pitch = (width * (gpu_pixel_size > 0 ? gpu_pixel_size : pixel_size) * block_w) >> pixel_rshift;
+	pitch = STEPIFY(pitch, driver->api_trait_get(RDD::API_TRAIT_TEXTURE_DATA_ROW_PITCH_STEP));
+	const uint32_t rows = height / block_h;
+	const uint64_t layer_stride = (uint64_t)pitch * rows;
+	const uint32_t layers_per_write = (uint32_t)MIN(MAX(MAX_WRITE_SIZE / layer_stride, (uint64_t)1), (uint64_t)texture->layers);
 
-	// Driver may promote the format (e.g. R8 → R32Float on WebGPU storage).
-	uint32_t gpu_pixel_size = driver->texture_get_gpu_pixel_size(texture->driver_id);
-	uint32_t staging_pixel_size = (gpu_pixel_size > 0) ? gpu_pixel_size : pixel_size;
+	uint8_t *staging = (uint8_t *)memalloc(layer_stride * layers_per_write);
+	ERR_FAIL_NULL_V(staging, ERR_OUT_OF_MEMORY);
 
-	// Aligned per-layer staging footprint (matches _texture_initialize math).
-	uint32_t pitch = (width * staging_pixel_size * block_w) >> pixel_rshift;
-	uint32_t pitch_step = driver->api_trait_get(RDD::API_TRAIT_TEXTURE_DATA_ROW_PITCH_STEP);
-	pitch = STEPIFY(pitch, pitch_step);
-	uint32_t per_layer_staging_size = pitch * height;
-	per_layer_staging_size >>= pixel_rshift;
-
-	// Per-layer alignment within the shared staging buffer. Layers are
-	// packed back-to-back; if required_align > 0 we pad each layer's footprint
-	// up to a multiple of required_align so each layer's offset stays aligned.
-	uint64_t per_layer_byte_stride = per_layer_staging_size;
-	if (required_align > 0) {
-		per_layer_byte_stride = ((per_layer_byte_stride + required_align - 1) / required_align) * required_align;
-	}
-
-	uint64_t total_staging_size = per_layer_byte_stride * (uint64_t)layer_count;
-	ERR_FAIL_COND_V(total_staging_size > UINT32_MAX, ERR_INVALID_PARAMETER);
-
-	// Direct CPU->GPU write path: bypass transfer worker entirely. Used by
-	// backends (e.g. WebGPU) that have a synchronous CPU->GPU writeTexture
-	// API and would otherwise allocate a same-size GPU staging buffer that
-	// is never read from. Saves N bytes of peak VRAM per upload + the
-	// queue serialization that came with the wasted allocation.
-	if (driver->api_trait_get(RDD::API_TRAIT_TEXTURE_INITIALIZE_DIRECT_WRITE)) {
-		uint8_t *cpu_staging = (uint8_t *)memalloc(total_staging_size);
-		ERR_FAIL_NULL_V(cpu_staging, ERR_OUT_OF_MEMORY);
-
-		// Pack layers contiguously at per_layer_byte_stride.
-		for (uint32_t layer_idx = 0; layer_idx < layer_count; layer_idx++) {
-			const uint8_t *read_ptr_layer = p_layers[layer_idx].ptr();
-			uint8_t *write_ptr_layer = cpu_staging + (uint64_t)layer_idx * per_layer_byte_stride;
-
+	for (uint32_t base_layer = 0; base_layer < texture->layers; base_layer += layers_per_write) {
+		const uint32_t layer_count = MIN(layers_per_write, texture->layers - base_layer);
+		for (uint32_t i = 0; i < layer_count; i++) {
+			const uint8_t *read_ptr = p_layers[base_layer + i].ptr();
+			uint8_t *write_ptr = staging + i * layer_stride;
 			if (gpu_pixel_size > 0 && block_w == 1 && block_h == 1) {
-				uint32_t src_pitch = width * pixel_size;
-				driver->texture_upload_convert(texture->driver_id, read_ptr_layer, src_pitch, write_ptr_layer, pitch, width, height);
+				driver->texture_upload_convert(texture->driver_id, read_ptr, width * pixel_size, write_ptr, pitch, width, height);
 			} else {
-				_copy_region_block_or_regular(read_ptr_layer, write_ptr_layer, 0, 0, width, width, height, block_w, block_h, pitch, pixel_size, block_size);
+				_copy_region_block_or_regular(read_ptr, write_ptr, 0, 0, width, width, height, block_w, block_h, pitch, pixel_size, block_size);
 			}
 		}
-
-		uint32_t rows_per_image = (block_h > 1) ? (height / block_h) : height;
-		driver->texture_initialize_direct_layered(
-				texture->driver_id,
-				p_dst_layout,
-				cpu_staging,
-				total_staging_size,
-				/*aligned_bpr*/ pitch,
-				rows_per_image,
-				width,
-				height,
-				layer_count,
-				/*base_layer*/ 0,
-				/*mip_level*/ 0);
-
-		memfree(cpu_staging);
-		// texture->transfer_worker_index stays -1 (default) — no deferred
-		// transfer to wait on; writeTexture is queue-ordered with subsequent
-		// commands.
-		return OK;
+		driver->texture_initialize_direct_layered(texture->driver_id, p_dst_layout, staging, layer_stride * layer_count, pitch, rows, texture->width, texture->height, layer_count, base_layer, 0);
 	}
 
-	uint32_t staging_worker_offset = 0;
-	TransferWorker *transfer_worker = _acquire_transfer_worker((uint32_t)total_staging_size, required_align, staging_worker_offset);
-	texture->transfer_worker_index = transfer_worker->index;
-
-	{
-		MutexLock lock(transfer_worker->operations_mutex);
-		texture->transfer_worker_operation = ++transfer_worker->operations_counter;
-	}
-
-	uint8_t *write_ptr = driver->buffer_map(transfer_worker->staging_buffer);
-	ERR_FAIL_NULL_V(write_ptr, ERR_CANT_CREATE);
-
-	if (driver->api_trait_get(RDD::API_TRAIT_HONORS_PIPELINE_BARRIERS)) {
-		RDD::TextureBarrier tb;
-		tb.texture = texture->driver_id;
-		tb.dst_access = RDD::BARRIER_ACCESS_COPY_WRITE_BIT;
-		tb.prev_layout = RDD::TEXTURE_LAYOUT_UNDEFINED;
-		tb.next_layout = p_dst_layout;
-		tb.subresources.aspect = texture->barrier_aspect_flags;
-		tb.subresources.mipmap_count = texture->mipmaps;
-		tb.subresources.base_layer = 0;
-		tb.subresources.layer_count = layer_count;
-		driver->command_pipeline_barrier(transfer_worker->command_buffer, RDD::PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, RDD::PIPELINE_STAGE_COPY_BIT, {}, {}, tb, {});
-	}
-
-	// Pack each layer into the shared staging buffer at its own stride.
-	for (uint32_t layer_idx = 0; layer_idx < layer_count; layer_idx++) {
-		const uint8_t *read_ptr_layer = p_layers[layer_idx].ptr();
-		uint64_t layer_offset = (uint64_t)staging_worker_offset + (uint64_t)layer_idx * per_layer_byte_stride;
-		uint8_t *write_ptr_layer = write_ptr + layer_offset;
-
-		if (gpu_pixel_size > 0 && block_w == 1 && block_h == 1) {
-			uint32_t src_pitch = width * pixel_size;
-			driver->texture_upload_convert(texture->driver_id, read_ptr_layer, src_pitch, write_ptr_layer, pitch, width, height);
-		} else {
-			_copy_region_block_or_regular(read_ptr_layer, write_ptr_layer, 0, 0, width, width, height, block_w, block_h, pitch, pixel_size, block_size);
-		}
-	}
-
-	// One layered copy region covering all N layers starting at base layer 0.
-	RDD::BufferTextureCopyRegion base_region;
-	base_region.buffer_offset = staging_worker_offset;
-	base_region.row_pitch = pitch;
-	base_region.texture_subresource.aspect = texture->read_aspect_flags.has_flag(RDD::TEXTURE_ASPECT_DEPTH_BIT) ? RDD::TEXTURE_ASPECT_DEPTH : RDD::TEXTURE_ASPECT_COLOR;
-	base_region.texture_subresource.mipmap = 0;
-	base_region.texture_subresource.layer = 0;
-	base_region.texture_offset = Vector3i(0, 0, 0);
-	base_region.texture_region_size = Vector3i(width, height, 1);
-
-	driver->command_copy_buffer_to_texture_layered(
-			transfer_worker->command_buffer,
-			transfer_worker->staging_buffer,
-			texture->driver_id,
-			p_dst_layout,
-			base_region,
-			layer_count,
-			per_layer_byte_stride);
-
-	driver->buffer_unmap(transfer_worker->staging_buffer);
-
-	// If the texture has no draw tracker, transition all layers to sampling.
-	if (texture->draw_tracker == nullptr && driver->api_trait_get(RDD::API_TRAIT_HONORS_PIPELINE_BARRIERS)) {
-		RDD::TextureBarrier tb;
-		tb.texture = texture->driver_id;
-		tb.src_access = RDD::BARRIER_ACCESS_COPY_WRITE_BIT;
-		tb.prev_layout = p_dst_layout;
-		tb.next_layout = RDD::TEXTURE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-		tb.subresources.aspect = texture->barrier_aspect_flags;
-		tb.subresources.mipmap_count = texture->mipmaps;
-		tb.subresources.base_layer = 0;
-		tb.subresources.layer_count = layer_count;
-		transfer_worker->texture_barriers.push_back(tb);
-	}
-
-	if (p_immediate_flush) {
-		_end_transfer_worker(transfer_worker);
-		_submit_transfer_worker(transfer_worker);
-		_wait_for_transfer_worker(transfer_worker);
-	}
-
-	_release_transfer_worker(transfer_worker);
-
+	memfree(staging);
 	return OK;
 }
 
@@ -2637,9 +2476,6 @@ Error RenderingDevice::texture_update(RID p_texture, uint32_t p_layer, const Vec
 	// the data must be converted during upload.
 	uint32_t gpu_pixel_size = driver->texture_get_gpu_pixel_size(texture->driver_id);
 	uint32_t staging_pixel_size = (gpu_pixel_size > 0) ? gpu_pixel_size : pixel_size;
-	if (gpu_pixel_size > 0) {
-		// Format was promoted by the driver (e.g. R8→R32Float on WebGPU).
-	}
 
 	uint32_t region_size = texture_upload_region_size_px;
 
@@ -3047,13 +2883,8 @@ Vector<uint8_t> RenderingDevice::texture_get_data(RID p_texture, uint32_t p_laye
 
 	if (tex->usage_flags & TEXTURE_USAGE_CPU_READ_BIT) {
 		return driver->texture_get_data(tex->driver_id, p_layer);
-	} else if (driver->api_trait_get(RDD::API_TRAIT_TEXTURE_GET_DATA_VIA_DRIVER)) {
-		// WebGPU: the synchronous draw-graph + _flush_and_stall + buffer_map path
-		// below can't wait for wgpuBufferMapAsync (no Asyncify on web). Route to
-		// the driver's texture_get_data which keeps a persistent staging buffer
-		// per (texture, layer) and returns cached data once the async map fires.
-		// First call returns empty (not ready); subsequent calls return data.
-		// See: drivers/webgpu/rendering_device_driver_webgpu.cpp:texture_get_data
+	} else if (driver->get_driver_workarounds().async_texture_readback) {
+		// The stall below can't wait for an asynchronous map, the driver returns empty data until it completes.
 		return driver->texture_get_data(tex->driver_id, p_layer);
 	} else {
 		RDD::TextureAspect aspect = tex->read_aspect_flags.has_flag(RDD::TEXTURE_ASPECT_DEPTH_BIT) ? RDD::TEXTURE_ASPECT_DEPTH : RDD::TEXTURE_ASPECT_COLOR;
@@ -4534,27 +4365,27 @@ Vector<uint8_t> RenderingDevice::shader_compile_binary_from_spirv(const Vector<S
 	Ref<RenderingShaderContainer> shader_container = container_format.create_container();
 	ERR_FAIL_COND_V(shader_container.is_null(), Vector<uint8_t>());
 
-	// Dump SPIR-V to disk when GODOT_DUMP_SPIRV is set (for CI shader validation).
+#ifdef DEV_ENABLED
+	// For webgpu_tests/shader_corpus/validate_spirv_dump.mjs. The hash keeps versions with equal names apart.
 	static const String dump_dir = OS::get_singleton()->get_environment("GODOT_DUMP_SPIRV");
 	if (!dump_dir.is_empty()) {
 		static const char *stage_suffixes[] = { "vert", "frag", "tesc", "tese", "comp" };
-		Ref<DirAccess> da = DirAccess::open(dump_dir);
-		if (da.is_null()) {
-			DirAccess::make_dir_recursive_absolute(dump_dir);
-		}
+		DirAccess::make_dir_recursive_absolute(dump_dir);
 		for (int i = 0; i < p_spirv.size(); i++) {
-			if (p_spirv[i].spirv.is_empty()) {
+			const Vector<uint8_t> &spirv = p_spirv[i].spirv;
+			if (spirv.is_empty()) {
 				continue;
 			}
 			String stage_ext = (p_spirv[i].shader_stage < 5) ? stage_suffixes[p_spirv[i].shader_stage] : "spv";
-			String safe_name = p_shader_name.is_empty() ? "unnamed" : p_shader_name.replace("/", "_").replace("\\", "_");
-			String path = dump_dir.path_join(safe_name + "." + stage_ext + ".spv");
-			Ref<FileAccess> f = FileAccess::open(path, FileAccess::WRITE);
+			String safe_name = p_shader_name.is_empty() ? "unnamed" : p_shader_name.validate_filename();
+			String hash = String::num_uint64(hash_murmur3_buffer(spirv.ptr(), spirv.size()), 16);
+			Ref<FileAccess> f = FileAccess::open(dump_dir.path_join(vformat("%s.%s.%s.spv", safe_name, hash, stage_ext)), FileAccess::WRITE);
 			if (f.is_valid()) {
-				f->store_buffer(p_spirv[i].spirv.ptr(), p_spirv[i].spirv.size());
+				f->store_buffer(spirv.ptr(), spirv.size());
 			}
 		}
 	}
+#endif
 
 	// Compile shader binary from SPIR-V.
 	bool code_compiled = shader_container->set_code_from_spirv(p_shader_name, p_spirv);
@@ -6407,6 +6238,8 @@ void RenderingDevice::draw_list_draw(DrawListID p_list, bool p_use_indices, uint
 	ERR_RENDER_THREAD_GUARD();
 
 	ERR_FAIL_COND(!draw_list.active);
+	// Shaders only see the first instance where the driver opts in (e.g. D3D12's SV_InstanceID never includes it).
+	ERR_FAIL_COND_MSG(p_first_instance != 0 && !driver->get_driver_workarounds().batch_instance_draws, "The driver doesn't support a first instance.");
 
 #ifdef DEBUG_ENABLED
 	ERR_FAIL_COND_MSG(!draw_list.validation.pipeline_active,

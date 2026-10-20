@@ -166,12 +166,9 @@ ivec2 multiview_uv(ivec2 uv) {
 layout(location = 14) out vec2 point_coord_interp;
 #endif
 #ifdef RENDER_DRIVER_WEBGPU
-
-// Effective instance index for instanced draw batching.
-// For non-multimesh: batch_instance_index + gl_InstanceIndex (supports N-instance batches).
-// For multimesh: batch_instance_index only (gl_InstanceIndex indexes multimesh data).
+// Instance index including the batch offset or first instance, see RD::DriverWorkarounds::batch_instance_draws.
+// Multimeshes use gl_InstanceIndex for their own data.
 layout(location = 10) flat out uint batch_instance_index;
-#else
 #endif
 
 invariant gl_Position;
@@ -705,12 +702,7 @@ void vertex_shader(in vec3 vertex,
 
 void main() {
 #ifdef RENDER_DRIVER_WEBGPU
-	// Compute effective instance index for draw call batching.
-	// When batching is active, multiple instances share one push constant and
-	// gl_InstanceIndex provides the offset within the batch.
 	batch_instance_index = sc_multimesh() ? draw_call.instance_index : (draw_call.instance_index + uint(gl_InstanceIndex));
-
-#else
 #endif
 #if defined(MODE_RENDER_MOTION_VECTORS)
 	vec3 prev_vertex;
@@ -1011,10 +1003,7 @@ ivec2 multiview_uv(ivec2 uv) {
 #endif // !USE_MULTIVIEW
 
 #ifdef RENDER_DRIVER_WEBGPU
-// Effective instance index from vertex stage (supports instanced draw batching).
 layout(location = 10) flat in uint batch_instance_index;
-
-#else
 #endif
 #if defined(POINT_SIZE_USED) && defined(POINT_COORD_USED)
 layout(location = 14) in vec2 point_coord_interp;
@@ -2361,7 +2350,11 @@ void main() {
 	}
 
 	uint area_light_count = sc_area_lights(8);
+#ifdef RENDER_DRIVER_WEBGPU
+	uvec2 area_indices = instances.data[batch_instance_index].area_lights;
+#else
 	uvec2 area_indices = instances.data[draw_call.instance_index].area_lights;
+#endif
 	for (uint i = 0; i < area_light_count; i++) {
 		uint light_index = (i > 3) ? ((area_indices.y >> ((i - 4) * 8)) & 0xFF) : ((area_indices.x >> (i * 8)) & 0xFF);
 		if (i > 0 && light_index == 0xFF) {

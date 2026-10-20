@@ -8055,16 +8055,6 @@ uint64_t RenderingDeviceDriverWebGPU::api_trait_get(ApiTrait p_trait) {
 		case API_TRAIT_USE_GENERAL_IN_COPY_QUEUES: return 0;
 		case API_TRAIT_BUFFERS_REQUIRE_TRANSITIONS: return 0;
 		case API_TRAIT_TEXTURE_OUTPUTS_REQUIRE_CLEARS: return 0;
-		// Force RD::texture_get_data() to route through driver->texture_get_data()
-		// because the synchronous draw-graph + buffer_map path can't wait for
-		// wgpuBufferMapAsync (no Asyncify, can't yield to JS during a sync C call).
-		// driver->texture_get_data() handles this with a persistent staging buffer
-		// + frame-deferred async map (see ASYNC BUFFER READBACK section).
-#ifdef WEB_ENABLED
-		case API_TRAIT_TEXTURE_GET_DATA_VIA_DRIVER: return 1;
-#else
-		case API_TRAIT_TEXTURE_GET_DATA_VIA_DRIVER: return 0;
-#endif
 		// Skip transfer-worker path for layered Texture2DArray uploads; we
 		// implement texture_initialize_direct_layered using wgpuQueueWriteTexture
 		// directly (no GPU staging buffer, no command encoder, no barriers).
@@ -8079,20 +8069,24 @@ uint64_t RenderingDeviceDriverWebGPU::api_trait_get(ApiTrait p_trait) {
 		// the loading spike. 16 MB is generous for per-frame dynamic
 		// updates; overflow stalls briefly and reuses blocks.
 		case API_TRAIT_STAGING_BUFFER_MAX_SIZE_MB: return 16;
-		case API_TRAIT_SKELETON_BUFFER_DIRECT_WRITE: return 1;
-		// Force dual-paraboloid shadows for omni lights. Cubemap shadows
-		// require 6 render pass encoder cycles + 2 copy-to-atlas ops per
-		// light; dual-paraboloid uses 2 passes directly into the atlas,
-		// saving ~80% of shadow encoder overhead for typical scenes.
-		case API_TRAIT_FORCE_OMNI_DUAL_PARABOLOID: return 1;
-		// Batch consecutive same-mesh shadow draws into instanced draws.
-		// Reduces per-draw IPC from 2 crossings/draw to 2 crossings/batch.
-		case API_TRAIT_BATCH_INSTANCE_DRAWS: return 1;
-		// Pass instance index via firstInstance instead of push constants.
-		// Eliminates per-draw SetBindGroup for push constant ring buffer.
-		case API_TRAIT_FIRST_INSTANCE_INDEX: return 1;
 		default: return RenderingDeviceDriver::api_trait_get(p_trait);
 	}
+}
+
+RDD::DriverWorkarounds RenderingDeviceDriverWebGPU::get_driver_workarounds() const {
+	DriverWorkarounds workarounds;
+#ifdef WEB_ENABLED
+	// mapAsync can't complete inside a synchronous call without Asyncify; see texture_get_data().
+	workarounds.async_texture_readback = true;
+#endif
+	workarounds.no_input_attachments = true;
+	workarounds.no_texture_swizzle = true;
+	workarounds.no_storage_render_targets = true; // Dawn rejects sRGB view formats on storage textures.
+	workarounds.force_omni_dual_paraboloid = true;
+	workarounds.merge_shadow_passes = true;
+	workarounds.batch_instance_draws = true;
+	workarounds.skeleton_atlas = true;
+	return workarounds;
 }
 
 bool RenderingDeviceDriverWebGPU::has_feature(Features p_feature) {

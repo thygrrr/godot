@@ -146,7 +146,9 @@ void light_compute(hvec3 N, hvec3 L, hvec3 V, half A, hvec3 light_color, bool is
 			scene_data_block.data.view_matrix[2],
 			vec4(0.0, 0.0, 0.0, 1.0)));
 
-#ifdef USING_MOBILE_RENDERER
+#if defined(USING_MOBILE_RENDERER) && defined(RENDER_DRIVER_WEBGPU)
+	uint instance_index = batch_instance_index;
+#elif defined(USING_MOBILE_RENDERER)
 	uint instance_index = draw_call.instance_index;
 #else
 	uint instance_index = instance_index_interp;
@@ -1199,7 +1201,9 @@ void light_process_area(uint idx, vec3 vertex, hvec3 eye_vec, hvec3 normal, vec3
 			scene_data_block.data.view_matrix[2],
 			vec4(0.0, 0.0, 0.0, 1.0)));
 
-#ifdef USING_MOBILE_RENDERER
+#if defined(USING_MOBILE_RENDERER) && defined(RENDER_DRIVER_WEBGPU)
+	uint instance_index = batch_instance_index;
+#elif defined(USING_MOBILE_RENDERER)
 	uint instance_index = draw_call.instance_index;
 #else
 	uint instance_index = instance_index_interp;

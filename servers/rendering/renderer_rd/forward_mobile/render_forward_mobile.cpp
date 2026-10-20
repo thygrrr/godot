@@ -807,28 +807,15 @@ void RenderForwardMobile::_pre_opaque_render(RenderDataRD *p_render_data) {
 	if (render_shadows) {
 		RENDER_TIMESTAMP("Render Shadows");
 
-		// When force-DP mode is active (WebGPU), pre-clear the positional shadow
-		// atlas once so individual passes use LOAD (not CLEAR). This enables
-		// merging all same-framebuffer passes into a single render pass encoder,
-		// eliminating per-pass IPC overhead.
-		bool merge_positional_shadows = light_storage->is_force_omni_dual_paraboloid();
-		if (merge_positional_shadows && p_render_data->shadows.size() && p_render_data->shadow_atlas.is_valid()) {
-			RID atlas_fb = light_storage->shadow_atlas_get_fb(p_render_data->shadow_atlas);
-			if (atlas_fb.is_valid()) {
-				RD::get_singleton()->draw_list_begin(atlas_fb, RD::DRAW_CLEAR_DEPTH, Vector<Color>(), 0.0f);
-				RD::get_singleton()->draw_list_end();
-			}
-		}
-
 		_render_shadow_begin();
 
 		//render directional shadows
 		for (uint32_t i = 0; i < p_render_data->directional_shadows.size(); i++) {
 			_render_shadow_pass(p_render_data->render_shadows[p_render_data->directional_shadows[i]].light, p_render_data->shadow_atlas, p_render_data->render_shadows[p_render_data->directional_shadows[i]].pass, p_render_data->render_shadows[p_render_data->directional_shadows[i]].instances, lod_distance_multiplier, p_render_data->scene_data->screen_mesh_lod_threshold, false, i == p_render_data->directional_shadows.size() - 1, false, p_render_data->render_info, p_render_data->scene_data->cam_transform);
 		}
-		//render positional shadows (clear_region=false when atlas is pre-cleared)
+		//render positional shadows
 		for (uint32_t i = 0; i < p_render_data->shadows.size(); i++) {
-			_render_shadow_pass(p_render_data->render_shadows[p_render_data->shadows[i]].light, p_render_data->shadow_atlas, p_render_data->render_shadows[p_render_data->shadows[i]].pass, p_render_data->render_shadows[p_render_data->shadows[i]].instances, lod_distance_multiplier, p_render_data->scene_data->screen_mesh_lod_threshold, i == 0, i == p_render_data->shadows.size() - 1, !merge_positional_shadows, p_render_data->render_info, p_render_data->scene_data->cam_transform);
+			_render_shadow_pass(p_render_data->render_shadows[p_render_data->shadows[i]].light, p_render_data->shadow_atlas, p_render_data->render_shadows[p_render_data->shadows[i]].pass, p_render_data->render_shadows[p_render_data->shadows[i]].instances, lod_distance_multiplier, p_render_data->scene_data->screen_mesh_lod_threshold, i == 0, i == p_render_data->shadows.size() - 1, true, p_render_data->render_info, p_render_data->scene_data->cam_transform);
 		}
 
 		_render_shadow_process();
@@ -889,15 +876,9 @@ void RenderForwardMobile::_render_scene(RenderDataRD *p_render_data, const Color
 	RID framebuffer;
 	bool reverse_cull = p_render_data->scene_data->cam_transform.basis.determinant() < 0;
 	bool merge_transparent_pass = true; // If true: we can do our transparent pass in the same pass as our opaque pass.
-	bool using_subpass_post_process = true; // If true: we can do our post processing in a subpass
+	bool using_subpass_post_process = !no_input_attachments; // If true: we can do our post processing in a subpass
 	RendererRD::MaterialStorage::Samplers samplers;
 	bool hdr_render_target = false;
-
-#ifdef WEBGPU_ENABLED
-	if (RD::get_singleton()->get_device_api_name() == "WebGPU") {
-		using_subpass_post_process = false;
-	}
-#endif
 
 	RSE::ViewportMSAA msaa = rb->get_msaa_3d();
 	bool use_msaa = msaa != RSE::VIEWPORT_MSAA_DISABLED;
@@ -1704,31 +1685,28 @@ void RenderForwardMobile::_render_shadow_process() {
 void RenderForwardMobile::_render_shadow_end() {
 	RD::get_singleton()->draw_command_begin_label("Shadow Render");
 
-	// Merge consecutive shadow passes that share the same framebuffer into a
-	// single render pass with viewport/scissor changes. This eliminates N-1
-	// render pass encoder begin/end cycles per framebuffer group, which is
-	// critical for WebGPU where each encoder cycle crosses the WASM→JS IPC.
-	uint32_t i = 0;
-	while (i < scene_state.shadow_passes.size()) {
-		SceneState::ShadowPass &first_pass = scene_state.shadow_passes[i];
-
-		// Find how many consecutive passes share this framebuffer and don't need clearing.
-		uint32_t batch_end = i + 1;
-		if (!first_pass.clear_depth) {
-			while (batch_end < scene_state.shadow_passes.size() &&
-					scene_state.shadow_passes[batch_end].framebuffer == first_pass.framebuffer &&
-					!scene_state.shadow_passes[batch_end].clear_depth) {
-				batch_end++;
+	for (uint32_t i = 0; i < scene_state.shadow_passes.size(); i++) {
+		uint32_t merge_end = i + 1;
+		if (merge_shadow_passes) {
+			while (merge_end < scene_state.shadow_passes.size() && scene_state.shadow_passes[merge_end].framebuffer == scene_state.shadow_passes[i].framebuffer) {
+				merge_end++;
 			}
 		}
 
-		if (batch_end - i > 1) {
-			// Merged path: one render pass, multiple viewport-scoped draws.
-			RD::FramebufferFormatID fb_format = RD::get_singleton()->framebuffer_get_format(first_pass.framebuffer);
-			RD::DrawListID draw_list = RD::get_singleton()->draw_list_begin(first_pass.framebuffer, RD::DRAW_DEFAULT_ALL, Vector<Color>(), 0.0f, 0, Rect2());
+		if (merge_end - i > 1) {
+			// One render pass for passes into disjoint rects of the same framebuffer, region clears go first.
+			for (uint32_t j = i; j < merge_end; j++) {
+				const SceneState::ShadowPass &shadow_pass = scene_state.shadow_passes[j];
+				if (shadow_pass.clear_depth) {
+					RD::get_singleton()->draw_list_begin(shadow_pass.framebuffer, RD::DRAW_CLEAR_DEPTH, Vector<Color>(), 0.0f, 0, shadow_pass.rect);
+					RD::get_singleton()->draw_list_end();
+				}
+			}
 
-			for (uint32_t j = i; j < batch_end; j++) {
-				SceneState::ShadowPass &shadow_pass = scene_state.shadow_passes[j];
+			RD::FramebufferFormatID fb_format = RD::get_singleton()->framebuffer_get_format(scene_state.shadow_passes[i].framebuffer);
+			RD::DrawListID draw_list = RD::get_singleton()->draw_list_begin(scene_state.shadow_passes[i].framebuffer);
+			for (uint32_t j = i; j < merge_end; j++) {
+				const SceneState::ShadowPass &shadow_pass = scene_state.shadow_passes[j];
 				RD::get_singleton()->draw_list_set_viewport(draw_list, shadow_pass.rect);
 				RD::get_singleton()->draw_list_enable_scissor(draw_list, Rect2(Vector2(), shadow_pass.rect.size));
 
@@ -1736,16 +1714,15 @@ void RenderForwardMobile::_render_shadow_end() {
 				render_list_parameters.framebuffer_format = fb_format;
 				_render_list(draw_list, fb_format, &render_list_parameters, 0, render_list_parameters.element_count);
 			}
-
 			RD::get_singleton()->draw_list_end();
-		} else {
-			// Single pass (or pass that needs clearing): use original path.
-			SceneState::ShadowPass &shadow_pass = scene_state.shadow_passes[i];
-			RenderListParameters render_list_parameters(render_list[RENDER_LIST_SECONDARY].elements.ptr() + shadow_pass.element_from, render_list[RENDER_LIST_SECONDARY].element_info.ptr() + shadow_pass.element_from, shadow_pass.element_count, shadow_pass.flip_cull, shadow_pass.pass_mode, shadow_pass.rp_uniform_set, scene_shader.default_specialization, false, Vector2(), shadow_pass.lod_distance_multiplier, shadow_pass.screen_mesh_lod_threshold, 1, shadow_pass.element_from);
-			_render_list_with_draw_list(&render_list_parameters, shadow_pass.framebuffer, shadow_pass.clear_depth ? RD::DRAW_CLEAR_DEPTH : RD::DRAW_DEFAULT_ALL, Vector<Color>(), 0.0f, 0, shadow_pass.rect);
+
+			i = merge_end - 1;
+			continue;
 		}
 
-		i = batch_end;
+		SceneState::ShadowPass &shadow_pass = scene_state.shadow_passes[i];
+		RenderListParameters render_list_parameters(render_list[RENDER_LIST_SECONDARY].elements.ptr() + shadow_pass.element_from, render_list[RENDER_LIST_SECONDARY].element_info.ptr() + shadow_pass.element_from, shadow_pass.element_count, shadow_pass.flip_cull, shadow_pass.pass_mode, shadow_pass.rp_uniform_set, scene_shader.default_specialization, false, Vector2(), shadow_pass.lod_distance_multiplier, shadow_pass.screen_mesh_lod_threshold, 1, shadow_pass.element_from);
+		_render_list_with_draw_list(&render_list_parameters, shadow_pass.framebuffer, shadow_pass.clear_depth ? RD::DRAW_CLEAR_DEPTH : RD::DRAW_DEFAULT_ALL, Vector<Color>(), 0.0f, 0, shadow_pass.rect);
 	}
 
 	RD::get_singleton()->draw_command_end_label();
@@ -2499,8 +2476,7 @@ void RenderForwardMobile::_render_list_template(RenderingDevice::DrawListID p_dr
 	uint32_t prev_pipeline_hash = 0;
 
 	bool shadow_pass = (p_params->pass_mode == PASS_MODE_SHADOW) || (p_params->pass_mode == PASS_MODE_SHADOW_DP);
-	bool first_instance_eligible_pass = use_first_instance &&
-			p_pass_mode != PASS_MODE_DEPTH_MATERIAL;
+	bool first_instance_eligible_pass = batch_instance_draws && p_pass_mode != PASS_MODE_DEPTH_MATERIAL;
 	bool pc_set_for_current_pipeline = false;
 	SceneState::PushConstant prev_fi_push_constant = {};
 	size_t prev_fi_push_constant_size = 0;
@@ -2736,13 +2712,18 @@ void RenderForwardMobile::_render_list_template(RenderingDevice::DrawListID p_dr
 			}
 
 			uint32_t instance_count = surf->owner->instance_count > 1 ? surf->owner->instance_count : 1;
+			if (surf->flags & GeometryInstanceSurfaceDataCache::FLAG_USES_PARTICLE_TRAILS) {
+				instance_count /= surf->owner->trail_steps;
+			}
+
 			bool indirect = bool(surf->owner->base_flags & INSTANCE_DATA_FLAG_MULTIMESH_INDIRECT);
 
 			// Instance batching: merge consecutive same-state draws into one
 			// instanced draw to reduce per-draw IPC crossings on WebGPU.
 			// Works for shadow and opaque color passes (not transparent — order matters).
+			const bool single_instance = instance_count == 1 && !(surf->owner->base_flags & (INSTANCE_DATA_FLAG_MULTIMESH | INSTANCE_DATA_FLAG_PARTICLES));
 			uint32_t batch_count = 1;
-			if (batch_instance_draws && instance_count == 1 &&
+			if (batch_instance_draws && single_instance &&
 					!emulate_point_size && !indirect &&
 					!surf->owner->mesh_instance.is_valid() &&
 					p_pass_mode != PASS_MODE_COLOR_TRANSPARENT) {
@@ -2775,7 +2756,7 @@ void RenderForwardMobile::_render_list_template(RenderingDevice::DrawListID p_dr
 						if (next_surf->surface_shadow != mesh_surface) {
 							break;
 						}
-						if (next_surf->material_uniform_set_shadow != material_uniform_set) {
+						if (next_surf->shader_shadow != shader || next_surf->material_uniform_set_shadow != material_uniform_set) {
 							break;
 						}
 						bool next_double_sided = (next_surf->flags & GeometryInstanceSurfaceDataCache::FLAG_USES_DOUBLE_SIDED_SHADOWS) != 0;
@@ -2791,7 +2772,7 @@ void RenderForwardMobile::_render_list_template(RenderingDevice::DrawListID p_dr
 						if (next_surf->surface != mesh_surface) {
 							break;
 						}
-						if (next_surf->material_uniform_set != material_uniform_set) {
+						if (next_surf->shader != shader || next_surf->material_uniform_set != material_uniform_set) {
 							break;
 						}
 						// Same cull mode (ubershader push constant carries actual cull).
@@ -2815,6 +2796,10 @@ void RenderForwardMobile::_render_list_template(RenderingDevice::DrawListID p_dr
 								SceneShaderForwardMobile::shader_count_for(inst->spot_light_count)) {
 							break;
 						}
+						if (SceneShaderForwardMobile::shader_count_for(next_inst->area_light_count) !=
+								SceneShaderForwardMobile::shader_count_for(inst->area_light_count)) {
+							break;
+						}
 						if (SceneShaderForwardMobile::shader_count_for(next_inst->reflection_probe_count) !=
 								SceneShaderForwardMobile::shader_count_for(inst->reflection_probe_count)) {
 							break;
@@ -2836,10 +2821,7 @@ void RenderForwardMobile::_render_list_template(RenderingDevice::DrawListID p_dr
 			// and skip the per-draw push constant IPC when all OTHER fields match the
 			// previous draw. Shader formula: draw_call.instance_index + gl_InstanceIndex
 			// gives 0 + base_index = correct index.
-			bool can_use_first_instance = first_instance_eligible_pass &&
-					instance_count == 1 && !indirect &&
-					!(surf->owner->base_flags & (INSTANCE_DATA_FLAG_MULTIMESH | INSTANCE_DATA_FLAG_PARTICLES)) &&
-					batch_count == 1 && !emulate_point_size;
+			bool can_use_first_instance = first_instance_eligible_pass && single_instance && !indirect && batch_count == 1 && !emulate_point_size;
 
 			if (can_use_first_instance) {
 				// Build the push constant with base_index=0 for firstInstance path.
@@ -2874,9 +2856,6 @@ void RenderForwardMobile::_render_list_template(RenderingDevice::DrawListID p_dr
 					RD::get_singleton()->draw_list_draw(draw_list, index_array_rd.is_valid(), batch_count);
 					i += batch_count - 1; // Skip batched elements (loop increments i).
 				} else if (emulate_point_size) {
-					if (surf->flags & GeometryInstanceSurfaceDataCache::FLAG_USES_PARTICLE_TRAILS) {
-						instance_count /= surf->owner->trail_steps;
-					}
 					if (indirect) {
 						WARN_PRINT("Indirect draws are not supported when emulating point size.");
 					}
@@ -2884,9 +2863,6 @@ void RenderForwardMobile::_render_list_template(RenderingDevice::DrawListID p_dr
 				} else if (indirect) {
 					RD::get_singleton()->draw_list_draw_indirect(draw_list, index_array_rd.is_valid(), mesh_storage->_multimesh_get_command_buffer_rd_rid(surf->owner->data->base), surf->surface_index * sizeof(uint32_t) * mesh_storage->INDIRECT_MULTIMESH_COMMAND_STRIDE, 1, 0);
 				} else {
-					if (surf->flags & GeometryInstanceSurfaceDataCache::FLAG_USES_PARTICLE_TRAILS) {
-						instance_count /= surf->owner->trail_steps;
-					}
 					RD::get_singleton()->draw_list_draw(draw_list, index_array_rd.is_valid(), instance_count);
 				}
 			}
@@ -3758,10 +3734,12 @@ void RenderForwardMobile::_update_shader_quality_settings() {
 
 RenderForwardMobile::RenderForwardMobile() {
 	singleton = this;
-	batch_instance_draws = RD::get_singleton()->supports_batch_instance_draws();
-	use_first_instance = RD::get_singleton()->supports_first_instance_index();
+	const RD::DriverWorkarounds driver_workarounds = RD::get_singleton()->get_driver_workarounds();
+	batch_instance_draws = driver_workarounds.batch_instance_draws;
+	merge_shadow_passes = driver_workarounds.merge_shadow_passes;
+	no_input_attachments = driver_workarounds.no_input_attachments;
 
-	disable_ubershaders = RD::get_singleton()->get_driver_workarounds().disable_ubershaders;
+	disable_ubershaders = driver_workarounds.disable_ubershaders;
 	if (disable_ubershaders) {
 		print_verbose("Ubershaders: Disabled");
 	} else {

@@ -337,8 +337,7 @@ private:
 		RID uniform_set_3d;
 		RID uniform_set_mi;
 
-		uint32_t atlas_offset = 0; // Offset in vec4s into the atlas buffer
-		uint32_t atlas_alloc_size = 0; // Allocated size in floats in the atlas
+		uint32_t atlas_offset = 0; // In vec4s, the slot holds data.size() floats.
 
 		uint64_t version = 1;
 
@@ -351,16 +350,19 @@ private:
 
 	Skeleton *skeleton_dirty_list = nullptr;
 
-	// Skeleton atlas: single GPU buffer holding all bone data (WebGPU optimization)
+	// One bone buffer for all skeletons, see RD::DriverWorkarounds::skeleton_atlas.
+	struct SkeletonAtlasRange {
+		uint32_t offset = 0; // In floats.
+		uint32_t size = 0;
+	};
 	bool use_skeleton_atlas = false;
 	RID skeleton_atlas_buffer;
 	RID skeleton_atlas_uniform_set; // For compute skinning shader.
 	mutable RID skeleton_atlas_uniform_set_3d; // For scene draw shader (lazily created).
-	LocalVector<float> skeleton_atlas_data; // CPU mirror
+	LocalVector<float> skeleton_atlas_data; // CPU mirror, its size is the buffer capacity.
+	LocalVector<SkeletonAtlasRange> skeleton_atlas_free;
 	uint32_t skeleton_atlas_used = 0; // Floats used
-	uint32_t skeleton_atlas_capacity = 0; // Floats allocated
-	void _skeleton_atlas_ensure_capacity(uint32_t p_floats_needed);
-	void _skeleton_atlas_rebuild_uniform_set();
+	uint32_t _skeleton_atlas_alloc(uint32_t p_floats);
 
 	enum AttributeLocation {
 		ATTRIBUTE_LOCATION_PREV_VERTEX = 12,

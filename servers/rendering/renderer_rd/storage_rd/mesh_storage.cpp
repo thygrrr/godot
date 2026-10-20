@@ -186,8 +186,7 @@ MeshStorage::MeshStorage() {
 		}
 	}
 
-	// Enable skeleton atlas on drivers that benefit from batched uploads (WebGPU).
-	use_skeleton_atlas = RD::get_singleton()->supports_buffer_direct_write();
+	use_skeleton_atlas = RD::get_singleton()->get_driver_workarounds().skeleton_atlas;
 }
 
 MeshStorage::~MeshStorage() {
@@ -207,43 +206,58 @@ MeshStorage::~MeshStorage() {
 	singleton = nullptr;
 }
 
-void MeshStorage::_skeleton_atlas_ensure_capacity(uint32_t p_floats_needed) {
-	if (p_floats_needed <= skeleton_atlas_capacity) {
-		return;
-	}
-	// Grow to next power of two, minimum 64KB worth of floats.
-	uint32_t new_capacity = MAX(skeleton_atlas_capacity * 2, (uint32_t)(64 * 1024 / sizeof(float)));
-	while (new_capacity < p_floats_needed) {
-		new_capacity *= 2;
+uint32_t MeshStorage::_skeleton_atlas_alloc(uint32_t p_floats) {
+	// shortcut: first fit without coalescing, fragments if bone counts churn; merge neighbors if that shows up.
+	for (uint32_t i = 0; i < skeleton_atlas_free.size(); i++) {
+		SkeletonAtlasRange &range = skeleton_atlas_free[i];
+		if (range.size >= p_floats) {
+			const uint32_t offset = range.offset;
+			range.offset += p_floats;
+			range.size -= p_floats;
+			if (range.size == 0) {
+				skeleton_atlas_free.remove_at_unordered(i);
+			}
+			return offset;
+		}
 	}
 
+	const uint32_t offset = skeleton_atlas_used;
+	skeleton_atlas_used += p_floats;
+	if (skeleton_atlas_used <= skeleton_atlas_data.size()) {
+		return offset;
+	}
+
+	// Grow to the next power of two, at least 64 KiB.
+	uint32_t capacity = MAX(skeleton_atlas_data.size() * 2, uint32_t(64 * 1024 / sizeof(float)));
+	while (capacity < skeleton_atlas_used) {
+		capacity *= 2;
+	}
+	skeleton_atlas_data.resize_initialized(capacity);
+
+	// The CPU mirror holds every uploaded skeleton. Freeing the old buffer also frees the uniform sets using it.
 	if (skeleton_atlas_buffer.is_valid()) {
 		RD::get_singleton()->free_rid(skeleton_atlas_buffer);
 	}
-	skeleton_atlas_buffer = RD::get_singleton()->storage_buffer_create(new_capacity * sizeof(float));
-	skeleton_atlas_capacity = new_capacity;
-	skeleton_atlas_data.resize(new_capacity);
-	skeleton_atlas_uniform_set = RID(); // Invalidate.
-	skeleton_atlas_uniform_set_3d = RID(); // Invalidate draw-time set too.
-	_skeleton_atlas_rebuild_uniform_set(); // Rebuild immediately so it's always available.
-}
+	skeleton_atlas_buffer = RD::get_singleton()->storage_buffer_create(capacity * sizeof(float), skeleton_atlas_data.span().reinterpret<uint8_t>());
+	skeleton_atlas_uniform_set_3d = RID();
 
-void MeshStorage::_skeleton_atlas_rebuild_uniform_set() {
-	if (skeleton_atlas_uniform_set.is_valid()) {
-		return; // Still valid.
-	}
-	if (!skeleton_atlas_buffer.is_valid()) {
-		return;
-	}
 	Vector<RD::Uniform> uniforms;
-	{
-		RD::Uniform u;
-		u.binding = 0;
-		u.uniform_type = RD::UNIFORM_TYPE_STORAGE_BUFFER;
-		u.append_id(skeleton_atlas_buffer);
-		uniforms.push_back(u);
-	}
+	RD::Uniform u;
+	u.binding = 0;
+	u.uniform_type = RD::UNIFORM_TYPE_STORAGE_BUFFER;
+	u.append_id(skeleton_atlas_buffer);
+	uniforms.push_back(u);
 	skeleton_atlas_uniform_set = RD::get_singleton()->uniform_set_create(uniforms, skeleton_shader.version_shader[0], SkeletonShader::UNIFORM_SET_SKELETON);
+
+	// Geometry instances cache the 3D uniform set, make them fetch the new one.
+	for (const RID &rid : skeleton_owner.get_owned_list()) {
+		Skeleton *skeleton = skeleton_owner.get_or_null(rid);
+		if (skeleton) {
+			skeleton->dependency.changed_notify(Dependency::DEPENDENCY_CHANGED_SKELETON_DATA);
+		}
+	}
+
+	return offset;
 }
 
 bool MeshStorage::free(RID p_rid) {
@@ -2404,34 +2418,34 @@ void MeshStorage::skeleton_allocate_data(RID p_skeleton, int p_bones, bool p_2d_
 		skeleton->uniform_set_mi = RID();
 	}
 
-	if (skeleton->size) {
-		uint32_t float_count = skeleton->size * (skeleton->use_2d ? 8 : 12);
-		skeleton->data.resize(float_count);
-		memset(skeleton->data.ptr(), 0, float_count * sizeof(float));
-
-		if (use_skeleton_atlas) {
-			// Allocate a slot in the atlas (simple bump allocator).
-			// Atlas offset is in vec4 units (4 floats per vec4).
-			skeleton->atlas_offset = skeleton_atlas_used / 4;
-			skeleton->atlas_alloc_size = float_count;
-			skeleton_atlas_used += float_count;
-			_skeleton_atlas_ensure_capacity(skeleton_atlas_used);
-		} else {
-			skeleton->buffer = RD::get_singleton()->storage_buffer_create(float_count * sizeof(float));
-			{
-				Vector<RD::Uniform> uniforms;
-				{
-					RD::Uniform u;
-					u.binding = 0;
-					u.uniform_type = RD::UNIFORM_TYPE_STORAGE_BUFFER;
-					u.append_id(skeleton->buffer);
-					uniforms.push_back(u);
-				}
-				skeleton->uniform_set_mi = RD::get_singleton()->uniform_set_create(uniforms, skeleton_shader.version_shader[0], SkeletonShader::UNIFORM_SET_SKELETON);
-			}
+	if (use_skeleton_atlas) {
+		if (skeleton->data.size()) {
+			skeleton_atlas_free.push_back({ skeleton->atlas_offset * 4, skeleton->data.size() });
+			skeleton->data.clear();
 		}
+		if (skeleton->size) {
+			skeleton->data.resize_initialized(skeleton->size * (skeleton->use_2d ? 8 : 12));
+			skeleton->atlas_offset = _skeleton_atlas_alloc(skeleton->data.size()) / 4;
+			_skeleton_make_dirty(skeleton);
+		}
+	} else if (skeleton->size) {
+		skeleton->data.resize(skeleton->size * (skeleton->use_2d ? 8 : 12));
+		skeleton->buffer = RD::get_singleton()->storage_buffer_create(skeleton->data.size() * sizeof(float));
+		memset(skeleton->data.ptr(), 0, skeleton->data.size() * sizeof(float));
 
 		_skeleton_make_dirty(skeleton);
+
+		{
+			Vector<RD::Uniform> uniforms;
+			{
+				RD::Uniform u;
+				u.binding = 0;
+				u.uniform_type = RD::UNIFORM_TYPE_STORAGE_BUFFER;
+				u.append_id(skeleton->buffer);
+				uniforms.push_back(u);
+			}
+			skeleton->uniform_set_mi = RD::get_singleton()->uniform_set_create(uniforms, skeleton_shader.version_shader[0], SkeletonShader::UNIFORM_SET_SKELETON);
+		}
 	}
 
 	skeleton->dependency.changed_notify(Dependency::DEPENDENCY_CHANGED_SKELETON_DATA);
@@ -2546,66 +2560,41 @@ void MeshStorage::skeleton_set_base_transform_2d(RID p_skeleton, const Transform
 }
 
 void MeshStorage::_update_dirty_skeletons() {
-	if (!skeleton_dirty_list) {
-		return;
-	}
-
 	if (use_skeleton_atlas) {
-		// Atlas path: copy all dirty skeleton data into the atlas CPU mirror,
-		// then upload the entire atlas in ONE buffer_update_direct call.
-		// This reduces WASM→GPU bridge crossings from N (one per skeleton) to 1.
-
-		uint32_t atlas_dirty_min = UINT32_MAX;
-		uint32_t atlas_dirty_max = 0;
-
-		Skeleton *sk = skeleton_dirty_list;
-		while (sk) {
-			if (sk->size) {
-				uint32_t float_offset = sk->atlas_offset * 4; // atlas_offset is in vec4 units
-				uint32_t float_count = sk->data.size();
-				memcpy(skeleton_atlas_data.ptr() + float_offset, sk->data.ptr(), float_count * sizeof(float));
-
-				atlas_dirty_min = MIN(atlas_dirty_min, float_offset);
-				atlas_dirty_max = MAX(atlas_dirty_max, float_offset + float_count);
-			}
-
-			sk->dependency.changed_notify(Dependency::DEPENDENCY_CHANGED_SKELETON_BONES);
-			sk->version++;
-			sk->dirty = false;
-
-			Skeleton *next = sk->dirty_list;
-			sk->dirty_list = nullptr;
-			sk = next;
-		}
-
-		skeleton_dirty_list = nullptr;
-
-		// Single GPU upload covering the dirty range.
-		if (atlas_dirty_min < atlas_dirty_max) {
-			uint32_t byte_offset = atlas_dirty_min * sizeof(float);
-			uint32_t byte_size = (atlas_dirty_max - atlas_dirty_min) * sizeof(float);
-			RD::get_singleton()->buffer_update_direct(skeleton_atlas_buffer, byte_offset, byte_size, skeleton_atlas_data.ptr() + atlas_dirty_min);
-			_skeleton_atlas_rebuild_uniform_set();
-		}
-	} else {
-		// Legacy per-skeleton path.
-		while (skeleton_dirty_list) {
-			Skeleton *skeleton = skeleton_dirty_list;
-
+		// Copy dirty skeletons into the CPU mirror, then upload their whole range with one direct write.
+		uint32_t dirty_from = UINT32_MAX;
+		uint32_t dirty_to = 0;
+		for (Skeleton *skeleton = skeleton_dirty_list; skeleton; skeleton = skeleton->dirty_list) {
 			if (skeleton->size) {
-				RD::get_singleton()->buffer_update(skeleton->buffer, 0, skeleton->data.size() * sizeof(float), skeleton->data.ptr());
+				const uint32_t offset = skeleton->atlas_offset * 4;
+				memcpy(skeleton_atlas_data.ptr() + offset, skeleton->data.ptr(), skeleton->data.size() * sizeof(float));
+				dirty_from = MIN(dirty_from, offset);
+				dirty_to = MAX(dirty_to, offset + skeleton->data.size());
 			}
+		}
+		if (dirty_from < dirty_to) {
+			RD::get_singleton()->buffer_update_direct(skeleton_atlas_buffer, dirty_from * sizeof(float), (dirty_to - dirty_from) * sizeof(float), skeleton_atlas_data.ptr() + dirty_from);
+		}
+	}
 
-			skeleton_dirty_list = skeleton->dirty_list;
+	while (skeleton_dirty_list) {
+		Skeleton *skeleton = skeleton_dirty_list;
 
-			skeleton->dependency.changed_notify(Dependency::DEPENDENCY_CHANGED_SKELETON_BONES);
-			skeleton->version++;
-			skeleton->dirty = false;
-			skeleton->dirty_list = nullptr;
+		if (skeleton->size && !use_skeleton_atlas) {
+			RD::get_singleton()->buffer_update(skeleton->buffer, 0, skeleton->data.size() * sizeof(float), skeleton->data.ptr());
 		}
 
-		skeleton_dirty_list = nullptr;
+		skeleton_dirty_list = skeleton->dirty_list;
+
+		skeleton->dependency.changed_notify(Dependency::DEPENDENCY_CHANGED_SKELETON_BONES);
+
+		skeleton->version++;
+
+		skeleton->dirty = false;
+		skeleton->dirty_list = nullptr;
 	}
+
+	skeleton_dirty_list = nullptr;
 }
 
 void MeshStorage::skeleton_update_dependency(RID p_skeleton, DependencyTracker *p_instance) {

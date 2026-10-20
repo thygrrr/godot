@@ -158,10 +158,10 @@ private:
 		}
 	};
 
-	/* Draw call instancing */
-
-	bool batch_instance_draws = false; // Cached API_TRAIT_BATCH_INSTANCE_DRAWS.
-	bool use_first_instance = false; // Cached API_TRAIT_FIRST_INSTANCE_INDEX.
+	// Cached RD::DriverWorkarounds.
+	bool batch_instance_draws = false;
+	bool merge_shadow_passes = false;
+	bool no_input_attachments = false;
 
 	/* Render shadows */
 

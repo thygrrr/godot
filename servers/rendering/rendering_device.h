@@ -265,10 +265,6 @@ public:
 	 */
 	Error buffer_update(RID p_buffer, uint32_t p_offset, uint32_t p_size, const void *p_data, bool p_skip_check = false);
 	void buffer_update_direct(RID p_buffer, uint32_t p_offset, uint32_t p_size, const void *p_data);
-	bool supports_buffer_direct_write();
-	bool force_omni_dual_paraboloid_shadows();
-	bool supports_batch_instance_draws();
-	bool supports_first_instance_index();
 	Error buffer_clear(RID p_buffer, uint32_t p_offset, uint32_t p_size);
 	Vector<uint8_t> buffer_get_data(RID p_buffer, uint32_t p_offset = 0, uint32_t p_size = 0); // This causes stall, only use to retrieve large buffers for saving.
 	Error buffer_get_data_async(RID p_buffer, const Callable &p_callback, uint32_t p_offset = 0, uint32_t p_size = 0);
@@ -422,7 +418,7 @@ public:
 	uint32_t _texture_layer_count(Texture *p_texture) const;
 	uint32_t _texture_alignment(Texture *p_texture) const;
 	Error _texture_initialize(RID p_texture, uint32_t p_layer, const Vector<uint8_t> &p_data, RDD::TextureLayout p_dst_layout, bool p_immediate_flush);
-	Error _texture_initialize_layered(RID p_texture, const Vector<Vector<uint8_t>> &p_layers, RDD::TextureLayout p_dst_layout, bool p_immediate_flush);
+	Error _texture_initialize_layered(RID p_texture, const Vector<Vector<uint8_t>> &p_layers, RDD::TextureLayout p_dst_layout);
 	void _texture_check_shared_fallback(Texture *p_texture);
 	void _texture_update_shared_fallback(RID p_texture_rid, Texture *p_texture, bool p_for_writing);
 	void _texture_free_shared_fallback(Texture *p_texture);
