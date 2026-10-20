@@ -187,6 +187,7 @@ Vector<uint8_t> run_pipeline(const Vector<uint8_t> &p_bytes) {
 	Vector<uint8_t> code = freeze_and_inline(p_bytes);
 	code = rewrite_copy_logical(code);
 	code = rewrite_terminate_invocation(code);
+	code = rewrite_float_classification(code);
 	// Flattening first lets the split treat arrays of combined samplers as plain combined samplers.
 	code = flatten_binding_arrays(code);
 	code = split_combined_samplers(code);
@@ -231,6 +232,98 @@ Vector<uint8_t> rewrite_copy_logical(const Vector<uint8_t> &p_bytes) {
 
 Vector<uint8_t> rewrite_terminate_invocation(const Vector<uint8_t> &p_bytes) {
 	return replace_opcode(p_bytes, spv::OpTerminateInvocation, spv::OpKill);
+}
+
+Vector<uint8_t> rewrite_float_classification(const Vector<uint8_t> &p_bytes) {
+	ERR_FAIL_COND_V_MSG(!is_well_formed(p_bytes), p_bytes, MALFORMED_SPIRV);
+	HashMap<uint32_t, uint32_t> float_widths, vector_elements, vector_lengths, value_types;
+	bool needed = false;
+	uint32_t uint_type = 0;
+	for (const Inst inst : SpirvView(p_bytes)) {
+		if (inst.op() == spv::OpTypeFloat) {
+			float_widths[inst[1]] = inst[2];
+		} else if (inst.op() == spv::OpTypeVector) {
+			vector_elements[inst[1]] = inst[2];
+			vector_lengths[inst[1]] = inst[3];
+		} else if (inst.op() == spv::OpTypeInt && inst[2] == 32 && inst[3] == 0) {
+			uint_type = inst[1];
+		}
+		needed |= inst.op() == spv::OpIsNan || inst.op() == spv::OpIsInf;
+	}
+	if (!needed) {
+		return p_bytes;
+	}
+	for (const Inst inst : SpirvView(p_bytes)) {
+		if (inst.count() >= 3 && (float_widths.has(inst[1]) || vector_elements.has(inst[1]))) {
+			value_types[inst[2]] = inst[1];
+		}
+	}
+	uint32_t next_id = read_word(p_bytes.ptr(), 3);
+	Vector<uint8_t> declarations;
+	if (!uint_type) {
+		uint_type = next_id++;
+		push_inst(declarations, spv::OpTypeInt, { uint_type, 32, 0 });
+	}
+	const uint32_t abs_mask = next_id++, infinity = next_id++;
+	push_inst(declarations, spv::OpConstant, { uint_type, abs_mask, 0x7fffffffu });
+	push_inst(declarations, spv::OpConstant, { uint_type, infinity, 0x7f800000u });
+	HashMap<uint32_t, uint32_t> uint_vectors, masks, infinities;
+	uint_vectors[1] = uint_type;
+	masks[1] = abs_mask;
+	infinities[1] = infinity;
+	for (const KeyValue<uint32_t, uint32_t> &element : vector_elements) {
+		if (element.value == uint_type) {
+			uint_vectors[vector_lengths[element.key]] = element.key;
+		}
+	}
+	Vector<uint8_t> body;
+	bool in_function = false;
+	for (const Inst inst : SpirvView(p_bytes)) {
+		in_function |= inst.op() == spv::OpFunction;
+		if (!in_function) {
+			continue;
+		}
+		if (inst.op() != spv::OpIsNan && inst.op() != spv::OpIsInf) {
+			append_inst(body, inst);
+			continue;
+		}
+		const uint32_t type = value_types[inst[3]];
+		const uint32_t count = vector_lengths.has(type) ? vector_lengths[type] : 1;
+		const uint32_t scalar = vector_elements.has(type) ? vector_elements[type] : type;
+		ERR_FAIL_COND_V_MSG(float_widths[scalar] != 32, p_bytes, "WebGPU float classification requires 32-bit floats.");
+		if (!uint_vectors.has(count)) {
+			uint_vectors[count] = next_id++;
+			push_inst(declarations, spv::OpTypeVector, { uint_vectors[count], uint_type, count });
+		}
+		if (!masks.has(count)) {
+			for (uint32_t constant : { abs_mask, infinity }) {
+				const uint32_t id = next_id++;
+				(constant == abs_mask ? masks : infinities)[count] = id;
+				push_word(declarations, ((count + 3) << 16) | spv::OpConstantComposite);
+				push_word(declarations, uint_vectors[count]);
+				push_word(declarations, id);
+				for (uint32_t component = 0; component < count; component++) {
+					push_word(declarations, constant);
+				}
+			}
+		}
+		const uint32_t bits = next_id++, magnitude = next_id++;
+		push_inst(body, spv::OpBitcast, { uint_vectors[count], bits, inst[3] });
+		push_inst(body, spv::OpBitwiseAnd, { uint_vectors[count], magnitude, bits, masks[count] });
+		push_inst(body, inst.op() == spv::OpIsNan ? spv::OpUGreaterThan : spv::OpIEqual, { inst[1], inst[2], magnitude, infinities[count] });
+	}
+	Vector<uint8_t> out;
+	append_bytes(out, p_bytes.ptr(), 0, 20);
+	write_word(out.ptrw(), 3, next_id);
+	for (const Inst inst : SpirvView(p_bytes)) {
+		if (inst.op() == spv::OpFunction) {
+			break;
+		}
+		append_inst(out, inst);
+	}
+	append_bytes(out, declarations.ptr(), 0, declarations.size());
+	append_bytes(out, body.ptr(), 0, body.size());
+	return out;
 }
 
 Vector<uint8_t> remap_bindings(const Vector<uint8_t> &p_bytes, const BindingMap &p_bindings) {

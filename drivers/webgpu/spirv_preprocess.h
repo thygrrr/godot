@@ -57,6 +57,9 @@ Vector<uint8_t> rewrite_copy_logical(const Vector<uint8_t> &p_bytes);
 // Rewrite OpTerminateInvocation to OpKill, which Tint translates to discard.
 Vector<uint8_t> rewrite_terminate_invocation(const Vector<uint8_t> &p_bytes);
 
+// Classify runtime float bits without OpIsNan/OpIsInf, which Tint's SPIR-V reader cannot import.
+Vector<uint8_t> rewrite_float_classification(const Vector<uint8_t> &p_bytes);
+
 // Reserve binding ranges shared by all stages before scalarizing their descriptor arrays.
 using BindingMap = HashMap<uint64_t, uint32_t>; // (set << 32 | original binding) -> reserved binding.
 Vector<uint8_t> remap_bindings(const Vector<uint8_t> &p_bytes, const BindingMap &p_bindings);
