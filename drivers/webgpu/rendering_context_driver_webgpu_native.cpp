@@ -101,6 +101,10 @@ Error RenderingContextDriverWebGPU::initialize_native() {
 			result.error = webgpu_message(p_message);
 		}
 	};
+	// Dawn picks one adapter by power preference or LUID, so this context reports a single device.
+	if (Engine::get_singleton()->get_gpu_index() >= 0) {
+		WARN_PRINT("WebGPU: --gpu-index is ignored; native Dawn selects one adapter automatically or by --gpu-luid on Windows.");
+	}
 	uint64_t requested_luid = Engine::get_singleton()->get_gpu_index() < 0 ? Engine::get_singleton()->get_gpu_luid() : 0;
 	WGPUFutureWaitInfo adapter_wait = { godot_webgpu_request_adapter(instance, &options, requested_luid, adapter_callback), false };
 	ERR_FAIL_COND_V(wgpuInstanceWaitAny(instance, 1, &adapter_wait, UINT64_MAX) != WGPUWaitStatus_Success, ERR_CANT_CREATE);
@@ -115,6 +119,7 @@ Error RenderingContextDriverWebGPU::initialize_native() {
 	WGPULimits limits = WGPU_LIMITS_INIT;
 	ERR_FAIL_COND_V(wgpuAdapterGetLimits(adapter, &limits) != WGPUStatus_Success, ERR_CANT_CREATE);
 	Vector<WGPUFeatureName> features;
+	// Keep in sync with requestWebGPUDevice in platform/web/js/engine/engine.js (the last feature is Dawn-only).
 	const WGPUFeatureName optional_features[] = {
 		WGPUFeatureName_Float32Filterable,
 		WGPUFeatureName_Float32Blendable,

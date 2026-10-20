@@ -30,7 +30,7 @@ uv run --no-project python drivers/webgpu/dependencies.py --verify
 
 ## Logical Groups
 
-**Group A — UBO Layout (0001)**: Godot uses C++ struct packing for uniform buffers,
+**Group A — UBO Layout (0001, 0007)**: Godot uses C++ struct packing for uniform buffers,
 not std140/std430. Always necessary.
 
 **Group B — Specialization Constants (0002, 0003, 0005)**: Godot's specialization
@@ -43,8 +43,9 @@ non-constant values. Tint strips point_size during lowering but validates the st
 value first. This patch relaxes that validation. Could potentially be moved to
 `spirv_preprocess.cpp` or proposed upstream.
 
-**Group D — Vendoring (0006)**: Replaces Abseil dependency with C++17 `std::from_chars`.
-Always necessary when vendoring without Abseil.
+**Group D — Vendoring (0006, 0008, 0009)**: Replaces the Abseil dependency with C++17
+`std::from_chars`, with a locale-independent fallback where libc++ lacks the floating-point
+overloads (Emscripten 3.x, macOS before 26). Always necessary when vendoring without Abseil.
 
 ## Upstream Source
 

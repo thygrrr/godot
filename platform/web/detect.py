@@ -62,6 +62,7 @@ def get_opts():
             False,
         ),
         BoolVariable("wasm_simd", "Use WebAssembly SIMD to improve CPU performance", True),
+        ("webgpu_port", "Emdawnwebgpu port (auto uses the pinned version) or local .py path", "auto"),
     ]
 
 
@@ -143,6 +144,7 @@ def configure(env: "SConsEnvironment"):
     while emcc_path.is_symlink():
         # For some reason, mypy trips on `Path.readlink` not being defined, somehow.
         emcc_path = emcc_path.readlink()  # type: ignore[attr-defined]
+    # Follow EM_CACHE: another cache's sysroot is not a system path, so its old webgpu.h would shadow the port's.
     emscripten_cache_path = Path(os.environ.get("EM_CACHE", str(emcc_path.parent / "cache")))
     emscripten_include_path = emscripten_cache_path.joinpath("sysroot", "include")
     env.Append(CPPPATH=[emscripten_include_path])
@@ -281,7 +283,9 @@ def configure(env: "SConsEnvironment"):
         if port == "auto":
             port = env.File("#thirdparty/emdawnwebgpu/emdawnwebgpu.port.py").abspath.replace("\\", "/")
         if cc_semver < (4, 0, 10) and port == "emdawnwebgpu":
-            print_error("WebGPU on Emscripten < 4.0.10 requires webgpu_port=<local emdawnwebgpu.port.py>; keep the .NET Emscripten version pinned.")
+            print_error(
+                "WebGPU on Emscripten < 4.0.10 requires webgpu_port=<local emdawnwebgpu.port.py>; keep the .NET Emscripten version pinned."
+            )
             sys.exit(255)
         env.Append(CCFLAGS=["--use-port=" + port])
         env.Append(LINKFLAGS=["--use-port=" + port])
@@ -372,11 +376,6 @@ def configure(env: "SConsEnvironment"):
     # when using WebAssembly (in comparison to asm.js) and works well for
     # us since we don't know requirements at compile-time.
     env.Append(LINKFLAGS=["-sALLOW_MEMORY_GROWTH=1"])
-
-    # Ensure malloc returns NULL on failure instead of aborting. Emscripten
-    # sets this automatically when ALLOW_MEMORY_GROWTH=1, but being explicit
-    # prevents regressions if the default ever changes and documents intent.
-    env.Append(LINKFLAGS=["-sABORTING_MALLOC=0"])
 
     # Do not call main immediately when the support code is ready.
     env.Append(LINKFLAGS=["-sINVOKE_RUN=0"])

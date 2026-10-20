@@ -199,10 +199,9 @@ opts.Add(BoolVariable("vulkan", "Enable the Vulkan rendering driver", True))
 opts.Add(BoolVariable("opengl3", "Enable the OpenGL/GLES3 rendering driver", True))
 opts.Add(BoolVariable("d3d12", "Enable the Direct3D 12 rendering driver on supported platforms", False))
 opts.Add(BoolVariable("metal", "Enable the Metal rendering driver on supported platforms (Apple arm64 only)", False))
-opts.Add(("webgpu_port", "Emdawnwebgpu port (auto uses the pinned version) or local .py path", "auto"))
+opts.Add(BoolVariable("webgpu", "Enable the WebGPU rendering driver on supported platforms", False))
 opts.Add(("webgpu_native_path", "Installed native Dawn C-API boundary SDK", ""))
 opts.Add(BoolVariable("webgpu_precompile", "Precompile WebGPU shaders with host Tint and glslang", sys.platform != "win32" and ARGUMENTS.get("platform") == "web"))
-opts.Add(BoolVariable("webgpu", "Enable the WebGPU rendering driver on supported platforms", False))
 opts.Add(BoolVariable("use_volk", "Use the volk library to load the Vulkan loader dynamically", True))
 opts.Add(BoolVariable("accesskit", "Enable the AccessKit driver for screen reader support", True))
 opts.Add(BoolVariable("angle", "Enable the ANGLE rendering driver for OpenGL ES 3.0 on supported platforms", True))
@@ -705,8 +704,11 @@ if env["scu_build"]:
 # Must happen after the flags' definition, as configure is when most flags
 # are actually handled to change compile options, etc.
 if env["webgpu"]:
+    if "webgpu" not in env.get("supported", []):
+        print_error("Target platform '{}' does not support the WebGPU rendering driver".format(env["platform"]))
+        Exit(255)
     _helper_module("webgpu_dependencies", "drivers/webgpu/dependencies.py")
-    sys.modules["webgpu_dependencies"].prepare()
+    sys.modules["webgpu_dependencies"].prepare(platform=env["platform"])
 
 detect.configure(env)
 

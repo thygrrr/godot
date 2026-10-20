@@ -1,4 +1,5 @@
 import importlib.util
+import os
 import sys
 import tempfile
 import types
@@ -64,11 +65,28 @@ class NativeConfigTests(unittest.TestCase):
                     file.touch()
                 env = FakeEnvironment(webgpu=True, platform=platform, webgpu_native_path=directory)
                 self.module.configure_native_webgpu(env)
+                self.assertEqual(env["webgpu_native_path"], str(root))
                 self.assertNotIn("LIBS", env)
                 self.assertEqual(env["webgpu_native_runtimes"], [str(root / runtime)])
                 self.assertIn("RD_ENABLED", env["CPPDEFINES"])
                 self.assertIn("WEBGPU_ENABLED", env["CPPDEFINES"])
                 self.assertNotIn("LINKFLAGS", env)
+
+    def test_relative_sdk_path_is_resolved_from_the_build_directory(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory).resolve()
+            for name in ("sdk/include/dawn/webgpu.h", "sdk/lib/libgodot_webgpu_dawn.so"):
+                file = root / name
+                file.parent.mkdir(parents=True, exist_ok=True)
+                file.touch()
+            previous = os.getcwd()
+            os.chdir(root)
+            try:
+                env = FakeEnvironment(webgpu=True, platform="linuxbsd", webgpu_native_path="sdk")
+                self.module.configure_native_webgpu(env)
+            finally:
+                os.chdir(previous)
+            self.assertEqual(env["webgpu_native_path"], str(root / "sdk"))
 
     def test_windows_compiler_sidecars_are_staged_when_supplied(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -7,9 +7,10 @@ are ignored by Git. Local compatibility patches remain in `thirdparty/*/patches`
 Native Dawn already uses the separately pinned SDK described in
 [`native/README.md`](native/README.md).
 
-SCons prepares the sources when `webgpu=yes`, before configuring the platform.
-The host Tint CLI prepares them before compiling. Builds with WebGPU disabled
-require no dependency download. Preparation can also run explicitly from this
+SCons prepares the sources when `webgpu=yes`, before configuring the platform,
+and only those the target platform uses (Emdawnwebgpu is web-only). The host Tint
+CLI prepares them before compiling. Builds with WebGPU disabled require no
+dependency download. Preparation can also run explicitly from this
 Godot checkout:
 
 ```text
@@ -26,13 +27,15 @@ tools; locked file counts catch accidental changes to the imported subset.
 
 `thirdparty/.webgpu-cache` caches archives by digest. Set `WEBGPU_DEPS_CACHE` or
 pass `--cache <directory>` to share a cache between worktrees or prepopulate a
-CI machine. Once the four archives have been cached, an offline checkout can use:
+CI machine. Once the archives have been cached, set `WEBGPU_DEPS_OFFLINE=1` for
+SCons, or use:
 
 ```text
 uv run --no-project python drivers/webgpu/dependencies.py --offline --cache <directory>
 ```
 
-Prepared checkouts build without network access. `--verify` checks fingerprints
+Prepared checkouts build without network access. Prepared files are replaced
+atomically, so concurrent builds of one checkout never read partial sources. `--verify` checks fingerprints
 and every prepared file's hash without downloading or changing files. Normal
 preparation preserves timestamps for unchanged sources and refuses to replace
 locally modified files recorded by an earlier preparation. Save changes as patch

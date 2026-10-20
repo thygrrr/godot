@@ -52,7 +52,7 @@ env_tint.disable_warnings()
 
 # Tint requires C++20.
 env_tint["CXXFLAGS"] = [flag for flag in env_tint["CXXFLAGS"] if not str(flag).startswith(("/std:", "-std="))]
-if env_tint.get("is_msvc", False) or env.msvc:
+if env.msvc:
     env_tint.Append(CXXFLAGS=["/std:c++20", "/Zc:preprocessor"])
 else:
     env_tint.Append(CXXFLAGS=["-std=c++20"])
@@ -123,7 +123,10 @@ if env["platform"] != "web":
         env.Run(native_loader.build_loader),
     )
     env.Depends(webgpu_sources, dawn_loader)
-    env.Depends(dawn_loader, env.Value(env["platform"]))
+    env.Depends(dawn_loader, env.Value(env["platform"] + ":" + env["library_type"]))
+    # Stage the isolated Dawn runtime and its sidecars beside the engine binary.
+    for dawn_runtime in env["webgpu_native_runtimes"]:
+        env.Command("#bin/" + env.File(dawn_runtime).name, dawn_runtime, Copy("$TARGET", "$SOURCE"))
 
 # Add thirdparty objects to the driver.
 env.drivers_sources += spirv_tools_obj

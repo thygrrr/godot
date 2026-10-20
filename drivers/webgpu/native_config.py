@@ -22,7 +22,7 @@ def configure_native_webgpu(env):
         env.Exit(255)
     env.AppendUnique(CPPDEFINES=["WEBGPU_ENABLED", "RD_ENABLED"])
     env.Prepend(CPPPATH=[str(root / "include")])
-    env["webgpu_native_runtime"] = str(runtime)
+    env["webgpu_native_path"] = str(root)  # SCsub resolves relative paths from its own directory.
     env["webgpu_native_runtimes"] = [str(runtime)]
     if env["platform"] == "windows":
         for name in ("dxcompiler.dll", "dxil.dll"):

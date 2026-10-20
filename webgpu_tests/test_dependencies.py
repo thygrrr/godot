@@ -1,6 +1,7 @@
 import hashlib
 import importlib.util
 import json
+import os
 import tempfile
 import unittest
 import zipfile
@@ -97,6 +98,20 @@ class DependencyTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "corrupt cached"):
             self.prepare()
         self.assertFalse(self.source.exists())
+
+    def test_offline_environment_blocks_downloads(self):
+        (self.cache / (self.digest + ".zip")).unlink()
+        with patch.dict(os.environ, {"WEBGPU_DEPS_OFFLINE": "1"}):
+            with self.assertRaisesRegex(RuntimeError, "Missing or corrupt cached"):
+                dependencies.prepare(self.root, self.cache)
+
+    def test_platform_prepares_only_the_dependencies_it_uses(self):
+        self.entry["platforms"] = ["web"]
+        (self.root / "drivers/webgpu/dependencies.json").write_text(json.dumps({"tint": self.entry}), encoding="utf-8")
+        self.prepare(platform="windows")
+        self.assertFalse(self.source.exists())
+        self.prepare(platform="web")
+        self.assertEqual(self.source.read_text(), "upstream\n")
 
     def test_removed_locked_files_do_not_linger_in_incremental_checkouts(self):
         self.prepare()

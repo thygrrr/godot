@@ -53,6 +53,16 @@ def download(spec, cache, offline):
     return archive
 
 
+def write_atomic(path, data):
+    """Replace a file in one step so concurrent builds never read a partial copy."""
+    with tempfile.NamedTemporaryFile(dir=path.parent, suffix=".tmp", delete=False) as partial:
+        partial.write(data)
+    try:
+        os.replace(partial.name, path)
+    finally:
+        Path(partial.name).unlink(missing_ok=True)
+
+
 def extract(archive, destination, files=(), prefixes=(), selection=None, normalize=True):
     """Copy regular files only, stripping the archive's single top directory."""
     wanted = set(files)
@@ -149,10 +159,13 @@ def generate_spirv_tables(stage, archives, specs):
     )
 
 
-def prepare(root=ROOT, cache=None, offline=False, verify=False):
+def prepare(root=ROOT, cache=None, offline=False, verify=False, platform=None):
     root = Path(root).resolve()
     specs = json.loads((root / "drivers/webgpu/dependencies.json").read_text(encoding="utf-8"))
+    if platform:
+        specs = {name: spec for name, spec in specs.items() if platform in spec.get("platforms", [platform])}
     cache = Path(cache or os.environ.get("WEBGPU_DEPS_CACHE", root / "thirdparty/.webgpu-cache")).resolve()
+    offline = offline or os.environ.get("WEBGPU_DEPS_OFFLINE", "") not in ("", "0")
     pending = []
     fingerprints = {}
     states = {}
@@ -220,7 +233,7 @@ def prepare(root=ROOT, cache=None, offline=False, verify=False):
                 if obsolete.is_file():
                     if digest(obsolete.read_bytes().replace(b"\r\n", b"\n")) != previous:
                         raise ValueError(f"Locally modified WebGPU dependency: {obsolete}; preserve changes first")
-                    obsolete.unlink()
+                    obsolete.unlink(missing_ok=True)
             for file in selected_files[name]:
                 data = (stage / "thirdparty" / name / file).read_bytes().replace(b"\r\n", b"\n")
                 output = root / "thirdparty" / name / safe_path(file)
@@ -230,11 +243,11 @@ def prepare(root=ROOT, cache=None, offline=False, verify=False):
                 if existing is not None and previous and digest(existing) != previous and existing != data:
                     raise ValueError(f"Locally modified WebGPU dependency: {output}; preserve changes as a patch first")
                 if existing != data:
-                    output.write_bytes(data)
+                    write_atomic(output, data)
                 hashes[file] = digest(data)
             stamp = root / "thirdparty" / name / ".webgpu-source.json"
-            stamp.write_text(
-                json.dumps({"fingerprint": fingerprints[name], "files": hashes}, indent=2) + "\n", encoding="utf-8"
+            write_atomic(
+                stamp, (json.dumps({"fingerprint": fingerprints[name], "files": hashes}, indent=2) + "\n").encode()
             )
             print(f"Prepared WebGPU dependency: {name} ({specs[name]['revision']})", flush=True)
 
@@ -242,7 +255,7 @@ def prepare(root=ROOT, cache=None, offline=False, verify=False):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--cache", type=Path, help="Archive cache (or WEBGPU_DEPS_CACHE)")
-    parser.add_argument("--offline", action="store_true", help="Use cached archives only")
+    parser.add_argument("--offline", action="store_true", help="Use cached archives only (or WEBGPU_DEPS_OFFLINE=1)")
     parser.add_argument("--verify", action="store_true", help="Check prepared files without writing or downloading")
     args = parser.parse_args()
     prepare(cache=args.cache, offline=args.offline, verify=args.verify)

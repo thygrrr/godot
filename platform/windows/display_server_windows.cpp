@@ -8072,7 +8072,7 @@ DisplayServerWindows::DisplayServerWindows(const String &p_rendering_driver, Dis
 	fallback_to_vulkan = true; // Always enable fallback if engine was built w/o other driver support.
 #endif
 
-	String rendering_drivers[3];
+	String rendering_drivers[2];
 	uint32_t rendering_driver_count = 0;
 
 	if (rendering_driver == "webgpu") {
@@ -8097,6 +8097,7 @@ DisplayServerWindows::DisplayServerWindows(const String &p_rendering_driver, Dis
 #ifdef WEBGPU_ENABLED
 		if (tested_rendering_driver == "webgpu") {
 			rendering_context = memnew(RenderingContextDriverWebGPU);
+			tested_drivers.set_flag(DRIVER_ID_RD_WEBGPU);
 		}
 #endif
 
@@ -8461,13 +8462,16 @@ DisplayServer *DisplayServerWindows::create_func(const String &p_rendering_drive
 	if (r_error != OK) {
 		if (tested_drivers == 0) {
 			OS::get_singleton()->alert("Failed to register the window class.", "Unable to initialize DisplayServer");
-		} else if (tested_drivers.has_flag(DRIVER_ID_RD_VULKAN) || tested_drivers.has_flag(DRIVER_ID_RD_D3D12)) {
+		} else if (tested_drivers.has_flag(DRIVER_ID_RD_VULKAN) || tested_drivers.has_flag(DRIVER_ID_RD_D3D12) || tested_drivers.has_flag(DRIVER_ID_RD_WEBGPU)) {
 			Vector<String> drivers;
 			if (tested_drivers.has_flag(DRIVER_ID_RD_VULKAN)) {
 				drivers.push_back("Vulkan");
 			}
 			if (tested_drivers.has_flag(DRIVER_ID_RD_D3D12)) {
 				drivers.push_back("Direct3D 12");
+			}
+			if (tested_drivers.has_flag(DRIVER_ID_RD_WEBGPU)) {
+				drivers.push_back("WebGPU");
 			}
 			String executable_name = OS::get_singleton()->get_executable_path().get_file();
 			OS::get_singleton()->alert(

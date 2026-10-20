@@ -98,6 +98,9 @@
     "revision": "v20251002.162335",
     "url": "https://github.com/google/dawn/releases/download/v20251002.162335/emdawnwebgpu_pkg-v20251002.162335.zip",
     "sha256": "5c8c3f0d1f115ad476068dbd65a85347103717138bc686ae08de9f98fcc93d9a",
+    "platforms": [
+      "web"
+    ],
     "files": [
       "README.md",
       "VERSION.txt",

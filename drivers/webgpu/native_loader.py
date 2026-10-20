@@ -4,7 +4,7 @@ import re
 from pathlib import Path
 
 
-def generate_loader(header, helpers, platform="macos"):
+def generate_loader(header, helpers, platform, shared_library=False):
     windows = platform == "windows"
     declarations = re.findall(r"^WGPU_EXPORT (.+?) (wgpu\w+)\((.*?)\) WGPU_FUNCTION_ATTRIBUTE;", header, re.MULTILINE)
     if not declarations:
@@ -26,7 +26,11 @@ def generate_loader(header, helpers, platform="macos"):
             f"static decltype(&{name}) dawn_{name} = nullptr;",
             f'extern "C" {result} {name}({parameters}) {{ return dawn_{name}({", ".join(arguments)}); }}',
         ]
+    # A partial load must not leave pointers into the library it closes.
+    lines.append("static void reset_native_dawn() {")
+    lines += [f"    dawn_{name} = nullptr;" for _, name, _ in declarations]
     lines += [
+        "}",
         "static bool load_native_dawn() {",
         "    if (dawn_library) { return true; }",
     ]
@@ -46,10 +50,18 @@ def generate_loader(header, helpers, platform="macos"):
         if platform == "macos":
             lines.append("    if (__builtin_available(macOS 13.0, *)) {} else { return false; }")
         runtime = "libgodot_webgpu_dawn.dylib" if platform == "macos" else "libgodot_webgpu_dawn.so"
+        if shared_library:
+            # libgodot loads Dawn from its own directory; dladdr reports the path it was loaded from.
+            lines += [
+                "    Dl_info module = {};",
+                "    if (!dladdr(reinterpret_cast<const void *>(&load_native_dawn), &module) || !module.dli_fname) { return false; }",
+                "    const String directory = String::utf8(module.dli_fname).get_base_dir();",
+            ]
+        else:
+            # dladdr reports argv[0] for the executable, which may be bare or relative to a changed working directory.
+            lines.append("    const String directory = OS::get_singleton()->get_executable_path().get_base_dir();")
         lines += [
-            "    Dl_info module = {};",
-            "    if (!dladdr(reinterpret_cast<const void *>(&load_native_dawn), &module) || !module.dli_fname) { return false; }",
-            f'    const CharString path = String::utf8(module.dli_fname).get_base_dir().path_join("{runtime}").utf8();',
+            f'    const CharString path = directory.path_join("{runtime}").utf8();',
             "    void *library = dlopen(path.get_data(), RTLD_NOW | RTLD_LOCAL);",
         ]
         resolve = "dlsym"
@@ -58,7 +70,7 @@ def generate_loader(header, helpers, platform="macos"):
     for _, name, _ in declarations:
         lines += [
             f'    dawn_{name} = reinterpret_cast<decltype(dawn_{name})>({resolve}(library, "{name}"));',
-            f"    if (!dawn_{name}) {{ {close}(library); return false; }}",
+            f"    if (!dawn_{name}) {{ reset_native_dawn(); {close}(library); return false; }}",
         ]
     lines += ["    dawn_library = library;", "    return true;", "}"]
     return "\n".join(lines) + "\n"
@@ -66,5 +78,10 @@ def generate_loader(header, helpers, platform="macos"):
 
 def build_loader(target, source, env):
     Path(str(target[0])).write_text(
-        generate_loader(Path(str(source[0])).read_text(), Path(str(source[1])).read_text(), env["platform"])
+        generate_loader(
+            Path(str(source[0])).read_text(),
+            Path(str(source[1])).read_text(),
+            env["platform"],
+            env["library_type"] == "shared_library",
+        )
     )

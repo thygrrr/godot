@@ -246,6 +246,29 @@ The `modules/raycast/godot_update_embree.py` script can be used to pull the
 relevant files from the latest Embree release and apply patches automatically.
 
 
+## emdawnwebgpu
+
+- Upstream: https://github.com/google/dawn/releases/tag/v20251002.162335
+- Version: v20251002.162335 (emdawnwebgpu_pkg-v20251002.162335.zip, SHA-256
+  5c8c3f0d1f115ad476068dbd65a85347103717138bc686ae08de9f98fcc93d9a)
+- License: BSD-3-Clause and MIT / NCSA
+
+Files extracted from upstream source (restored using `drivers/webgpu/dependencies.py`):
+
+- `webgpu/` and `webgpu_cpp/` folders, including their `LICENSE` files
+- `emdawnwebgpu.port.py`, `README.md`, `VERSION.txt`
+
+Preparation derives `webgpu/src/library_webgpu_legacy.js`, changing only the
+stackSave/stackRestore JS-library dependency names to their Emscripten 3.x
+spelling for the pinned 3.1.56 .NET toolchain. Modern SDKs use the unmodified
+upstream JavaScript library.
+
+Patches:
+
+- `0001-select-legacy-stack-dependencies.patch` — Select the legacy JavaScript
+  library on Emscripten 3.x.
+
+
 ## enet
 
 - Upstream: https://github.com/lsalzman/enet
@@ -1070,7 +1093,6 @@ Patches:
   required by the pinned SPIRV-Tools sources to the upstream C++11 header.
 
 
-
 ## spirv-reflect
 
 - Upstream: https://github.com/KhronosGroup/SPIRV-Reflect
@@ -1128,7 +1150,8 @@ Files extracted from upstream source:
 
 Files extracted from upstream source:
 
-- `src/tint/` folder (restored using `drivers/webgpu/dependencies.py`)
+- `src/tint/` folder subset and `src/utils/{compiler,numeric}.h` (restored using
+  `drivers/webgpu/dependencies.py`)
 - `LICENSE`
 
 Patches:
@@ -1140,9 +1163,14 @@ Patches:
 - `0004-accept-non-constant-point-size.patch` — Accept non-constant `point_size` stores
 - `0005-size-emission-and-capability.patch` — `@size` emission guard for specialization constants
 - `0006-remove-abseil-dependency.patch` — Replace `absl::from_chars` with `std::from_chars`
+- `0007-extend-size-mismatch-to-struct-total-size.patch` — Extend `kAllowStructMemberSizeMismatch`
+  to the struct total-size check
+- `0008-emscripten-3-float-parsing.patch` — Locale-independent float parsing when libc++
+  deletes the `from_chars` overloads (Emscripten 3.x)
+- `0009-macos-float-parsing.patch` — Reuse that float parsing below macOS 26
 
 Used for SPIR-V to WGSL translation in the WebGPU rendering backend.
-Requires spirv-tools and spirv-headers.
+Requires spirv-tools and spirv-headers-webgpu.
 
 
 ## thorvg
@@ -1373,16 +1401,3 @@ Files extracted from upstream source:
 
 - `lib/{common/,compress/,decompress/,zstd.h,zstd_errors.h}`
 - `LICENSE`
-
-## emdawnwebgpu
-
-- Upstream: https://github.com/google/dawn/releases/tag/v20251002.162335
-- Version: v20251002.162335
-- License: BSD-3-Clause and Emscripten's MIT / NCSA (see bundled LICENSE files)
-- Source: emdawnwebgpu_pkg-v20251002.162335.zip
-- SHA512: ed15672c2c495a77c764929e6979f4e155bf8b9c46dee5b0f234f3208a708bc2b846d89eef345b725d03454b56d549531f48fc84ff2afe7627d14115893b0fb0
-
-The local port chooses library_webgpu_legacy.js on Emscripten 3.x. This copy
-changes only the stackSave/stackRestore JS-library dependency names to the
-3.x spelling, preserving the pinned 3.1.56 .NET toolchain. Modern SDKs use
-the unmodified upstream JavaScript library.
