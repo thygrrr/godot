@@ -23,6 +23,7 @@ common = [
     f"-I{driver}",
     f"-I{root / 'thirdparty/tint'}",
     f"-I{root / 'thirdparty/spirv-tools/include'}",
+    f"-I{root / 'thirdparty/spirv-headers-webgpu/include'}",
     "-std=c++20",
     "-sSTACK_SIZE=5242880",
     "-sALLOW_MEMORY_GROWTH=1",
@@ -36,7 +37,7 @@ for name in (
     "tint_legacy_parse",
 ):
     sources = [str(root / f"webgpu_tests/{name}_test.cpp")]
-    if name in ("storage_access", "binding_array_literals"):
+    if name != "tint_legacy_parse":
         sources.append(str(driver / "spirv_preprocess.cpp"))
     target = output / f"{name}.js"
     subprocess.run(

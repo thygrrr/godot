@@ -34,6 +34,8 @@ public:
 		return -1;
 	}
 
+	bool has(const T &p_val) const { return find(p_val) != -1; }
+
 	const T *ptr() const { return _data.data(); }
 	T *ptrw() { return _data.data(); }
 

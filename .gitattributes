@@ -21,6 +21,4 @@ misc/msvs/* eol=crlf
 *.png binary
 *.ttf binary
 *.tza binary
-
-# Imported binary shader fixtures follow 2dog's asset storage convention.
-webgpu_tests/shader_corpus/fixtures/*.spv filter=lfs diff=lfs merge=lfs -text
+webgpu_tests/shader_corpus/fixtures/*.spv binary

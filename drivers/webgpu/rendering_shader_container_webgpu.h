@@ -32,6 +32,8 @@
 
 #ifdef WEBGPU_ENABLED
 
+#include "spirv_preprocess.h"
+
 #include "servers/rendering/rendering_shader_container.h"
 
 class RenderingShaderContainerWebGPU : public RenderingShaderContainer {
@@ -40,13 +42,11 @@ class RenderingShaderContainerWebGPU : public RenderingShaderContainer {
 public:
 	// Format identifier for WebGPU shader containers.
 	static constexpr uint32_t FORMAT_WEBGPU = 0x57475055; // "WGPU"
-	static constexpr uint32_t FORMAT_VERSION = 1;
+	static constexpr uint32_t FORMAT_VERSION = 2;
 	static constexpr uint32_t NO_PUSH_CONSTANTS = UINT32_MAX;
 
 	struct HeaderData {
-		uint32_t push_constant_bind_group = NO_PUSH_CONSTANTS; // UINT32_MAX = no push constants.
-		uint32_t push_constant_binding = 0;
-		uint32_t flags = 0;
+		uint32_t push_constant_bind_group = NO_PUSH_CONSTANTS;
 	};
 
 protected:
@@ -57,9 +57,7 @@ protected:
 	virtual uint32_t _format() const override { return FORMAT_WEBGPU; }
 	virtual uint32_t _format_version() const override { return FORMAT_VERSION; }
 
-	/// Called by set_code_from_spirv() — stores raw SPIR-V bytes per stage.
-	/// Dawn's WebGPU implementation supports WGPUShaderSourceSPIRV natively;
-	/// no WGSL/Tint translation step is needed.
+	// Stores the raw SPIR-V per stage; the driver translates it to WGSL when creating shader modules.
 	virtual bool _set_code_from_spirv(const ReflectShader &p_shader) override;
 
 	// Serialization overrides for extra header data.
@@ -68,7 +66,7 @@ protected:
 
 public:
 	uint32_t get_push_constant_bind_group() const { return header_data.push_constant_bind_group; }
-	uint32_t get_push_constant_binding() const { return header_data.push_constant_binding; }
+	uint32_t get_push_constant_binding() const { return spirv_preprocess::PUSH_CONSTANT_BINDING; }
 	bool has_push_constants() const { return header_data.push_constant_bind_group != NO_PUSH_CONSTANTS; }
 
 	RenderingShaderContainerWebGPU();

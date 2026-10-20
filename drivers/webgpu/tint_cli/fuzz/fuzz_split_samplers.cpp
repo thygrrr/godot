@@ -1,8 +1,7 @@
 // Fuzz split_combined_samplers in isolation.
 //
-// This is the most complex preprocessing pass (~500 lines) — it allocates
-// new IDs, rewrites entry points, manipulates bindings, and injects new
-// instructions. Focused fuzzing here has the highest chance of finding bugs.
+// The split allocates new IDs, rewrites entry points, manipulates bindings
+// and injects new instructions, so it is fuzzed on its own as well.
 
 #include "../../spirv_preprocess.h"
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Compile all GLSL shader fixtures to SPIR-V using glslangValidator.
+# Compile all GLSL shader fixtures to SPIR-V 1.3 for Vulkan 1.1, the targets Godot uses for WebGPU shaders.
 # Requires: glslangValidator (from glslang or Vulkan SDK)
 # Usage: ./compile_fixtures.sh
 
@@ -27,12 +27,12 @@ for src in "$FIXTURES_DIR"/*.vert "$FIXTURES_DIR"/*.frag "$FIXTURES_DIR"/*.comp;
     out="$FIXTURES_DIR/${base}.spv"
 
     printf "  %-35s" "$name"
-    if glslangValidator -V "$src" -o "$out" --quiet 2>/dev/null; then
+    if glslangValidator -V --target-env vulkan1.1 "$src" -o "$out" --quiet 2>/dev/null; then
         echo "OK  ($(wc -c < "$out" | tr -d ' ') bytes)"
         count=$((count + 1))
     else
         echo "FAIL"
-        glslangValidator -V "$src" -o "$out" 2>&1 | sed 's/^/    /'
+        glslangValidator -V --target-env vulkan1.1 "$src" -o "$out" 2>&1 | sed 's/^/    /'
         errors=$((errors + 1))
     fi
 done

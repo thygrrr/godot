@@ -34,86 +34,60 @@
 
 #include <cstdint>
 
+// SPIR-V rewrites that adapt Godot's Vulkan-flavoured SPIR-V for Tint and WebGPU.
+// Each pass returns its input unchanged (and reports an error) when the module is malformed.
 namespace spirv_preprocess {
 
-// Result struct for fix_depth2_images, which returns both the modified
-// SPIR-V bytes and a list of (image_type_id, dim, arrayed) tuples for
-// any depth=2 images that were changed.
-struct DepthImageFixResult {
-	Vector<uint8_t> bytes;
-	struct DepthImageInfo {
-		uint32_t image_type_id;
-		uint32_t dim;
-		uint32_t arrayed;
-	};
-	Vector<DepthImageInfo> depth_images;
-};
+// Push constants become a read-only storage buffer at this group and binding. Every other binding is doubled
+// by split_combined_samplers, so this is the highest binding WebGPU allows (maxBindingsPerBindGroup is 1000).
+static constexpr uint32_t PUSH_CONSTANT_SET = 3;
+static constexpr uint32_t PUSH_CONSTANT_BINDING = 999;
 
-// Evaluate OpSpecConstantOp instructions with default values and replace
-// them with regular OpConstant instructions. Also converts OpSpecConstant*
-// to their non-specialization equivalents and strips SpecId decorations.
-Vector<uint8_t> freeze_spec_constant_ops(const Vector<uint8_t> &p_bytes);
+// Runs every pass below in the order the WebGPU driver needs before Tint.
+Vector<uint8_t> run_pipeline(const Vector<uint8_t> &p_bytes);
 
-// Convert push-constant variables to storage buffer (read-only) at
-// descriptor set 3, binding 120 (the ring-buffer slot used by the
-// WebGPU backend).
-Vector<uint8_t> convert_push_constants_to_uniforms(const Vector<uint8_t> &p_bytes);
+// SPIRV-Tools passes: freeze specialization constants to their (already patched) default values, fold
+// OpSpecConstantOp/Composite, and inline calls taking images or samplers, which the later passes and Tint require.
+Vector<uint8_t> freeze_and_inline(const Vector<uint8_t> &p_bytes);
 
-// Rewrite OpCopyLogical (SPIR-V 1.4+) to OpCopyObject.
-// OpCopyLogical copies between logically equivalent struct types with
-// different decorations; OpCopyObject is the simpler equivalent.
+// Rewrite OpCopyLogical (SPIR-V 1.4+) to the equivalent OpCopyObject.
 Vector<uint8_t> rewrite_copy_logical(const Vector<uint8_t> &p_bytes);
 
-// Rewrite OpTerminateInvocation (SPV_KHR_terminate_invocation) to OpKill.
-// OpTerminateInvocation has defined helper-invocation semantics but some
-// frontends do not support it; OpKill is the SPIR-V 1.0 equivalent.
+// Rewrite OpTerminateInvocation to OpKill, which Tint translates to discard.
 Vector<uint8_t> rewrite_terminate_invocation(const Vector<uint8_t> &p_bytes);
 
-// Split combined image+sampler variables into separate image and sampler
-// variables. Rewrites bindings (original binding N becomes sampler=N*2,
-// image=N*2+1), inserts new types/variables, and replaces OpLoad of
-// combined vars with separate loads + OpSampledImage.
-Vector<uint8_t> split_combined_samplers(const Vector<uint8_t> &p_bytes);
-
-// Fix OpTypeImage with depth=2 (unknown) by setting depth=1 (explicit
-// depth). Returns the modified bytes and info about changed image types.
-DepthImageFixResult fix_depth2_images(const Vector<uint8_t> &p_bytes);
-
-// Negate the Y component of gl_Position in vertex shaders.
-// Compensates for the difference between Vulkan's Y-down NDC (which
-// Godot's GLSL shaders target) and WebGPU's Y-up NDC.
-// Without this, all rendered content appears flipped vertically.
-// Tint has no built-in coordinate space adjustment option, so this
-// is done as a SPIR-V preprocessing pass instead.
-Vector<uint8_t> negate_position_y(const Vector<uint8_t> &p_bytes);
-
-// Strip OpDecorate/OpMemberDecorate for decorations unsupported by Tint:
-// Restrict (19) — memory hint from glslang, no WGSL equivalent.
-// InputAttachmentIndex (43) — Vulkan subpass inputs, no WebGPU equivalent.
-Vector<uint8_t> strip_restrict_decoration(const Vector<uint8_t> &p_bytes);
-
-// Replace OpMemoryBarrier with OpNop. Tint does not support
-// OpMemoryBarrier (SPIR-V 225); WGSL has no direct equivalent.
-// workgroupBarrier() (from OpControlBarrier) covers synchronization.
-Vector<uint8_t> strip_memory_barrier(const Vector<uint8_t> &p_bytes);
-
-// Replace non-finite (infinity, NaN) float constants with FLT_MAX/MIN.
-// Tint asserts std::isfinite on all float literal values.
-Vector<uint8_t> fix_nonfinite_literals(const Vector<uint8_t> &p_bytes);
-
-// Unwrap arrays of handle types (images, samplers, sampled images)
-// into single variables. Tint does not support arrays of handle types.
-// Rewrites pointer types, removes access chains, and updates loads.
+// Replace arrays of images, samplers and sampled images with their element type. Tint and the bind group
+// layouts have no binding arrays, so every element aliases element 0.
 Vector<uint8_t> flatten_binding_arrays(const Vector<uint8_t> &p_bytes);
 
-// Infer read-only storage buffers by analyzing write operations.
-// Adds OpDecorate NonWritable to StorageBuffer variables that are never
-// written to (no OpStore, OpAtomicStore, OpCopyMemory, etc.). This allows
-// Tint to emit var<storage, read> instead of var<storage, read_write>.
-Vector<uint8_t> infer_readonly_storage(const Vector<uint8_t> &p_bytes);
+// Split combined image samplers. Every binding N is doubled; a split sampler takes 2N and its image 2N+1.
+// Combined samplers passed to functions must have been inlined by freeze_and_inline.
+Vector<uint8_t> split_combined_samplers(const Vector<uint8_t> &p_bytes);
 
-// WGSL storage buffers cannot be write-only. Remove NonReadable only from
-// StorageBuffer variables and their block members, retaining image access.
+// Turn push-constant variables into read-only storage buffers at PUSH_CONSTANT_SET/PUSH_CONSTANT_BINDING.
+// Runs after split_combined_samplers so that binding is not doubled.
+Vector<uint8_t> convert_push_constants_to_storage_buffers(const Vector<uint8_t> &p_bytes);
+
+// Set OpTypeImage depth=2 (unknown) to depth=1, which WGSL can express as a depth texture.
+Vector<uint8_t> fix_depth2_images(const Vector<uint8_t> &p_bytes);
+
+// Negate gl_Position.y before every vertex-shader return; Godot's SPIR-V targets Vulkan's flipped clip space.
+Vector<uint8_t> negate_position_y(const Vector<uint8_t> &p_bytes);
+
+// Strip Restrict and InputAttachmentIndex decorations, which Tint does not support.
+Vector<uint8_t> strip_restrict_decoration(const Vector<uint8_t> &p_bytes);
+
+// Remove OpMemoryBarrier, which Tint does not support; workgroup barriers come from OpControlBarrier.
+Vector<uint8_t> strip_memory_barrier(const Vector<uint8_t> &p_bytes);
+
+// Replace infinite and NaN float constants with +/-FLT_MAX (or DBL_MAX); Tint rejects non-finite literals.
+Vector<uint8_t> fix_nonfinite_literals(const Vector<uint8_t> &p_bytes);
+
+// WGSL storage buffers cannot be write-only. Remove NonReadable only from StorageBuffer variables and their
+// block members, retaining image access.
 Vector<uint8_t> normalize_storage_buffer_access(const Vector<uint8_t> &p_bytes);
+
+// Decorate StorageBuffer variables that are never written as NonWritable so Tint emits var<storage, read>.
+Vector<uint8_t> infer_readonly_storage(const Vector<uint8_t> &p_bytes);
 
 } // namespace spirv_preprocess

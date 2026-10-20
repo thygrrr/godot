@@ -32,20 +32,9 @@
 
 #include "rendering_shader_container_webgpu.h"
 
-// =========================================================================
-// SPIR-V Storage
-// =========================================================================
-//
-// Architecture decision (see copilot-instructions.md #6):
-//   GLSL → SPIR-V (glslang) → stored directly as WGPUShaderSourceSPIRV.
-//   Dawn's emdawnwebgpu port natively supports WGPUShaderSourceSPIRV;
-//   no WGSL/Tint translation step is needed.
-//
-// Push constant handling:
-//   Godot's push constants are emulated via a uniform buffer at a fixed
-//   bind group slot (default: group 3, binding 0).
-//   The bind group slot is recorded in HeaderData and used by the driver
-//   to create the pipeline layout and bind the ring buffer at draw time.
+// The container keeps raw SPIR-V; the driver runs spirv_preprocess and Tint when it creates shader modules.
+// Push constants become a read-only storage buffer at spirv_preprocess::PUSH_CONSTANT_SET/PUSH_CONSTANT_BINDING,
+// which the driver binds to its push-constant ring buffer.
 
 bool RenderingShaderContainerWebGPU::_set_code_from_spirv(const ReflectShader &p_shader) {
 	const uint32_t stage_count = p_shader.shader_stages.size();
@@ -61,19 +50,7 @@ bool RenderingShaderContainerWebGPU::_set_code_from_spirv(const ReflectShader &p
 		shaders.write[i].code_compressed_bytes = spirv_bytes;
 	}
 
-	// Decide push constant bind group slot.
-	if (p_shader.push_constant_size > 0) {
-		// Convention: push constants use bind group 3, binding PUSH_CONSTANT_RING_BINDING (120).
-		// Chosen high enough to avoid collision with split combined-sampler bindings
-		// (original binding N → sampler@N*2, image@N*2+1; max reasonable N ~20 → max~41).
-		// Must match the binding in spirv_preprocess::convert_push_constants_to_uniforms()
-		// and PUSH_CONSTANT_RING_BINDING in rendering_device_driver_webgpu.h.
-		header_data.push_constant_bind_group = 3;
-		header_data.push_constant_binding = 120; // PUSH_CONSTANT_RING_BINDING
-	} else {
-		header_data.push_constant_bind_group = RenderingShaderContainerWebGPU::NO_PUSH_CONSTANTS;
-		header_data.push_constant_binding = 120; // PUSH_CONSTANT_RING_BINDING
-	}
+	header_data.push_constant_bind_group = p_shader.push_constant_size > 0 ? spirv_preprocess::PUSH_CONSTANT_SET : NO_PUSH_CONSTANTS;
 
 	return true;
 }

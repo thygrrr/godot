@@ -37,9 +37,9 @@ if [[ "$CLEAN" == true ]]; then
 fi
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 1. Ensure tint_cli objects are built (spirv_preprocess.o, tint_wrapper.o, etc.)
+# 1. Ensure the tint_cli objects and their response files are built.
 # ─────────────────────────────────────────────────────────────────────────────
-if [[ ! -f "$BUILD_DIR/cli/spirv_preprocess.o" ]]; then
+if [[ ! -f "$BUILD_DIR/spirv_tools.rsp" || ! -f "$BUILD_DIR/cli/tint_wrapper.o" ]]; then
     echo "[fuzz] Building tint_cli dependencies first..."
     bash "$TINT_CLI_DIR/build.sh"
 fi
@@ -133,18 +133,11 @@ TINT_INCLUDES=(
     -I"$SPIRV_HEADERS_DIR/include/spirv/unified1/"
 )
 
-# Collect library objects.
-SPIRV_TOOLS_OBJS=()
-while IFS= read -r obj; do
-    SPIRV_TOOLS_OBJS+=("$obj")
-done < <(find "$BUILD_DIR/spirv_tools" -name '*.o' 2>/dev/null)
-
-TINT_OBJS=()
-while IFS= read -r obj; do
-    TINT_OBJS+=("$obj")
-done < <(find "$BUILD_DIR/tint" -name '*.o' 2>/dev/null)
-
-PREPROCESS_OBJ="$BUILD_DIR/cli/spirv_preprocess.o"
+# Library objects selected by build.sh; the response files hold paths relative to the repository root.
+cd "$REPO_ROOT"
+SPIRV_TOOLS_OBJS="@$BUILD_DIR/spirv_tools.rsp"
+TINT_OBJS="@$BUILD_DIR/tint.rsp"
+PREPROCESS_OBJ="$BUILD_DIR/fuzz/spirv_preprocess.o"
 TINT_WRAPPER_OBJ="$BUILD_DIR/cli/tint_wrapper.o"
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -167,6 +160,10 @@ else
     DRIVER_OBJ="$BUILD_DIR/fuzz/standalone_driver.o"
 fi
 
+# The fuzzed passes get the fuzzer instrumentation and sanitizers too.
+echo "[fuzz] Compiling spirv_preprocess.cpp..."
+$CXX -c "$REPO_ROOT/drivers/webgpu/spirv_preprocess.cpp" -o "$PREPROCESS_OBJ" $COMMON_FLAGS "${PREPROCESS_INCLUDES[@]}" $FUZZ_FLAGS
+
 # --- fuzz_preprocess_passes (preprocessing only, no Tint) ---
 echo "[fuzz] Building fuzz_preprocess_passes..."
 $CXX -c "$SCRIPT_DIR/fuzz_preprocess_passes.cpp" \
@@ -176,6 +173,7 @@ $CXX -c "$SCRIPT_DIR/fuzz_preprocess_passes.cpp" \
 $CXX -o "$REPO_ROOT/bin/fuzz_preprocess_passes" \
     "$BUILD_DIR/fuzz/fuzz_preprocess_passes.o" \
     "$PREPROCESS_OBJ" \
+    "$SPIRV_TOOLS_OBJS" \
     $DRIVER_OBJ \
     $FUZZ_FLAGS -O1
 
@@ -188,6 +186,7 @@ $CXX -c "$SCRIPT_DIR/fuzz_split_samplers.cpp" \
 $CXX -o "$REPO_ROOT/bin/fuzz_split_samplers" \
     "$BUILD_DIR/fuzz/fuzz_split_samplers.o" \
     "$PREPROCESS_OBJ" \
+    "$SPIRV_TOOLS_OBJS" \
     $DRIVER_OBJ \
     $FUZZ_FLAGS -O1
 
@@ -204,8 +203,8 @@ $CXX -o "$REPO_ROOT/bin/fuzz_spirv_to_wgsl" \
     "$BUILD_DIR/fuzz/fuzz_spirv_to_wgsl.o" \
     "$PREPROCESS_OBJ" \
     "$TINT_WRAPPER_OBJ" \
-    "${SPIRV_TOOLS_OBJS[@]}" \
-    "${TINT_OBJS[@]}" \
+    "$TINT_OBJS" \
+    "$SPIRV_TOOLS_OBJS" \
     $DRIVER_OBJ \
     $FUZZ_FLAGS -O1
 
@@ -238,15 +237,23 @@ if [[ "$SMOKE_TEST" == true ]]; then
     echo ""
     echo "[fuzz] Running smoke test (feed each fixture to each fuzzer)..."
     CORPUS_FILES=("$CORPUS_DIR"/*.spv)
+    # libFuzzer runs file arguments once; the standalone driver needs an explicit iteration count.
+    RUN_ARGS=()
+    [[ "$USE_LIBFUZZER" == false ]] && RUN_ARGS=(--iterations 0)
 
+    SMOKE_FAILURES=0
     for fuzzer in fuzz_preprocess_passes fuzz_split_samplers fuzz_spirv_to_wgsl; do
         printf "  %-30s" "$fuzzer"
-        if "$REPO_ROOT/bin/$fuzzer" --iterations 0 "${CORPUS_FILES[@]}" 2>/dev/null; then
+        status=0
+        "$REPO_ROOT/bin/$fuzzer" ${RUN_ARGS[@]+"${RUN_ARGS[@]}"} "${CORPUS_FILES[@]}" 2>/dev/null || status=$?
+        if [[ $status -eq 0 ]]; then
             echo "PASS"
         else
-            echo "FAIL (exit $?)"
+            echo "FAIL (exit $status)"
+            SMOKE_FAILURES=$((SMOKE_FAILURES + 1))
         fi
     done
+    (( SMOKE_FAILURES == 0 )) || exit 1
 fi
 
 echo ""

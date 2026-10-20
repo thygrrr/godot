@@ -1,7 +1,8 @@
+#include "spirv_preprocess.h"
 #include "tint_wrapper.h"
 #include "spirv-tools/libspirv.h"
 
-#include <cassert>
+#include "check.h"
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -65,17 +66,23 @@ OpFunctionEnd
     auto context = spvContextCreate(SPV_ENV_UNIVERSAL_1_3);
     spv_binary binary = nullptr;
     spv_diagnostic diagnostic = nullptr;
-    assert(spvTextToBinary(context, source, std::strlen(source), &binary, &diagnostic) == SPV_SUCCESS);
+    const spv_result_t assembled = spvTextToBinary(context, source, std::strlen(source), &binary, &diagnostic);
+    CHECK(assembled == SPV_SUCCESS);
+    // The driver's pipeline inlines the opaque helpers and doubles the bindings (0, 1, 2 -> 0, 2, 4).
+    Vector<uint8_t> bytes;
+    bytes.resize(binary->wordCount * 4);
+    std::memcpy(bytes.ptrw(), binary->code, bytes.size());
+    bytes = spirv_preprocess::run_pipeline(bytes);
     tint_wrapper_initialize();
     char *error = nullptr;
-    char *wgsl = tint_wrapper_spirv_to_wgsl(binary->code, binary->wordCount, &error);
+    char *wgsl = tint_wrapper_spirv_to_wgsl(reinterpret_cast<const uint32_t *>(bytes.ptr()), bytes.size() / 4, &error);
     if (error) std::fprintf(stderr, "%s\n", error);
-    assert(wgsl);
-    assert(std::strstr(wgsl, "//RESOURCE_USAGE\n"));
-    assert(std::strstr(wgsl, "//RESOURCE_USED:0,0\n"));
-    assert(std::strstr(wgsl, "//RESOURCE_USED:0,1\n"));
-    assert(!std::strstr(wgsl, "//RESOURCE_USED:0,2\n"));
-    assert(std::strstr(wgsl, "textureSample("));
+    CHECK(wgsl);
+    CHECK(std::strstr(wgsl, "//RESOURCE_USAGE\n"));
+    CHECK(std::strstr(wgsl, "//RESOURCE_USED:0,0\n"));
+    CHECK(std::strstr(wgsl, "//RESOURCE_USED:0,2\n"));
+    CHECK(!std::strstr(wgsl, "//RESOURCE_USED:0,4\n"));
+    CHECK(std::strstr(wgsl, "textureSample("));
     std::free(wgsl);
     std::free(error);
     spvBinaryDestroy(binary);

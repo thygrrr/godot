@@ -32,6 +32,7 @@
 
 #ifdef WEBGPU_ENABLED
 
+#include "spirv_preprocess.h"
 #include "webgpu_objects.h"
 
 #include "servers/rendering/rendering_device_driver.h"
@@ -115,11 +116,8 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 	WGPUBuffer push_constant_ring_buffer = nullptr;
 	static constexpr uint32_t PUSH_CONSTANT_RING_SIZE = 512 * 1024; // 512KB = 2048 draw calls at 256B/slot
 	static constexpr uint32_t PUSH_CONSTANT_SLOT_ALIGNMENT = 256;
-	// Binding slot used for the PC ring buffer inside group 3.
-	// Must match the binding used in spirv_preprocess::convert_push_constants_to_uniforms().
-	// Chosen high enough to avoid collision with split combined-sampler bindings
-	// (original binding N → sampler@N*2, image@N*2+1; max original ~20 → max split ~41).
-	static constexpr uint32_t PUSH_CONSTANT_RING_BINDING = 120;
+	// Binding slot used for the PC ring buffer inside the push-constant group.
+	static constexpr uint32_t PUSH_CONSTANT_RING_BINDING = spirv_preprocess::PUSH_CONSTANT_BINDING;
 	uint32_t push_constant_ring_offset = 0;
 
 	// When the ring fills up mid-segment, recording continues in a new "page": the page's data

@@ -36,8 +36,14 @@ if [[ "$CLEAN" == true ]]; then
 fi
 
 mkdir -p "$BUILD_DIR/spirv_tools" "$BUILD_DIR/tint" "$BUILD_DIR/cli"
-uv run --no-project python drivers/webgpu/sources.py spirv-tools > "$BUILD_DIR/spirv-tools.sources"
-uv run --no-project python drivers/webgpu/sources.py tint > "$BUILD_DIR/tint.sources"
+uv run --no-project python drivers/webgpu/sources.py spirv-tools | tr -d '\r' > "$BUILD_DIR/spirv-tools.sources"
+# Tint's Windows utilities need MSVC headers, so MinGW builds use the portable variants and link statically
+# to avoid picking up another toolchain's runtime DLLs.
+case "$(uname -s)" in
+    MINGW* | MSYS* | CYGWIN*) TINT_PLATFORM="--platform other" LINK_FLAGS="-static" ;;
+    *) TINT_PLATFORM="" LINK_FLAGS="" ;;
+esac
+uv run --no-project python drivers/webgpu/sources.py tint $TINT_PLATFORM | tr -d '\r' > "$BUILD_DIR/tint.sources"
 
 # Common flags.
 WARNINGS="-w"  # Suppress warnings from thirdparty code.
@@ -80,7 +86,8 @@ TINT_DEFINES=(
 )
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Compile function: skip if .o is newer than source.
+# Compile function: thirdparty objects are reused while newer than their source and the dependency
+# preparation. The CLI sources include driver headers and shims, so they always rebuild.
 # ─────────────────────────────────────────────────────────────────────────────
 compile_one() {
     local src="$1"
@@ -89,7 +96,7 @@ compile_one() {
     shift 3
     local flags=("$@")
 
-    if [[ -f "$obj" && "$obj" -nt "$src" &&
+    if [[ "$src" == thirdparty/* && -f "$obj" && "$obj" -nt "$src" &&
           "$obj" -nt "$TINT_DIR/.webgpu-source.json" &&
           "$obj" -nt "$SPIRV_TOOLS_DIR/.webgpu-source.json" &&
           "$obj" -nt "$SPIRV_HEADERS_DIR/.webgpu-source.json" ]]; then
@@ -187,16 +194,16 @@ wait_compilers
 # ─────────────────────────────────────────────────────────────────────────────
 echo "[4/4] Linking tint_convert_cli..."
 
-# Link every selected object; missing outputs are build failures.
-LINK_OBJS=("$BUILD_DIR/cli/main.o" "$BUILD_DIR/cli/spirv_preprocess.o" "$BUILD_DIR/cli/tint_wrapper.o")
-for obj in "${SPIRV_TOOLS_OBJS[@]}" "${TINT_OBJS[@]}"; do
-    LINK_OBJS+=("$obj")
-done
+# Link every selected object; missing outputs are build failures. Response files keep the command line
+# within Windows limits and are reused by fuzz/build_fuzzers.sh.
+printf '%s\n' "${SPIRV_TOOLS_OBJS[@]}" > "$BUILD_DIR/spirv_tools.rsp"
+printf '%s\n' "${TINT_OBJS[@]}" > "$BUILD_DIR/tint.rsp"
 
-echo "  Linking ${#LINK_OBJS[@]} objects..."
+echo "  Linking $((3 + ${#SPIRV_TOOLS_OBJS[@]} + ${#TINT_OBJS[@]})) objects..."
 
 mkdir -p bin
-$CXX -o bin/tint_convert_cli "${LINK_OBJS[@]}" -O2
+$CXX -o bin/tint_convert_cli "$BUILD_DIR/cli/main.o" "$BUILD_DIR/cli/spirv_preprocess.o" "$BUILD_DIR/cli/tint_wrapper.o" \
+    @"$BUILD_DIR/tint.rsp" @"$BUILD_DIR/spirv_tools.rsp" -O2 $LINK_FLAGS
 
 echo ""
 echo "Built: bin/tint_convert_cli ($(du -h bin/tint_convert_cli | cut -f1))"

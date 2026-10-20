@@ -1,7 +1,7 @@
 #include "spirv_preprocess.h"
 #include "spirv-tools/libspirv.h"
 
-#include <cassert>
+#include "check.h"
 #include <cstdio>
 #include <cstring>
 
@@ -53,7 +53,8 @@ OpFunctionEnd
     auto context = spvContextCreate(SPV_ENV_UNIVERSAL_1_3);
     spv_binary binary = nullptr;
     spv_diagnostic diagnostic = nullptr;
-    assert(spvTextToBinaryWithOptions(context, source, std::strlen(source), SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS, &binary, &diagnostic) == SPV_SUCCESS);
+    const spv_result_t assembled = spvTextToBinaryWithOptions(context, source, std::strlen(source), SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS, &binary, &diagnostic);
+    CHECK(assembled == SPV_SUCCESS);
     Vector<uint8_t> bytes;
     bytes.resize(binary->wordCount * 4);
     std::memcpy(bytes.ptrw(), binary->code, bytes.size());
@@ -63,15 +64,16 @@ OpFunctionEnd
     for (size_t pos = 5; pos < size_t(result.size() / 4); pos += words[pos] >> 16) {
         uint32_t opcode = words[pos] & 0xffff;
         if (opcode == 72 && words[pos + 3] == 35 && words[pos + 2] == 1) {
-            assert(words[pos + 4] == 112);
+            CHECK(words[pos + 4] == 112);
             offset = true;
         }
         if (opcode == 71 && words[pos + 2] == 33 && words[pos + 3] == 112) binding = true;
         if (opcode == 43 && words[pos + 3] == 112) constant = true;
-        assert(opcode != 28); // Handle array type removed.
+        CHECK(opcode != 28); // Handle array type removed.
     }
-    assert(offset && binding && constant);
-    assert(spvValidateBinary(context, words, result.size() / 4, &diagnostic) == SPV_SUCCESS);
+    CHECK(offset && binding && constant);
+    const spv_result_t validated = spvValidateBinary(context, words, result.size() / 4, &diagnostic);
+    CHECK(validated == SPV_SUCCESS);
     spvBinaryDestroy(binary);
     spvDiagnosticDestroy(diagnostic);
     spvContextDestroy(context);

@@ -1,49 +1,43 @@
-# Shader Corpus Test
+# Shader corpus
 
-Validates the SPIR-V → WGSL conversion pipeline used by the WebGPU rendering backend.
+GLSL fixtures and their SPIR-V for the SPIR-V → WGSL conversion used by the WebGPU backend.
+`../preprocessing_tests/run_tests.mjs` converts every fixture with `bin/tint_convert_cli`
+and checks the transformations listed there; it fails when the converter has not been built.
 
-## What it tests
+## Fixtures
 
-- **Push constant conversion** — SPIR-V `OpVariable PushConstant` → WGSL `var<storage>` at group(3)/binding(120)
-- **Combined image-sampler splitting** — GLSL `sampler2D` → separate WGSL `texture_2d` + `sampler`
-- **Specialization constants** — `layout(constant_id)` → WGSL `const` declarations
-- **Storage buffers** — SSBO read/write and readonly qualifiers
-- **Storage images** — `image2D` with format qualifiers
-- **Depth textures** — `sampler2DShadow` → `texture_depth_2d`
-- **Cube maps** — `samplerCube` → `texture_cube`
-- **Compute shaders** — workgroup sizes, atomics, barriers
-
-## Test fixtures
-
-| Shader | Stage | Key Features |
+| Shader | Stage | Key features |
 |--------|-------|--------------|
-| basic_vertex | vert | Push constants, UBO, varyings |
-| basic_fragment | frag | Combined samplers, lighting |
+| basic_vertex | vert | Push constants, UBO, gl_Position |
+| basic_fragment | frag | Combined samplers, push constants |
 | compute_particles | comp | SSBO read/write, push constants |
 | shadow_pass | vert | Minimal push constant MVP |
 | depth_sampling | frag | sampler2DShadow, depth comparison |
 | storage_image | comp | image2D with r8 format |
-| multi_texture | frag | 6 samplers including samplerCube |
+| multi_texture | frag | Six samplers including samplerCube |
 | spec_constants | frag | Specialization constants (bool/int/float) |
+| per_stage_overrides_vert, per_stage_overrides_frag | vert, frag | Different specialization constants per stage |
+| chained_spec_ops | comp | Chained OpSpecConstantOp |
+| many_overrides | comp | 24 specialization constants |
 | readonly_ssbo | comp | restrict readonly buffer |
+| memory_barrier | comp | memoryBarrierShared() and barrier() |
+| texture_array | frag | Texture array with constant and dynamic indices |
+| sampler_array | frag | Array of combined samplers |
+| sampler_params | frag | One helper sampling two combined samplers |
 
-## Running
+The SPIR-V is SPIR-V 1.3 for a Vulkan 1.1 client, the targets Godot's glslang uses for
+WebGPU shaders. `compile_fixtures.sh` regenerates it with `glslangValidator`.
 
-```bash
-# Compile GLSL → SPIR-V (requires glslangValidator)
-./compile_fixtures.sh
+## Engine shader dumps
 
-# Run SPIR-V → WGSL validation (requires Node.js 18+)
-node run_tests.mjs
+`validate_spirv_dump.mjs` converts every SPIR-V file in a directory, such as the stages
+written by a WebGPU engine run with `GODOT_DUMP_SPIRV=<directory>`:
+
+```text
+node webgpu_tests/shader_corpus/validate_spirv_dump.mjs <directory>
+node webgpu_tests/shader_corpus/validate_spirv_dump.mjs <directory> --update-baseline
 ```
 
-## Output
-
-- `results/*.wgsl` — Generated WGSL for inspection
-- `results/report.json` — Machine-readable test results with timing
-
-## Dependencies
-
-- **glslangValidator** — For compiling GLSL fixtures to SPIR-V (`brew install glslang`)
-- **Node.js 18+** — For running the test harness
-- **tint_convert_cli** — Standalone Tint CLI (optional; tests skip gracefully if not available)
+`expected_failures.json` lists dumped variants the Mobile renderer does not use; only
+other failures fail the run. `--update-baseline` rewrites the list and keeps the failure
+categories of shaders that still fail.

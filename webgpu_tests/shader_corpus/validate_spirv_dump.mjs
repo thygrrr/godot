@@ -5,9 +5,8 @@
  * Designed to run after `GODOT_DUMP_SPIRV=<dir>` produces SPIR-V files during
  * engine shader compilation.
  *
- * Known failures are tracked in expected_failures.json — these are Vulkan-only
- * shader variants that the WebGPU runtime never uses (different defines/code paths).
- * CI only fails on NEW failures beyond the baseline (regressions).
+ * Known failures are tracked in expected_failures.json: shader variants the
+ * WebGPU Mobile renderer does not use. Only NEW failures beyond the baseline fail.
  *
  * Usage:
  *   node validate_spirv_dump.mjs <spirv-directory>
@@ -20,33 +19,11 @@
  */
 
 import { readFileSync, readdirSync, writeFileSync, existsSync } from 'fs';
-import { join, basename } from 'path';
+import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
-import { dirname } from 'path';
-import { execFileSync } from 'child_process';
+import { convertSpirvFile, findTintCli } from '../tint_cli.mjs';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-
-const REPO_ROOT = join(__dirname, '..', '..');
-const EXPECTED_FAILURES_PATH = join(__dirname, 'expected_failures.json');
-
-// Search for tint_convert_cli in standard locations.
-function findTintCli() {
-    const candidates = [
-        join(REPO_ROOT, 'bin', 'tint_convert_cli'),
-        join(REPO_ROOT, 'drivers', 'webgpu', 'tint_convert_cli'),
-    ];
-    for (const c of candidates) {
-        if (existsSync(c)) return c;
-    }
-    try {
-        execFileSync('which', ['tint_convert_cli'], { encoding: 'utf-8' });
-        return 'tint_convert_cli';
-    } catch {
-        return null;
-    }
-}
+const EXPECTED_FAILURES_PATH = join(dirname(fileURLToPath(import.meta.url)), 'expected_failures.json');
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
@@ -64,23 +41,12 @@ function main() {
     console.log('╚══════════════════════════════════════════════════════════╝\n');
 
     const tintCli = findTintCli();
-    if (!tintCli) {
-        console.log('NOTE: tint_convert_cli not found — skipping offline SPIR-V validation.');
-        console.log('      Runtime Tint (linked into the engine WASM) handles all conversion.');
-        console.log('      To enable this test, build the tint_convert_cli tool.\n');
-        console.log('PASS (skipped — no Tint CLI available)\n');
-        process.exit(0);
-    }
-
     console.log(`Using Tint CLI: ${tintCli}\n`);
 
     // Load expected failures baseline
-    let expectedFailures = new Set();
-    if (existsSync(EXPECTED_FAILURES_PATH) && !updateBaseline) {
-        const baseline = JSON.parse(readFileSync(EXPECTED_FAILURES_PATH, 'utf8'));
-        expectedFailures = new Set(baseline.expected_failures || []);
-        console.log(`Expected failures baseline: ${expectedFailures.size} shaders\n`);
-    }
+    const baseline = existsSync(EXPECTED_FAILURES_PATH) ? JSON.parse(readFileSync(EXPECTED_FAILURES_PATH, 'utf8')) : {};
+    const expectedFailures = new Set(updateBaseline ? [] : baseline.expected_failures || []);
+    console.log(`Expected failures baseline: ${expectedFailures.size} shaders\n`);
 
     // Find all .spv files
     let spvFiles;
@@ -112,18 +78,14 @@ function main() {
         process.stdout.write(`  ${spvFile.padEnd(55)}`);
 
         const startTime = performance.now();
-        try {
-            const wgsl = execFileSync(tintCli, [spvPath], {
-                encoding: 'utf-8',
-                timeout: 30000,
-            });
+        const { wgsl, error: errorMsg } = convertSpirvFile(tintCli, spvPath);
+        if (wgsl !== null) {
             const elapsed = (performance.now() - startTime).toFixed(1);
             console.log(`PASS  (${elapsed}ms, ${wgsl.length} chars)`);
             passed++;
-        } catch (e) {
+        } else {
             const elapsed = (performance.now() - startTime).toFixed(1);
             const isExpected = expectedFailures.has(spvFile);
-            const errorMsg = e.stderr || e.message || String(e);
 
             if (isExpected) {
                 console.log(`XFAIL (${elapsed}ms)  [expected]`);
@@ -174,14 +136,19 @@ function main() {
     writeFileSync(reportPath, JSON.stringify(report, null, 2));
     console.log(`\nReport: ${reportPath}`);
 
-    // Update baseline if requested
+    // Update baseline if requested, keeping the categories of shaders that still fail.
     if (updateBaseline) {
-        const baseline = {
-            description: 'Expected SPIR-V validation failures — Vulkan-only shader variants not used by WebGPU runtime',
+        const failing = new Set(failures.map(f => f.file));
+        const categories = Object.entries(baseline.failure_categories || {})
+            .map(([category, files]) => [category, files.filter(f => failing.has(f))])
+            .filter(([, files]) => files.length > 0);
+        const updated = {
+            description: baseline.description,
             updated: new Date().toISOString(),
-            expected_failures: failures.map(f => f.file).sort(),
+            expected_failures: [...failing].sort(),
+            failure_categories: Object.fromEntries(categories),
         };
-        writeFileSync(EXPECTED_FAILURES_PATH, JSON.stringify(baseline, null, 2) + '\n');
+        writeFileSync(EXPECTED_FAILURES_PATH, JSON.stringify(updated, null, 2) + '\n');
         console.log(`\nBaseline updated: ${EXPECTED_FAILURES_PATH} (${failures.length} expected failures)`);
         process.exit(0);
     }
@@ -189,7 +156,7 @@ function main() {
     // Exit: fail only on regressions
     if (regressions.length > 0) {
         console.error(`\nFAILED: ${regressions.length} new shader(s) cannot be converted.`);
-        console.error('If these are expected Vulkan-only variants, run with --update-baseline');
+        console.error('If these variants are unused by the WebGPU renderer, run with --update-baseline');
         process.exit(1);
     }
 

@@ -19,7 +19,6 @@
 #include "src/tint/lang/wgsl/program/program.h"
 #include "src/tint/lang/wgsl/writer/common/options.h"
 #include "src/tint/lang/wgsl/writer/writer.h"
-#include "spirv-tools/optimizer.hpp"
 
 #include <cstdlib>
 #include <cstring>
@@ -31,29 +30,8 @@ void tint_wrapper_initialize() {
 }
 
 char *tint_wrapper_spirv_to_wgsl(const uint32_t *p_spirv_words, size_t p_word_count, char **r_error) {
+	// Opaque calls were inlined by spirv_preprocess::freeze_and_inline().
 	std::vector<uint32_t> words(p_spirv_words, p_spirv_words + p_word_count);
-	// Tint's texture lowering does not accept Godot 4.7's opaque handle
-	// parameters. Inline just image/sampler calls, retaining ordinary functions.
-	spvtools::Optimizer optimizer(SPV_ENV_UNIVERSAL_1_6);
-	std::string diagnostics;
-	optimizer.SetMessageConsumer([&](spv_message_level_t, const char *, const spv_position_t &, const char *message) {
-		diagnostics += message;
-		diagnostics += '\n';
-	});
-	optimizer.RegisterPass(spvtools::CreateMergeReturnPass());
-	optimizer.RegisterPass(spvtools::CreateInlineOpaquePass());
-	optimizer.RegisterPass(spvtools::CreateEliminateDeadFunctionsPass());
-	std::vector<uint32_t> inlined;
-	if (!optimizer.Run(words.data(), words.size(), &inlined)) {
-		if (r_error) {
-			*r_error = static_cast<char *>(malloc(diagnostics.size() + 1));
-			if (*r_error) {
-				memcpy(*r_error, diagnostics.c_str(), diagnostics.size() + 1);
-			}
-		}
-		return nullptr;
-	}
-	words = std::move(inlined);
 
 	// Allow all WGSL extensions and language features so Tint can emit
 	// constructs like readonly storage textures without validation errors.
