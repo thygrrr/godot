@@ -196,6 +196,28 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 
 	void _flush_push_constants(WGCommandBuffer *p_cmd_buf, WGShader *p_shader);
 	void _restart_pass_after_push_constant_page(WGCommandBuffer *p_cmd_buf, bool p_compute);
+	void _rebind_render_state(WGCommandBuffer *p_cmd_buf);
+
+	// Region clears, as in the Metal driver: WebGPU's loadOp=Clear always covers the whole attachment,
+	// so partial clears draw a viewported triangle that writes the clear values (colours arrive through
+	// the push constant ring, depth through the viewport depth range, stencil as the reference).
+	static constexpr uint32_t CLEAR_MAX_COLORS = WGCommandBuffer::MAX_PUSH_CONSTANT_SIZE / (4 * sizeof(float));
+	struct ClearPipelineKey {
+		WGPUTextureFormat color_formats[CLEAR_MAX_COLORS] = {}; // Undefined for unused slots.
+		WGPUTextureFormat depth_stencil_format = WGPUTextureFormat_Undefined;
+		uint32_t color_count = 0;
+		uint32_t color_write_mask = 0; // Bit i: colour slot i is cleared.
+		uint32_t depth_stencil_write = 0; // Bit 0: depth, bit 1: stencil.
+		uint32_t sample_count = 1;
+
+		bool operator==(const ClearPipelineKey &p_other) const { return memcmp(this, &p_other, sizeof(ClearPipelineKey)) == 0; }
+		uint32_t hash() const { return hash_murmur3_buffer(this, sizeof(ClearPipelineKey)); }
+	};
+	HashMap<ClearPipelineKey, WGPURenderPipeline> clear_pipelines;
+	WGPUPipelineLayout clear_pipeline_layout = nullptr;
+	WGShader clear_shader; // Only routes the clear colours through _flush_push_constants at group 0.
+	WGPURenderPipeline _get_clear_pipeline(const ClearPipelineKey &p_key);
+	void _render_clear(WGCommandBuffer *p_cmd_buf, VectorView<AttachmentClear> p_clears, VectorView<Rect2i> p_rects);
 	void _copy_buffer_to_texture(WGCommandBuffer *p_cmd_buf, WGBuffer *p_src, WGTexture *p_dst, const BufferTextureCopyRegion &p_region, uint32_t p_depth_or_layers);
 	WGPUShaderModule _create_module_with_spec_constants(const PackedByteArray &p_spirv, VectorView<PipelineSpecializationConstant> p_constants, ShaderStage p_stage, const WGShader *p_shader);
 
@@ -517,7 +539,7 @@ public:
 	virtual void command_render_set_viewport(CommandBufferID p_cmd_buffer, VectorView<Rect2i> p_viewports) override final;
 	/// Set scissor rect(s) for the current render pass.
 	virtual void command_render_set_scissor(CommandBufferID p_cmd_buffer, VectorView<Rect2i> p_scissors) override final;
-	/// Stub — WebGPU has no mid-pass clear operation.
+	/// Clear rects of the current subpass's attachments with a clear draw (WebGPU has no mid-pass clear).
 	virtual void command_render_clear_attachments(CommandBufferID p_cmd_buffer, VectorView<AttachmentClear> p_attachment_clears, VectorView<Rect2i> p_rects) override final;
 
 	/// Bind a render pipeline for subsequent draw calls.

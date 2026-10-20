@@ -299,6 +299,15 @@ RenderingDeviceDriverWebGPU::RenderingDeviceDriverWebGPU(RenderingContextDriverW
 }
 
 RenderingDeviceDriverWebGPU::~RenderingDeviceDriverWebGPU() {
+	for (const KeyValue<ClearPipelineKey, WGPURenderPipeline> &kv : clear_pipelines) {
+		wgpuRenderPipelineRelease(kv.value);
+	}
+	clear_pipelines.clear();
+	if (clear_pipeline_layout) {
+		wgpuPipelineLayoutRelease(clear_pipeline_layout);
+		clear_pipeline_layout = nullptr;
+	}
+
 	// Release push constant resources.
 	if (push_constant_bind_group) {
 		wgpuBindGroupRelease(push_constant_bind_group);
@@ -455,6 +464,15 @@ Error RenderingDeviceDriverWebGPU::initialize(uint32_t p_device_index, uint32_t 
 		bg_desc.entries = &bg_entry;
 		push_constant_bind_group = wgpuDeviceCreateBindGroup(device, &bg_desc);
 		ERR_FAIL_COND_V(push_constant_bind_group == nullptr, ERR_CANT_CREATE);
+
+		// Region clears read their colours from the push constant ring at group 0.
+		WGPUPipelineLayoutDescriptor pl_desc = {};
+		pl_desc.bindGroupLayoutCount = 1;
+		pl_desc.bindGroupLayouts = &push_constant_bind_group_layout;
+		clear_pipeline_layout = wgpuDeviceCreatePipelineLayout(device, &pl_desc);
+		ERR_FAIL_COND_V(clear_pipeline_layout == nullptr, ERR_CANT_CREATE);
+		clear_shader.push_constant_bind_group = 0;
+		clear_shader.push_constant_size = WGCommandBuffer::MAX_PUSH_CONSTANT_SIZE;
 	}
 
 	// Create a persistent empty bind group for pipeline layout gaps.
@@ -5975,60 +5993,65 @@ void RenderingDeviceDriverWebGPU::_restart_pass_after_push_constant_page(WGComma
 			p_cmd_buf->render_encoder = wgpuCommandEncoderBeginRenderPass(p_cmd_buf->encoder, &pass_desc);
 			p_cmd_buf->active_encoder = WGCommandBuffer::RENDER;
 
-			// Rebind render pipeline.
-			WGPipelineWrapper *pw = p_cmd_buf->render_state.current_pipeline;
-			if (pw) {
-				wgpuRenderPassEncoderSetPipeline(p_cmd_buf->render_encoder, pw->render_handle);
-				wgpuRenderPassEncoderSetStencilReference(p_cmd_buf->render_encoder, pw->stencil_reference);
-				if (pw->shader) {
-					for (uint32_t gap_idx : pw->shader->gap_bind_group_indices) {
-						wgpuRenderPassEncoderSetBindGroup(p_cmd_buf->render_encoder, gap_idx, empty_bind_group, 0, nullptr);
-					}
-				}
-			}
+			_rebind_render_state(p_cmd_buf);
+		}
+	}
+}
 
-			// Rebind all bind groups from saved state.
-			for (uint32_t i = 0; i < WGCommandBuffer::MAX_BIND_GROUPS; i++) {
-				const auto &bs = p_cmd_buf->last_bound_state[i];
-				if (bs.group) {
-					wgpuRenderPassEncoderSetBindGroup(p_cmd_buf->render_encoder, i, bs.group, bs.dynamic_offset_count, bs.dynamic_offsets);
-				}
-			}
-
-			// Rebind vertex buffers.
-			for (uint32_t i = 0; i < WGCommandBuffer::RenderState::MAX_VERTEX_BINDINGS; i++) {
-				if (p_cmd_buf->render_state.current_vertex_buffers[i]) {
-					wgpuRenderPassEncoderSetVertexBuffer(p_cmd_buf->render_encoder, i,
-							p_cmd_buf->render_state.current_vertex_buffers[i],
-							p_cmd_buf->render_state.current_vertex_offsets[i], WGPU_WHOLE_SIZE);
-				}
-			}
-
-			// Rebind index buffer.
-			if (p_cmd_buf->render_state.current_index_buffer) {
-				wgpuRenderPassEncoderSetIndexBuffer(p_cmd_buf->render_encoder,
-						p_cmd_buf->render_state.current_index_buffer,
-						p_cmd_buf->render_state.current_index_format,
-						p_cmd_buf->render_state.current_index_offset, WGPU_WHOLE_SIZE);
-			}
-
-			// A new pass starts with default viewport, scissor and blend constant.
-			const WGCommandBuffer::RenderState &rs = p_cmd_buf->render_state;
-			if (rs.viewport_set) {
-				wgpuRenderPassEncoderSetViewport(p_cmd_buf->render_encoder, rs.viewport[0], rs.viewport[1], rs.viewport[2], rs.viewport[3], 0.0f, 1.0f);
-			}
-			if (rs.scissor_set) {
-				wgpuRenderPassEncoderSetScissorRect(p_cmd_buf->render_encoder, rs.scissor[0], rs.scissor[1], rs.scissor[2], rs.scissor[3]);
-			}
-			if (rs.blend_constant_set) {
-				wgpuRenderPassEncoderSetBlendConstant(p_cmd_buf->render_encoder, &rs.blend_constant);
-			}
-
-			// Invalidate redundancy caches (state was just rebound fresh).
-			for (uint32_t i = 0; i < WGCommandBuffer::MAX_BIND_GROUPS; i++) {
-				p_cmd_buf->bound_bind_groups[i] = nullptr;
+// Re-applies the tracked pipeline, bind groups, buffers and dynamic state to the current render encoder.
+void RenderingDeviceDriverWebGPU::_rebind_render_state(WGCommandBuffer *p_cmd_buf) {
+	// Rebind render pipeline.
+	WGPipelineWrapper *pw = p_cmd_buf->render_state.current_pipeline;
+	if (pw) {
+		wgpuRenderPassEncoderSetPipeline(p_cmd_buf->render_encoder, pw->render_handle);
+		wgpuRenderPassEncoderSetStencilReference(p_cmd_buf->render_encoder, pw->stencil_reference);
+		if (pw->shader) {
+			for (uint32_t gap_idx : pw->shader->gap_bind_group_indices) {
+				wgpuRenderPassEncoderSetBindGroup(p_cmd_buf->render_encoder, gap_idx, empty_bind_group, 0, nullptr);
 			}
 		}
+	}
+
+	// Rebind all bind groups from saved state.
+	for (uint32_t i = 0; i < WGCommandBuffer::MAX_BIND_GROUPS; i++) {
+		const auto &bs = p_cmd_buf->last_bound_state[i];
+		if (bs.group) {
+			wgpuRenderPassEncoderSetBindGroup(p_cmd_buf->render_encoder, i, bs.group, bs.dynamic_offset_count, bs.dynamic_offsets);
+		}
+	}
+
+	// Rebind vertex buffers.
+	for (uint32_t i = 0; i < WGCommandBuffer::RenderState::MAX_VERTEX_BINDINGS; i++) {
+		if (p_cmd_buf->render_state.current_vertex_buffers[i]) {
+			wgpuRenderPassEncoderSetVertexBuffer(p_cmd_buf->render_encoder, i,
+					p_cmd_buf->render_state.current_vertex_buffers[i],
+					p_cmd_buf->render_state.current_vertex_offsets[i], WGPU_WHOLE_SIZE);
+		}
+	}
+
+	// Rebind index buffer.
+	if (p_cmd_buf->render_state.current_index_buffer) {
+		wgpuRenderPassEncoderSetIndexBuffer(p_cmd_buf->render_encoder,
+				p_cmd_buf->render_state.current_index_buffer,
+				p_cmd_buf->render_state.current_index_format,
+				p_cmd_buf->render_state.current_index_offset, WGPU_WHOLE_SIZE);
+	}
+
+	// A new pass starts with default viewport, scissor and blend constant.
+	const WGCommandBuffer::RenderState &rs = p_cmd_buf->render_state;
+	if (rs.viewport_set) {
+		wgpuRenderPassEncoderSetViewport(p_cmd_buf->render_encoder, rs.viewport[0], rs.viewport[1], rs.viewport[2], rs.viewport[3], 0.0f, 1.0f);
+	}
+	if (rs.scissor_set) {
+		wgpuRenderPassEncoderSetScissorRect(p_cmd_buf->render_encoder, rs.scissor[0], rs.scissor[1], rs.scissor[2], rs.scissor[3]);
+	}
+	if (rs.blend_constant_set) {
+		wgpuRenderPassEncoderSetBlendConstant(p_cmd_buf->render_encoder, &rs.blend_constant);
+	}
+
+	// Invalidate redundancy caches (state was just rebound fresh).
+	for (uint32_t i = 0; i < WGCommandBuffer::MAX_BIND_GROUPS; i++) {
+		p_cmd_buf->bound_bind_groups[i] = nullptr;
 	}
 }
 
@@ -6080,6 +6103,15 @@ void RenderingDeviceDriverWebGPU::render_pass_free(RenderPassID p_render_pass) {
 	memdelete(rp);
 }
 
+// The size WebGPU validates viewports and scissors against. fb->width/height may be the Godot-level
+// render area (window size) rather than the attachment size.
+static Size2i _framebuffer_extent(const WGFramebuffer *p_fb) {
+	if (!p_fb->attachments.is_empty() && p_fb->attachments[0] != nullptr) {
+		return Size2i(p_fb->attachments[0]->width, p_fb->attachments[0]->height);
+	}
+	return Size2i(p_fb->width, p_fb->height);
+}
+
 void RenderingDeviceDriverWebGPU::command_begin_render_pass(CommandBufferID p_cmd_buffer, RenderPassID p_render_pass, FramebufferID p_framebuffer, CommandBufferType p_cmd_buffer_type, const Rect2i &p_rect, VectorView<RenderPassClearValue> p_clear_values) {
 	WGCommandBuffer *cmd = (WGCommandBuffer *)(p_cmd_buffer.id);
 	WGRenderPass *rp = (WGRenderPass *)(p_render_pass.id);
@@ -6100,8 +6132,14 @@ void RenderingDeviceDriverWebGPU::command_begin_render_pass(CommandBufferID p_cm
 	cmd->render_state.render_pass = rp;
 	cmd->render_state.framebuffer = fb;
 	cmd->render_state.current_subpass = 0;
-	cmd->render_state.render_area_width = p_rect.size.x > 0 ? (uint32_t)p_rect.size.x : fb->width;
-	cmd->render_state.render_area_height = p_rect.size.y > 0 ? (uint32_t)p_rect.size.y : fb->height;
+	cmd->render_state.render_area_width = p_rect.size.x > 0 ? (uint32_t)p_rect.get_end().x : fb->width;
+	cmd->render_state.render_area_height = p_rect.size.y > 0 ? (uint32_t)p_rect.get_end().y : fb->height;
+
+	// WebGPU has no render area: a partial one loads and stores every attachment and its clears are
+	// drawn into p_rect after the pass begins, like the Metal driver does.
+	const bool full_area = p_rect.size == Size2i() || p_rect.encloses(Rect2i(Point2i(), _framebuffer_extent(fb)));
+	AttachmentClear region_clears[CLEAR_MAX_COLORS + 1];
+	uint32_t region_clear_count = 0;
 
 	ERR_FAIL_COND(rp->subpasses.size() == 0);
 	const WGRenderPass::SubpassInfo &subpass = rp->subpasses[0];
@@ -6194,6 +6232,17 @@ void RenderingDeviceDriverWebGPU::command_begin_render_pass(CommandBufferID p_cm
 				att.clearValue = { c.r, c.g, c.b, c.a };
 			}
 
+			if (!full_area) {
+				if (attach_desc.load_op == ATTACHMENT_LOAD_OP_CLEAR && ref.attachment < p_clear_values.size() && i < CLEAR_MAX_COLORS) {
+					AttachmentClear &clear = region_clears[region_clear_count++];
+					clear.aspect = TEXTURE_ASPECT_COLOR_BIT;
+					clear.color_attachment = i;
+					clear.value = p_clear_values[ref.attachment];
+				}
+				att.loadOp = WGPULoadOp_Load;
+				att.storeOp = WGPUStoreOp_Store;
+			}
+
 			// WebGPU swap chain textures have undefined content each frame.
 			// Force LOAD→CLEAR so the alpha channel starts at 1.0 (opaque).
 			if (rp->is_swap_chain_pass && att.loadOp == WGPULoadOp_Load) {
@@ -6257,6 +6306,28 @@ void RenderingDeviceDriverWebGPU::command_begin_render_pass(CommandBufferID p_cm
 				ds_att.stencilLoadOp = WGPULoadOp_Undefined;
 				ds_att.stencilStoreOp = WGPUStoreOp_Undefined;
 				ds_att.stencilReadOnly = true;
+			}
+
+			if (!full_area) {
+				AttachmentClear clear;
+				if (has_depth) {
+					if (attach_desc.load_op == ATTACHMENT_LOAD_OP_CLEAR) {
+						clear.aspect.set_flag(TEXTURE_ASPECT_DEPTH_BIT);
+					}
+					ds_att.depthLoadOp = WGPULoadOp_Load;
+					ds_att.depthStoreOp = WGPUStoreOp_Store;
+				}
+				if (has_stencil) {
+					if (attach_desc.stencil_load_op == ATTACHMENT_LOAD_OP_CLEAR) {
+						clear.aspect.set_flag(TEXTURE_ASPECT_STENCIL_BIT);
+					}
+					ds_att.stencilLoadOp = WGPULoadOp_Load;
+					ds_att.stencilStoreOp = WGPUStoreOp_Store;
+				}
+				if (!clear.aspect.is_empty() && ds_ref.attachment < p_clear_values.size()) {
+					clear.value = p_clear_values[ds_ref.attachment];
+					region_clears[region_clear_count++] = clear;
+				}
 			}
 		} else {
 			// Fallback: load and store everything.
@@ -6325,6 +6396,10 @@ void RenderingDeviceDriverWebGPU::command_begin_render_pass(CommandBufferID p_cm
 	cmd->render_state.current_index_offset = 0;
 	memset(cmd->render_state.current_vertex_buffers, 0, sizeof(cmd->render_state.current_vertex_buffers));
 	memset(cmd->render_state.current_vertex_offsets, 0, sizeof(cmd->render_state.current_vertex_offsets));
+
+	if (region_clear_count > 0) {
+		_render_clear(cmd, VectorView(region_clears, region_clear_count), p_rect);
+	}
 }
 
 void RenderingDeviceDriverWebGPU::command_end_render_pass(CommandBufferID p_cmd_buffer) {
@@ -6510,18 +6585,9 @@ void RenderingDeviceDriverWebGPU::command_render_set_scissor(CommandBufferID p_c
 			clamp_h = cmd->render_state.render_area_height;
 		}
 		if (cmd->render_state.framebuffer) {
-			uint32_t fb_w = cmd->render_state.framebuffer->width;
-			uint32_t fb_h = cmd->render_state.framebuffer->height;
-			// Use actual attachment texture dimensions when available — fb->width/height
-			// may reflect the Godot-level render-area (window size) rather than the GPU
-			// texture size, which is what WebGPU validates the scissor rect against.
-			const WGFramebuffer *wgfb = cmd->render_state.framebuffer;
-			if (!wgfb->attachments.is_empty() && wgfb->attachments[0] != nullptr) {
-				fb_w = wgfb->attachments[0]->width;
-				fb_h = wgfb->attachments[0]->height;
-			}
-			clamp_w = clamp_w > 0 ? MIN(clamp_w, fb_w) : fb_w;
-			clamp_h = clamp_h > 0 ? MIN(clamp_h, fb_h) : fb_h;
+			const Size2i fb_size = _framebuffer_extent(cmd->render_state.framebuffer);
+			clamp_w = clamp_w > 0 ? MIN(clamp_w, (uint32_t)fb_size.x) : (uint32_t)fb_size.x;
+			clamp_h = clamp_h > 0 ? MIN(clamp_h, (uint32_t)fb_size.y) : (uint32_t)fb_size.y;
 		}
 		if (clamp_w > 0 && clamp_h > 0) {
 			if (x >= clamp_w || y >= clamp_h) {
@@ -6545,11 +6611,200 @@ void RenderingDeviceDriverWebGPU::command_render_set_scissor(CommandBufferID p_c
 }
 
 void RenderingDeviceDriverWebGPU::command_render_clear_attachments(CommandBufferID p_cmd_buffer, VectorView<AttachmentClear> p_attachment_clears, VectorView<Rect2i> p_rects) {
-	// WebGPU has no mid-pass clear. Options:
-	// (a) End pass, do a clear pass, restart — simplest.
-	// (b) Draw full-screen quad with clear color.
-	// TODO: Implement option (a).
-	WARN_PRINT_ONCE("WebGPU: command_render_clear_attachments not yet implemented.");
+	WGCommandBuffer *cmd = (WGCommandBuffer *)(p_cmd_buffer.id);
+	ERR_FAIL_NULL(cmd);
+	_render_clear(cmd, p_attachment_clears, p_rects);
+}
+
+// WGSL type a fragment output needs to write a colour target of this format.
+static const char *_wgsl_color_output_type(WGPUTextureFormat p_format) {
+	if (p_format == WGPUTextureFormat_RGB10A2Uint) {
+		return "vec4u";
+	}
+	uint32_t channels = 0;
+	WGTexelType type = WG_TEXEL_FLOAT32;
+	if (wgpu_format_texel_info(p_format, channels, type)) {
+		switch (type) {
+			case WG_TEXEL_UINT8:
+			case WG_TEXEL_UINT16:
+			case WG_TEXEL_UINT32:
+				return "vec4u";
+			case WG_TEXEL_SINT8:
+			case WG_TEXEL_SINT16:
+			case WG_TEXEL_SINT32:
+				return "vec4i";
+			default:
+				break;
+		}
+	}
+	return "vec4f";
+}
+
+WGPURenderPipeline RenderingDeviceDriverWebGPU::_get_clear_pipeline(const ClearPipelineKey &p_key) {
+	if (const WGPURenderPipeline *cached = clear_pipelines.getptr(p_key)) {
+		return *cached;
+	}
+
+	// A triangle covering the viewport; depth comes from the viewport's depth range.
+	String wgsl = vformat("@group(0) @binding(%d) var<storage, read> clear_colors: array<vec4f, %d>;\n", PUSH_CONSTANT_RING_BINDING, CLEAR_MAX_COLORS);
+	wgsl += "@vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4f {\n"
+			"\treturn vec4f(f32(i & 1u) * 4.0 - 1.0, f32(i >> 1u) * 4.0 - 1.0, 0.5, 1.0);\n"
+			"}\n";
+	String outputs;
+	String writes;
+	WGPUColorTargetState targets[CLEAR_MAX_COLORS] = {};
+	for (uint32_t i = 0; i < p_key.color_count; i++) {
+		targets[i].format = p_key.color_formats[i];
+		targets[i].writeMask = WGPUColorWriteMask_None;
+		if (p_key.color_write_mask & (1u << i)) {
+			targets[i].writeMask = WGPUColorWriteMask_All;
+			const char *type = _wgsl_color_output_type(p_key.color_formats[i]);
+			outputs += vformat("\t@location(%d) c%d: %s,\n", i, i, type);
+			writes += vformat("\to.c%d = %s(clear_colors[%d]);\n", i, type, i);
+		}
+	}
+	if (outputs.is_empty()) {
+		wgsl += "@fragment fn fs() {}\n";
+	} else {
+		wgsl += "struct ClearOutput {\n" + outputs + "}\n@fragment fn fs() -> ClearOutput {\n\tvar o: ClearOutput;\n" + writes + "\treturn o;\n}\n";
+	}
+
+	const CharString wgsl_cs = wgsl.utf8();
+	WGPUShaderSourceWGSL wgsl_source = {};
+	wgsl_source.chain.sType = WGPUSType_ShaderSourceWGSL;
+	wgsl_source.code = { wgsl_cs.get_data(), WGPU_STRLEN };
+	WGPUShaderModuleDescriptor module_desc = {};
+	module_desc.nextInChain = &wgsl_source.chain;
+	module_desc.label = { "clear_attachments", WGPU_STRLEN };
+	WGPUShaderModule module = wgpuDeviceCreateShaderModule(device, &module_desc);
+	ERR_FAIL_NULL_V_MSG(module, nullptr, "WebGPU: failed to create the clear shader module.");
+
+	WGPUFragmentState fragment = {};
+	fragment.module = module;
+	fragment.entryPoint = { "fs", WGPU_STRLEN };
+	fragment.targetCount = p_key.color_count;
+	fragment.targets = targets;
+
+	WGPUDepthStencilState depth_stencil = {};
+	WGPURenderPipelineDescriptor desc = {};
+	if (p_key.depth_stencil_format != WGPUTextureFormat_Undefined) {
+		const WGPUStencilOperation stencil_op = (p_key.depth_stencil_write & 2) ? WGPUStencilOperation_Replace : WGPUStencilOperation_Keep;
+		depth_stencil.format = p_key.depth_stencil_format;
+		depth_stencil.depthWriteEnabled = (p_key.depth_stencil_write & 1) ? WGPUOptionalBool_True : WGPUOptionalBool_False;
+		depth_stencil.depthCompare = is_depth_format_wgpu(p_key.depth_stencil_format) ? WGPUCompareFunction_Always : WGPUCompareFunction_Undefined;
+		depth_stencil.stencilFront = { WGPUCompareFunction_Always, stencil_op, stencil_op, stencil_op };
+		depth_stencil.stencilBack = depth_stencil.stencilFront;
+		depth_stencil.stencilReadMask = 0xFF;
+		depth_stencil.stencilWriteMask = (p_key.depth_stencil_write & 2) ? 0xFF : 0;
+		desc.depthStencil = &depth_stencil;
+	}
+
+	desc.label = { "clear_attachments", WGPU_STRLEN };
+	desc.layout = clear_pipeline_layout;
+	desc.vertex.module = module;
+	desc.vertex.entryPoint = { "vs", WGPU_STRLEN };
+	desc.primitive.topology = WGPUPrimitiveTopology_TriangleList;
+	desc.primitive.cullMode = WGPUCullMode_None;
+	desc.multisample.count = p_key.sample_count;
+	desc.multisample.mask = 0xFFFFFFFFu;
+	desc.fragment = &fragment;
+
+	WGPURenderPipeline pipeline = wgpuDeviceCreateRenderPipeline(device, &desc);
+	wgpuShaderModuleRelease(module);
+	ERR_FAIL_NULL_V_MSG(pipeline, nullptr, "WebGPU: failed to create the clear pipeline.");
+	clear_pipelines.insert(p_key, pipeline);
+	return pipeline;
+}
+
+void RenderingDeviceDriverWebGPU::_render_clear(WGCommandBuffer *p_cmd_buf, VectorView<AttachmentClear> p_clears, VectorView<Rect2i> p_rects) {
+	WGCommandBuffer::RenderState &rs = p_cmd_buf->render_state;
+	ERR_FAIL_COND(!p_cmd_buf->render_encoder || !rs.render_pass || !rs.framebuffer);
+	const WGRenderPass::SubpassInfo &subpass = rs.render_pass->subpasses[rs.current_subpass];
+	const WGFramebuffer *fb = rs.framebuffer;
+	ERR_FAIL_COND_MSG(subpass.color_references.size() > CLEAR_MAX_COLORS, "WebGPU: too many colour attachments to clear.");
+
+	// Attachment views are the textures' default views, so the texture formats match the pass.
+	auto attachment = [fb](uint32_t p_index) -> const WGTexture * {
+		return p_index < fb->attachments.size() ? fb->attachments[p_index] : nullptr;
+	};
+	ClearPipelineKey key;
+	key.color_count = subpass.color_references.size();
+	for (uint32_t i = 0; i < key.color_count; i++) {
+		if (const WGTexture *tex = attachment(subpass.color_references[i].attachment)) {
+			key.color_formats[i] = tex->format;
+			key.sample_count = tex->sample_count;
+		}
+	}
+	if (const WGTexture *tex = attachment(subpass.depth_stencil_reference.attachment)) {
+		key.depth_stencil_format = tex->format;
+		key.sample_count = tex->sample_count;
+	}
+
+	float colors[CLEAR_MAX_COLORS][4] = {};
+	float depth = 0.0f;
+	uint32_t stencil = 0;
+	for (uint32_t i = 0; i < p_clears.size(); i++) {
+		const AttachmentClear &clear = p_clears[i];
+		if (clear.aspect.has_flag(TEXTURE_ASPECT_COLOR_BIT)) {
+			ERR_CONTINUE(clear.color_attachment >= key.color_count || key.color_formats[clear.color_attachment] == WGPUTextureFormat_Undefined);
+			key.color_write_mask |= 1u << clear.color_attachment;
+			const Color &c = clear.value.color;
+			colors[clear.color_attachment][0] = c.r;
+			colors[clear.color_attachment][1] = c.g;
+			colors[clear.color_attachment][2] = c.b;
+			colors[clear.color_attachment][3] = c.a;
+		}
+		if (clear.aspect.has_flag(TEXTURE_ASPECT_DEPTH_BIT) && is_depth_format_wgpu(key.depth_stencil_format)) {
+			key.depth_stencil_write |= 1;
+			depth = CLAMP(clear.value.depth, 0.0f, 1.0f);
+		}
+		if (clear.aspect.has_flag(TEXTURE_ASPECT_STENCIL_BIT) && has_stencil_wgpu(key.depth_stencil_format)) {
+			key.depth_stencil_write |= 2;
+			stencil = clear.value.stencil;
+		}
+	}
+	if (key.color_write_mask == 0 && key.depth_stencil_write == 0) {
+		return;
+	}
+	WGPURenderPipeline pipeline = _get_clear_pipeline(key);
+	ERR_FAIL_NULL(pipeline);
+
+	// Send the colours as push constants (this may restart the pass on a new ring page), then restore
+	// the caller's, which the next draw must re-flush because group 0 now holds the clear colours.
+	static_assert(sizeof(colors) == WGCommandBuffer::MAX_PUSH_CONSTANT_SIZE);
+	uint8_t saved_push_constants[WGCommandBuffer::MAX_PUSH_CONSTANT_SIZE];
+	memcpy(saved_push_constants, p_cmd_buf->push_constant_data, sizeof(saved_push_constants));
+	const uint32_t saved_push_constant_len = p_cmd_buf->push_constant_data_len;
+	memcpy(p_cmd_buf->push_constant_data, colors, sizeof(colors));
+	p_cmd_buf->push_constant_data_len = sizeof(colors);
+	p_cmd_buf->push_constants_dirty = true;
+	_flush_push_constants(p_cmd_buf, &clear_shader);
+	memcpy(p_cmd_buf->push_constant_data, saved_push_constants, sizeof(saved_push_constants));
+	p_cmd_buf->push_constant_data_len = saved_push_constant_len;
+	p_cmd_buf->push_constants_dirty = true;
+
+	WGPURenderPassEncoder encoder = p_cmd_buf->render_encoder;
+	wgpuRenderPassEncoderSetPipeline(encoder, pipeline);
+	wgpuRenderPassEncoderSetStencilReference(encoder, stencil);
+	const Rect2i extent(Point2i(), _framebuffer_extent(fb));
+	for (uint32_t i = 0; i < p_rects.size(); i++) {
+		const Rect2i rect = p_rects[i].intersection(extent);
+		if (!rect.has_area()) {
+			continue;
+		}
+		wgpuRenderPassEncoderSetViewport(encoder, rect.position.x, rect.position.y, rect.size.x, rect.size.y, depth, depth);
+		wgpuRenderPassEncoderSetScissorRect(encoder, rect.position.x, rect.position.y, rect.size.x, rect.size.y);
+		wgpuRenderPassEncoderDraw(encoder, 3, 1, 0, 0);
+	}
+
+	// Restore the pipeline, bind groups and dynamic state; untracked viewport/scissor go back to the defaults.
+	_rebind_render_state(p_cmd_buf);
+	if (!rs.viewport_set) {
+		wgpuRenderPassEncoderSetViewport(encoder, 0.0f, 0.0f, extent.size.x, extent.size.y, 0.0f, 1.0f);
+	}
+	if (!rs.scissor_set) {
+		wgpuRenderPassEncoderSetScissorRect(encoder, 0, 0, extent.size.x, extent.size.y);
+	}
 }
 
 void RenderingDeviceDriverWebGPU::command_bind_render_pipeline(CommandBufferID p_cmd_buffer, PipelineID p_pipeline) {
