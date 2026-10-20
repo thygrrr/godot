@@ -253,6 +253,11 @@ Vector2i DisplayServerWindows::_get_screen_expand_offset(int p_screen) const {
 }
 
 void DisplayServerWindows::_set_mouse_mode_impl(DisplayServerEnums::MouseMode p_mode) {
+	// 2dog: an off-screen host owns the OS pointer; keep only Godot's logical mode.
+	if (OS::get_singleton()->is_hidden_window()) {
+		return;
+	}
+
 	if (p_mode == DisplayServerEnums::MOUSE_MODE_HIDDEN || p_mode == DisplayServerEnums::MOUSE_MODE_CAPTURED || p_mode == DisplayServerEnums::MOUSE_MODE_CONFINED_HIDDEN) {
 		// Hide cursor before moving.
 		if (hCursor == nullptr) {
@@ -4282,6 +4287,10 @@ Vector2 DisplayServerWindows::_get_raw_mouse_motion(const RAWINPUT &p_raw, Displ
 }
 
 void DisplayServerWindows::_process_raw_mouse_motion(const Vector2 &p_relative, bool p_left_button_down, DisplayServerEnums::WindowID p_window_id) {
+	if (OS::get_singleton()->is_hidden_window()) {
+		return;
+	}
+
 	if (p_relative == Vector2()) {
 		return;
 	}
