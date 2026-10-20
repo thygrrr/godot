@@ -34,6 +34,153 @@
 
 #include <webgpu/webgpu.h>
 
+// Storage declarations use a format name followed by a comma.
+static inline WGPUTextureFormat wgpu_storage_format_from_wgsl(const char *p_format) {
+	if (strncmp(p_format, "rgba8unorm,", 11) == 0) {
+		return WGPUTextureFormat_RGBA8Unorm;
+	}
+	if (strncmp(p_format, "rgba8snorm,", 11) == 0) {
+		return WGPUTextureFormat_RGBA8Snorm;
+	}
+	if (strncmp(p_format, "rgba8uint,", 10) == 0) {
+		return WGPUTextureFormat_RGBA8Uint;
+	}
+	if (strncmp(p_format, "rgba8sint,", 10) == 0) {
+		return WGPUTextureFormat_RGBA8Sint;
+	}
+	if (strncmp(p_format, "rgba16float,", 12) == 0) {
+		return WGPUTextureFormat_RGBA16Float;
+	}
+	if (strncmp(p_format, "rgba16uint,", 11) == 0) {
+		return WGPUTextureFormat_RGBA16Uint;
+	}
+	if (strncmp(p_format, "rgba16sint,", 11) == 0) {
+		return WGPUTextureFormat_RGBA16Sint;
+	}
+	if (strncmp(p_format, "rgba32float,", 12) == 0) {
+		return WGPUTextureFormat_RGBA32Float;
+	}
+	if (strncmp(p_format, "rgba32uint,", 11) == 0) {
+		return WGPUTextureFormat_RGBA32Uint;
+	}
+	if (strncmp(p_format, "rgba32sint,", 11) == 0) {
+		return WGPUTextureFormat_RGBA32Sint;
+	}
+	if (strncmp(p_format, "rg32float,", 10) == 0) {
+		return WGPUTextureFormat_RG32Float;
+	}
+	if (strncmp(p_format, "rg32uint,", 9) == 0) {
+		return WGPUTextureFormat_RG32Uint;
+	}
+	if (strncmp(p_format, "rg32sint,", 9) == 0) {
+		return WGPUTextureFormat_RG32Sint;
+	}
+	if (strncmp(p_format, "r32float,", 9) == 0) {
+		return WGPUTextureFormat_R32Float;
+	}
+	if (strncmp(p_format, "r32uint,", 8) == 0) {
+		return WGPUTextureFormat_R32Uint;
+	}
+	if (strncmp(p_format, "r32sint,", 8) == 0) {
+		return WGPUTextureFormat_R32Sint;
+	}
+	if (strncmp(p_format, "r16float,", 9) == 0) {
+		return WGPUTextureFormat_R16Float;
+	}
+	if (strncmp(p_format, "r16uint,", 8) == 0) {
+		return WGPUTextureFormat_R16Uint;
+	}
+	if (strncmp(p_format, "r16sint,", 8) == 0) {
+		return WGPUTextureFormat_R16Sint;
+	}
+	if (strncmp(p_format, "r16snorm,", 9) == 0) {
+		return WGPUTextureFormat_R16Snorm;
+	}
+	if (strncmp(p_format, "r16unorm,", 9) == 0) {
+		return WGPUTextureFormat_R16Unorm;
+	}
+	if (strncmp(p_format, "r8unorm,", 8) == 0) {
+		return WGPUTextureFormat_R8Unorm;
+	}
+	if (strncmp(p_format, "r8snorm,", 8) == 0) {
+		return WGPUTextureFormat_R8Snorm;
+	}
+	if (strncmp(p_format, "r8uint,", 7) == 0) {
+		return WGPUTextureFormat_R8Uint;
+	}
+	if (strncmp(p_format, "r8sint,", 7) == 0) {
+		return WGPUTextureFormat_R8Sint;
+	}
+	if (strncmp(p_format, "rg8unorm,", 9) == 0) {
+		return WGPUTextureFormat_RG8Unorm;
+	}
+	if (strncmp(p_format, "rg8snorm,", 9) == 0) {
+		return WGPUTextureFormat_RG8Snorm;
+	}
+	if (strncmp(p_format, "rg8uint,", 8) == 0) {
+		return WGPUTextureFormat_RG8Uint;
+	}
+	if (strncmp(p_format, "rg8sint,", 8) == 0) {
+		return WGPUTextureFormat_RG8Sint;
+	}
+	if (strncmp(p_format, "rg16float,", 10) == 0) {
+		return WGPUTextureFormat_RG16Float;
+	}
+	if (strncmp(p_format, "rg16uint,", 9) == 0) {
+		return WGPUTextureFormat_RG16Uint;
+	}
+	if (strncmp(p_format, "rg16sint,", 9) == 0) {
+		return WGPUTextureFormat_RG16Sint;
+	}
+	if (strncmp(p_format, "rg16snorm,", 10) == 0) {
+		return WGPUTextureFormat_RG16Snorm;
+	}
+	if (strncmp(p_format, "rg16unorm,", 10) == 0) {
+		return WGPUTextureFormat_RG16Unorm;
+	}
+	if (strncmp(p_format, "rgba16snorm,", 12) == 0) {
+		return WGPUTextureFormat_RGBA16Snorm;
+	}
+	if (strncmp(p_format, "rgba16unorm,", 12) == 0) {
+		return WGPUTextureFormat_RGBA16Unorm;
+	}
+	if (strncmp(p_format, "bgra8unorm,", 11) == 0) {
+		return WGPUTextureFormat_BGRA8Unorm;
+	}
+	return WGPUTextureFormat_Undefined;
+}
+
+// The WGSL language feature alone only enables read/write access for R32 formats.
+static inline bool wgpu_storage_format_supports_read_write(WGPUTextureFormat p_format, bool p_language_feature, bool p_tier2) {
+	if (!p_language_feature) {
+		return false;
+	}
+	switch (p_format) {
+		case WGPUTextureFormat_R32Float:
+		case WGPUTextureFormat_R32Uint:
+		case WGPUTextureFormat_R32Sint:
+			return true;
+		case WGPUTextureFormat_R8Unorm:
+		case WGPUTextureFormat_R8Uint:
+		case WGPUTextureFormat_R8Sint:
+		case WGPUTextureFormat_RGBA8Unorm:
+		case WGPUTextureFormat_RGBA8Uint:
+		case WGPUTextureFormat_RGBA8Sint:
+		case WGPUTextureFormat_R16Uint:
+		case WGPUTextureFormat_R16Sint:
+		case WGPUTextureFormat_R16Float:
+		case WGPUTextureFormat_RGBA16Uint:
+		case WGPUTextureFormat_RGBA16Sint:
+		case WGPUTextureFormat_RGBA16Float:
+		case WGPUTextureFormat_RGBA32Uint:
+		case WGPUTextureFormat_RGBA32Sint:
+		case WGPUTextureFormat_RGBA32Float:
+			return p_tier2;
+		default:
+			return false;
+	}
+}
+
 // Formats omitted here are unsupported by WebGPU.
 static inline WGPUTextureFormat data_format_to_wgpu(RenderingDeviceCommons::DataFormat p_format) {
 	using DF = RenderingDeviceCommons::DataFormat;

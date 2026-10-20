@@ -177,9 +177,9 @@ struct WGShader {
 	HashMap<uint32_t, uint32_t> depth_alias_bindings;
 
 	// Read-write storage texture splits: maps (set << 16 | write_binding) → read_shadow_binding.
-	// When readonly-and-readwrite-storage-textures is unavailable, read_write storage
+	// When the language feature or format lacks read/write support, storage
 	// textures are split into separate write (original) + read (shadow) bindings.
-	// The shadow binding receives a GPU copy of the texture at bind group creation time.
+	// The shadow binding receives a GPU copy before each compute dispatch.
 	HashMap<uint32_t, uint32_t> rw_storage_splits;
 
 	// Read-only storage texture → sampled texture conversions.
@@ -433,6 +433,7 @@ struct WGCommandBuffer {
 	static constexpr uint32_t MAX_BIND_GROUP_DYN_OFFSETS = 9; // 8 material + 1 PC ring
 	struct BoundGroupState {
 		WGPUBindGroup group = nullptr;
+		WGUniformSet *uniform_set = nullptr;
 		uint32_t dynamic_offsets[MAX_BIND_GROUP_DYN_OFFSETS] = {};
 		uint32_t dynamic_offset_count = 0;
 	};

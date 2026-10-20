@@ -831,8 +831,12 @@ void RenderingDeviceDriverWebGPU::_check_capabilities() {
 		var d = Module['preinitializedWebGPUDevice'];
 		return (d && d.features && d.features.has('texture-formats-tier1')) ? 1 : 0;
 	});
+	has_texture_formats_tier2 = (bool)EM_ASM_INT({
+		return Module['preinitializedWebGPUDevice'].features.has('texture-formats-tier2') ? 1 : 0;
+	});
 #else
 	has_texture_formats_tier1 = wgpuDeviceHasFeature(device, WGPUFeatureName_TextureFormatsTier1);
+	has_texture_formats_tier2 = wgpuDeviceHasFeature(device, WGPUFeatureName_TextureFormatsTier2);
 #endif
 	if (has_texture_formats_tier1) {
 		print_verbose("WebGPU: texture-formats-tier1 feature is available — r8/rg8 storage formats supported natively.");
@@ -842,8 +846,7 @@ void RenderingDeviceDriverWebGPU::_check_capabilities() {
 	// modes on storage textures. Without this, only write-only is valid.
 #ifdef WEB_ENABLED
 	has_rw_storage_textures = (bool)EM_ASM_INT({
-		var d = Module['preinitializedWebGPUDevice'];
-		return (d && d.features && d.features.has('readonly-and-readwrite-storage-textures')) ? 1 : 0;
+		return navigator.gpu.wgslLanguageFeatures.has('readonly_and_readwrite_storage_textures') ? 1 : 0;
 	});
 #else
 	has_rw_storage_textures = wgpuInstanceHasWGSLLanguageFeature(context_driver->get_instance(), WGPUWGSLLanguageFeatureName_ReadonlyAndReadwriteStorageTextures);
@@ -1543,12 +1546,8 @@ RDD::TextureID RenderingDeviceDriverWebGPU::texture_create(const TextureFormat &
 	// Upgrade to 32-bit equivalents when storage binding is needed.
 	if (tex->usage & WGPUTextureUsage_StorageBinding) {
 		tex->format = _promote_storage_format(tex->format);
-		// When readonly-and-readwrite-storage-textures is unavailable, read and
-		// read_write storage textures are converted to sampled textures in the
-		// shader. We need CopySrc (for read_write shadow copies) and
-		// TextureBinding (so the texture can be bound as a sampled texture
-		// for read-only storage textures converted to texture_2d).
-		if (!has_rw_storage_textures) {
+		// Unsupported read/write access uses sampled shadow copies instead.
+		if (!wgpu_storage_format_supports_read_write(tex->format, has_rw_storage_textures, has_texture_formats_tier2)) {
 			tex->usage |= WGPUTextureUsage_CopySrc | WGPUTextureUsage_TextureBinding;
 		}
 	}
@@ -3242,12 +3241,11 @@ CharString RenderingDeviceDriverWebGPU::_postprocess_wgsl(const char *p_wgsl, Sh
 		}
 	}
 
-	// When readonly-and-readwrite-storage-textures is not available, split
-	// read_write storage textures into separate write + read (shadow) bindings.
-	// Safari rejects read_write storage texture access at BGL validation.
+	// Split unsupported read_write storage formats into write + sampled shadow bindings.
+	// Native access requires both the WGSL language feature and format support.
 	// The shadow read binding uses the odd slot (B+1) which is free for IMAGE
 	// types due to preprocessing's binding doubling (even=resource, odd=sampler for combined).
-	if (!has_rw_storage_textures && strstr(cs.get_data(), "read_write>")) {
+	if (strstr(cs.get_data(), "read_write>")) {
 		struct RWSplitInfo {
 			uint32_t grp, bnd;
 			String var_name, dim_type, fmt;
@@ -3312,6 +3310,11 @@ CharString RenderingDeviceDriverWebGPU::_postprocess_wgsl(const char *p_wgsl, Sh
 				}
 				int fmt_len = (int)(comma - lt - 1);
 				if (fmt_len <= 0 || fmt_len >= 64) {
+					p = semi;
+					continue;
+				}
+
+				if (wgpu_storage_format_supports_read_write(wgpu_storage_format_from_wgsl(lt + 1), has_rw_storage_textures, has_texture_formats_tier2)) {
 					p = semi;
 					continue;
 				}
@@ -4113,82 +4116,7 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 									uint32_t key = ((uint32_t)grp << 16) | (uint32_t)bnd;
 									// Parse format name
 									const char *fmt = lt + 1;
-									WGPUTextureFormat tf = WGPUTextureFormat_RGBA8Unorm; // fallback
-									if (strncmp(fmt, "rgba8unorm,", 11) == 0) {
-										tf = WGPUTextureFormat_RGBA8Unorm;
-									} else if (strncmp(fmt, "rgba8snorm,", 11) == 0) {
-										tf = WGPUTextureFormat_RGBA8Snorm;
-									} else if (strncmp(fmt, "rgba8uint,", 10) == 0) {
-										tf = WGPUTextureFormat_RGBA8Uint;
-									} else if (strncmp(fmt, "rgba8sint,", 10) == 0) {
-										tf = WGPUTextureFormat_RGBA8Sint;
-									} else if (strncmp(fmt, "rgba16float,", 12) == 0) {
-										tf = WGPUTextureFormat_RGBA16Float;
-									} else if (strncmp(fmt, "rgba16uint,", 11) == 0) {
-										tf = WGPUTextureFormat_RGBA16Uint;
-									} else if (strncmp(fmt, "rgba16sint,", 11) == 0) {
-										tf = WGPUTextureFormat_RGBA16Sint;
-									} else if (strncmp(fmt, "rgba32float,", 12) == 0) {
-										tf = WGPUTextureFormat_RGBA32Float;
-									} else if (strncmp(fmt, "rgba32uint,", 11) == 0) {
-										tf = WGPUTextureFormat_RGBA32Uint;
-									} else if (strncmp(fmt, "rgba32sint,", 11) == 0) {
-										tf = WGPUTextureFormat_RGBA32Sint;
-									} else if (strncmp(fmt, "rg32float,", 10) == 0) {
-										tf = WGPUTextureFormat_RG32Float;
-									} else if (strncmp(fmt, "rg32uint,", 9) == 0) {
-										tf = WGPUTextureFormat_RG32Uint;
-									} else if (strncmp(fmt, "rg32sint,", 9) == 0) {
-										tf = WGPUTextureFormat_RG32Sint;
-									} else if (strncmp(fmt, "r32float,", 9) == 0) {
-										tf = WGPUTextureFormat_R32Float;
-									} else if (strncmp(fmt, "r32uint,", 8) == 0) {
-										tf = WGPUTextureFormat_R32Uint;
-									} else if (strncmp(fmt, "r32sint,", 8) == 0) {
-										tf = WGPUTextureFormat_R32Sint;
-									} else if (strncmp(fmt, "r16float,", 9) == 0) {
-										tf = WGPUTextureFormat_R16Float;
-									} else if (strncmp(fmt, "r16uint,", 8) == 0) {
-										tf = WGPUTextureFormat_R16Uint;
-									} else if (strncmp(fmt, "r16sint,", 8) == 0) {
-										tf = WGPUTextureFormat_R16Sint;
-									} else if (strncmp(fmt, "r16snorm,", 9) == 0) {
-										tf = WGPUTextureFormat_R16Snorm;
-									} else if (strncmp(fmt, "r16unorm,", 9) == 0) {
-										tf = WGPUTextureFormat_R16Unorm;
-									} else if (strncmp(fmt, "r8unorm,", 8) == 0) {
-										tf = WGPUTextureFormat_R8Unorm;
-									} else if (strncmp(fmt, "r8snorm,", 8) == 0) {
-										tf = WGPUTextureFormat_R8Snorm;
-									} else if (strncmp(fmt, "r8uint,", 7) == 0) {
-										tf = WGPUTextureFormat_R8Uint;
-									} else if (strncmp(fmt, "r8sint,", 7) == 0) {
-										tf = WGPUTextureFormat_R8Sint;
-									} else if (strncmp(fmt, "rg8unorm,", 9) == 0) {
-										tf = WGPUTextureFormat_RG8Unorm;
-									} else if (strncmp(fmt, "rg8snorm,", 9) == 0) {
-										tf = WGPUTextureFormat_RG8Snorm;
-									} else if (strncmp(fmt, "rg8uint,", 8) == 0) {
-										tf = WGPUTextureFormat_RG8Uint;
-									} else if (strncmp(fmt, "rg8sint,", 8) == 0) {
-										tf = WGPUTextureFormat_RG8Sint;
-									} else if (strncmp(fmt, "rg16float,", 10) == 0) {
-										tf = WGPUTextureFormat_RG16Float;
-									} else if (strncmp(fmt, "rg16uint,", 9) == 0) {
-										tf = WGPUTextureFormat_RG16Uint;
-									} else if (strncmp(fmt, "rg16sint,", 9) == 0) {
-										tf = WGPUTextureFormat_RG16Sint;
-									} else if (strncmp(fmt, "rg16snorm,", 10) == 0) {
-										tf = WGPUTextureFormat_RG16Snorm;
-									} else if (strncmp(fmt, "rg16unorm,", 10) == 0) {
-										tf = WGPUTextureFormat_RG16Unorm;
-									} else if (strncmp(fmt, "rgba16snorm,", 12) == 0) {
-										tf = WGPUTextureFormat_RGBA16Snorm;
-									} else if (strncmp(fmt, "rgba16unorm,", 12) == 0) {
-										tf = WGPUTextureFormat_RGBA16Unorm;
-									} else if (strncmp(fmt, "bgra8unorm,", 11) == 0) {
-										tf = WGPUTextureFormat_BGRA8Unorm;
-									}
+									WGPUTextureFormat tf = wgpu_storage_format_from_wgsl(fmt);
 									wgsl_storage_tex_format[key] = tf;
 									// Parse access mode (after comma, skip space)
 									const char *acc = comma + 1;
@@ -4636,7 +4564,7 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 					continue;
 				}
 				uint32_t shadow_key = ((uint32_t)split_grp << 16) | shadow_bnd;
-				WGPUTextureFormat shadow_fmt = wgsl_storage_tex_format.has(shadow_key) ? wgsl_storage_tex_format[shadow_key] : WGPUTextureFormat_RGBA8Unorm;
+				WGPUTextureFormat shadow_fmt = wgsl_storage_tex_format.has(write_key) ? wgsl_storage_tex_format[write_key] : WGPUTextureFormat_RGBA8Unorm;
 				WGPUBindGroupLayoutEntry shadow_entry = {};
 				shadow_entry.binding = shadow_bnd;
 				shadow_entry.visibility = WGPUShaderStage_Compute;
@@ -4812,7 +4740,7 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 							continue;
 						}
 						uint32_t shadow_key = ((uint32_t)split_grp << 16) | shadow_bnd;
-						WGPUTextureFormat shadow_fmt = wgsl_storage_tex_format.has(shadow_key) ? wgsl_storage_tex_format[shadow_key] : WGPUTextureFormat_RGBA8Unorm;
+						WGPUTextureFormat shadow_fmt = wgsl_storage_tex_format.has(kv.key) ? wgsl_storage_tex_format[kv.key] : WGPUTextureFormat_RGBA8Unorm;
 						WGPUBindGroupLayoutEntry se = {};
 						se.binding = shadow_bnd;
 						se.visibility = WGPUShaderStage_Compute;
@@ -5359,11 +5287,7 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 			WARN_PRINT("WebGPU: failed to create shadow read texture for rw_storage split.");
 			continue;
 		}
-		// NOTE: We intentionally do NOT copy original→shadow here.
-		// The shadow will be populated by command_copy_buffer_to_texture
-		// (called from texture_update) before any compute dispatch reads it.
-		// An eager copy here races with later wgpuQueueWriteTexture on
-		// Firefox/wgpu, overwriting shadow data with zeros.
+		// Copy at dispatch time so uploads and preceding GPU writes are visible.
 		// Create a view and bind it at the shadow slot.
 		WGPUTextureViewDescriptor vd = {};
 		vd.format = orig_tex->format;
@@ -8355,6 +8279,7 @@ void RenderingDeviceDriverWebGPU::command_bind_compute_uniform_sets(CommandBuffe
 			// Save full state for mid-pass restart on ring overflow.
 			if (set_idx < WGCommandBuffer::MAX_BIND_GROUPS) {
 				auto &bs = cmd->last_bound_state[set_idx];
+				bs.uniform_set = us;
 				bs.group = bg_to_bind;
 				bs.dynamic_offset_count = num_dyn;
 				for (uint32_t j = 0; j < num_dyn && j < WGCommandBuffer::MAX_BIND_GROUP_DYN_OFFSETS; j++) {
@@ -8365,11 +8290,46 @@ void RenderingDeviceDriverWebGPU::command_bind_compute_uniform_sets(CommandBuffe
 	}
 }
 
+void RenderingDeviceDriverWebGPU::_sync_compute_storage_shadows(WGCommandBuffer *p_cmd) {
+	WGShader *shader = p_cmd->render_state.current_pipeline ? p_cmd->render_state.current_pipeline->shader : nullptr;
+	if (!shader || shader->rw_storage_splits.is_empty()) {
+		return;
+	}
+	p_cmd->end_active_encoder();
+	for (const KeyValue<uint32_t, uint32_t> &split : shader->rw_storage_splits) {
+		uint32_t set = split.key >> 16;
+		uint32_t binding = split.key & 0xFFFF;
+		WGUniformSet *us = set < WGCommandBuffer::MAX_BIND_GROUPS ? p_cmd->last_bound_state[set].uniform_set : nullptr;
+		if (!us || !us->bound_textures.has(binding)) {
+			continue;
+		}
+		WGTexture *tex = us->bound_textures[binding];
+		for (const auto &registration : us->rw_shadow_registrations) {
+			if (registration.source != tex->gpu_handle()) {
+				continue;
+			}
+			for (uint32_t mip = 0; mip < tex->mipmaps; mip++) {
+				WGPUTexelCopyTextureInfo src = {};
+				src.texture = registration.source;
+				src.mipLevel = mip;
+				src.aspect = WGPUTextureAspect_All;
+				WGPUTexelCopyTextureInfo dst = src;
+				dst.texture = registration.shadow;
+				WGPUExtent3D extent = { MAX(1u, tex->width >> mip), MAX(1u, tex->height >> mip),
+					tex->dimension == WGPUTextureDimension_3D ? MAX(1u, tex->depth >> mip) : tex->layers };
+				wgpuCommandEncoderCopyTextureToTexture(p_cmd->encoder, &src, &dst, &extent);
+			}
+		}
+	}
+	_restart_pass_after_push_constant_page(p_cmd, true);
+}
+
 void RenderingDeviceDriverWebGPU::command_compute_dispatch(CommandBufferID p_cmd_buffer, uint32_t p_x_groups, uint32_t p_y_groups, uint32_t p_z_groups) {
 	WGCommandBuffer *cmd = (WGCommandBuffer *)(p_cmd_buffer.id);
 	ERR_FAIL_NULL(cmd);
 	ERR_FAIL_COND(!cmd->compute_encoder);
 
+	_sync_compute_storage_shadows(cmd);
 	if (cmd->render_state.current_pipeline) {
 		_flush_push_constants(cmd, cmd->render_state.current_pipeline->shader);
 	}
@@ -8384,6 +8344,7 @@ void RenderingDeviceDriverWebGPU::command_compute_dispatch_indirect(CommandBuffe
 	ERR_FAIL_NULL(indirect);
 	ERR_FAIL_COND(!cmd->compute_encoder);
 
+	_sync_compute_storage_shadows(cmd);
 	if (cmd->render_state.current_pipeline) {
 		_flush_push_constants(cmd, cmd->render_state.current_pipeline->shader);
 	}

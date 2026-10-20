@@ -43,6 +43,17 @@ static double round_trip(WGPUTextureFormat p_format, double p_value) {
 }
 
 int main() {
+	// WGSL language support and texture-format capabilities are independent.
+	assert(wgpu_storage_format_from_wgsl("rgba16sint, read_write>") == WGPUTextureFormat_RGBA16Sint);
+	assert(wgpu_storage_format_from_wgsl("r32uint,read_write>") == WGPUTextureFormat_R32Uint);
+	assert(wgpu_storage_format_from_wgsl("rgba16sint_extra, read_write>") == WGPUTextureFormat_Undefined);
+	assert(wgpu_storage_format_supports_read_write(WGPUTextureFormat_R32Uint, true, false));
+	assert(!wgpu_storage_format_supports_read_write(WGPUTextureFormat_R32Uint, false, true));
+	assert(!wgpu_storage_format_supports_read_write(WGPUTextureFormat_RGBA16Sint, true, false));
+	assert(wgpu_storage_format_supports_read_write(WGPUTextureFormat_RGBA16Sint, true, true));
+	assert(!wgpu_storage_format_supports_read_write(WGPUTextureFormat_RG32Float, true, true));
+	assert(!wgpu_storage_format_supports_read_write(WGPUTextureFormat_RGBA8Snorm, true, true));
+
 	// Signed 8-bit formats keep their sign (R8 storage promotions go through these).
 	assert(round_trip(WGPUTextureFormat_R8Sint, -5) == -5);
 	assert(round_trip(WGPUTextureFormat_R8Snorm, -1.0) == -1.0);
@@ -64,5 +75,5 @@ int main() {
 	assert(!wgpu_format_texel_info(WGPUTextureFormat_RGB10A2Unorm, channels, type));
 	assert(wgpu_format_pixel_size(WGPUTextureFormat_RGBA16Unorm) == 8);
 
-	std::puts("PASS: texel encode/decode keeps sign, range and channel layout");
+	std::puts("PASS: storage format capabilities and texel sign, range and channel layout");
 }
