@@ -208,7 +208,7 @@ def configure(env: "SConsEnvironment"):
 
     if env["library_type"] == "shared_library":
         env.Append(CCFLAGS=["-fPIC"])
-        # 2dog: GCC emits STB_GNU_UNIQUE for statics in inline/template functions; glibc dedupes
+        # 2dog: GCC emits STB_GNU_UNIQUE for static locals in inline/template functions; glibc dedupes
         # those process-wide across dlopen'd copies, breaking per-module isolation for
         # multi-instance hosting (and pinning the library against dlclose).
         if not env["use_llvm"]:

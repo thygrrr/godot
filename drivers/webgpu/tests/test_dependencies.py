@@ -11,6 +11,7 @@ from unittest.mock import patch
 spec = importlib.util.spec_from_file_location(
     "webgpu_dependencies", Path(__file__).resolve().parents[3] / "drivers/webgpu/dependencies.py"
 )
+assert spec and spec.loader
 dependencies = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(dependencies)
 

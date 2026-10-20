@@ -101,6 +101,7 @@ TINT_DIR="$REPO_ROOT/thirdparty/tint"
 
 PREPROCESS_INCLUDES=(
     -I"$SHIM_DIR"
+    -I"$REPO_ROOT"
     -I"$SPIRV_TOOLS_DIR"
     -I"$SPIRV_TOOLS_DIR/source/"
     -I"$SPIRV_TOOLS_DIR/include/"

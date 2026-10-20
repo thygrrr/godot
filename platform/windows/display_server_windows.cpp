@@ -27,12 +27,12 @@
 /* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
+
 #ifdef WEBGPU_ENABLED
 #include "drivers/webgpu/rendering_context_driver_webgpu.h"
 #endif
 
 #include "display_server_windows.h"
-
 #include "drop_target_windows.h"
 #include "key_mapping_windows.h"
 #include "native_menu_windows.h"

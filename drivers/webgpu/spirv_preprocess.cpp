@@ -28,7 +28,6 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
-
 #include "spirv_preprocess.h"
 
 #include "core/error/error_macros.h"
@@ -712,7 +711,8 @@ Vector<uint8_t> negate_position_y(const Vector<uint8_t> &p_bytes) {
 	const uint32_t ptr_float = next_id++;
 	const bool member = !position_var;
 	const uint32_t *existing_member = small_int_constants.getptr(position_member);
-	const uint32_t member_constant = !member ? 0 : existing_member ? *existing_member : next_id++;
+	const uint32_t member_constant = !member ? 0 : existing_member ? *existing_member
+																   : next_id++;
 	const uint32_t *existing_one = small_int_constants.getptr(1);
 	const uint32_t one_constant = existing_one ? *existing_one : next_id++;
 
@@ -761,7 +761,8 @@ Vector<uint8_t> negate_position_y(const Vector<uint8_t> &p_bytes) {
 Vector<uint8_t> strip_restrict_decoration(const Vector<uint8_t> &p_bytes) {
 	ERR_FAIL_COND_V_MSG(!is_well_formed(p_bytes), p_bytes, MALFORMED_SPIRV);
 	return strip_instructions(p_bytes, [](const Inst &p_inst) {
-		const uint32_t decoration = p_inst.op() == spv::OpDecorate ? p_inst[2] : p_inst.op() == spv::OpMemberDecorate ? p_inst[3] : UINT32_MAX;
+		const uint32_t decoration = p_inst.op() == spv::OpDecorate ? p_inst[2] : p_inst.op() == spv::OpMemberDecorate ? p_inst[3]
+																													  : UINT32_MAX;
 		return decoration == spv::DecorationRestrict || decoration == spv::DecorationInputAttachmentIndex;
 	});
 }

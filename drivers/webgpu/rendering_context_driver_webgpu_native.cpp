@@ -30,15 +30,13 @@
 
 #if defined(WEBGPU_ENABLED) && !defined(WEB_ENABLED)
 
-#include "native/dawn_boundary.h"
-
-#include "rendering_context_driver_webgpu.h"
+#include "native/dawn_loader.gen.h"
 
 #include "core/config/engine.h"
 #include "core/config/project_settings.h"
 #include "core/os/os.h"
-
-#include "native/dawn_loader.gen.h"
+#include "drivers/webgpu/native/dawn_boundary.h"
+#include "drivers/webgpu/rendering_context_driver_webgpu.h"
 
 namespace {
 String webgpu_message(WGPUStringView p_message) {

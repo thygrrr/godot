@@ -2062,7 +2062,7 @@ void main() {
 #ifdef RENDER_DRIVER_WEBGPU
 				if (!bool(directional_lights.data[i].mask & instances.data[batch_instance_index].layer_mask)) {
 #else
-				if (!bool(directional_lights.data[i].mask & instances.data[draw_call.instance_index].layer_mask)) {
+			if (!bool(directional_lights.data[i].mask & instances.data[draw_call.instance_index].layer_mask)) {
 #endif
 					continue; //not masked
 				}
@@ -2070,7 +2070,7 @@ void main() {
 #ifdef RENDER_DRIVER_WEBGPU
 				if (directional_lights.data[i].bake_mode == LIGHT_BAKE_STATIC && bool(instances.data[batch_instance_index].flags & INSTANCE_FLAGS_USE_LIGHTMAP)) {
 #else
-				if (directional_lights.data[i].bake_mode == LIGHT_BAKE_STATIC && bool(instances.data[draw_call.instance_index].flags & INSTANCE_FLAGS_USE_LIGHTMAP)) {
+			if (directional_lights.data[i].bake_mode == LIGHT_BAKE_STATIC && bool(instances.data[draw_call.instance_index].flags & INSTANCE_FLAGS_USE_LIGHTMAP)) {
 #endif
 					continue; // Statically baked light and object uses lightmap, skip.
 				}

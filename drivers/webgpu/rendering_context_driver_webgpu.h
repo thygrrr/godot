@@ -64,7 +64,10 @@ public:
 	// Plain platform data so the desktop display servers can put it in their
 	// existing window-data union without depending on native SDK headers.
 	struct WindowPlatformData {
-		enum Kind { KIND_WIN32, KIND_XLIB, KIND_WAYLAND, KIND_METAL_LAYER } kind;
+		enum Kind { KIND_WIN32,
+			KIND_XLIB,
+			KIND_WAYLAND,
+			KIND_METAL_LAYER } kind;
 		void *display;
 		void *window;
 		uint64_t window_id;
@@ -92,13 +95,13 @@ public:
 	virtual bool is_debug_utils_enabled() const override final;
 
 	// WebGPU canvas output remains SDR.
-	virtual void surface_set_hdr_output_enabled(SurfaceID p_surface, bool p_enabled) override final {  }
+	virtual void surface_set_hdr_output_enabled(SurfaceID p_surface, bool p_enabled) override final {}
 	virtual bool surface_get_hdr_output_enabled(SurfaceID p_surface) const override final { return false; }
-	virtual void surface_set_hdr_output_reference_luminance(SurfaceID p_surface, float p_reference_luminance) override final {  }
+	virtual void surface_set_hdr_output_reference_luminance(SurfaceID p_surface, float p_reference_luminance) override final {}
 	virtual float surface_get_hdr_output_reference_luminance(SurfaceID p_surface) const override final { return 80.0f; }
-	virtual void surface_set_hdr_output_max_luminance(SurfaceID p_surface, float p_max_luminance) override final {  }
+	virtual void surface_set_hdr_output_max_luminance(SurfaceID p_surface, float p_max_luminance) override final {}
 	virtual float surface_get_hdr_output_max_luminance(SurfaceID p_surface) const override final { return 80.0f; }
-	virtual void surface_set_hdr_output_linear_luminance_scale(SurfaceID p_surface, float p_linear_luminance_scale) override final {  }
+	virtual void surface_set_hdr_output_linear_luminance_scale(SurfaceID p_surface, float p_linear_luminance_scale) override final {}
 	virtual float surface_get_hdr_output_linear_luminance_scale(SurfaceID p_surface) const override final { return 1.0f; }
 	virtual float surface_get_hdr_output_max_value(SurfaceID p_surface) const override final { return 1.0f; }
 

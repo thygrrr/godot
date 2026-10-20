@@ -32,13 +32,12 @@
 
 #ifdef WEBGPU_ENABLED
 
-#include "spirv_preprocess.h"
-#include "webgpu_objects.h"
-
-#include "servers/rendering/rendering_device_driver.h"
 #include "core/os/mutex.h"
-#include "core/templates/safe_refcount.h"
 #include "core/templates/hash_map.h"
+#include "core/templates/safe_refcount.h"
+#include "drivers/webgpu/spirv_preprocess.h"
+#include "drivers/webgpu/webgpu_objects.h"
+#include "servers/rendering/rendering_device_driver.h"
 
 #include <webgpu/webgpu.h>
 
@@ -199,7 +198,7 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 	void _rebind_render_state(WGCommandBuffer *p_cmd_buf);
 
 	// Region clears, as in the Metal driver: WebGPU's loadOp=Clear always covers the whole attachment,
-	// so partial clears draw a viewported triangle that writes the clear values (colours arrive through
+	// so partial clears draw a viewported triangle that writes the clear values (colors arrive through
 	// the push constant ring, depth through the viewport depth range, stencil as the reference).
 	static constexpr uint32_t CLEAR_MAX_COLORS = WGCommandBuffer::MAX_PUSH_CONSTANT_SIZE / (4 * sizeof(float));
 	struct ClearPipelineKey {
@@ -215,7 +214,7 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 	};
 	HashMap<ClearPipelineKey, WGPURenderPipeline> clear_pipelines;
 	WGPUPipelineLayout clear_pipeline_layout = nullptr;
-	WGShader clear_shader; // Only routes the clear colours through _flush_push_constants at group 0.
+	WGShader clear_shader; // Only routes the clear colors through _flush_push_constants at group 0.
 	WGPURenderPipeline _get_clear_pipeline(const ClearPipelineKey &p_key);
 	void _render_clear(WGCommandBuffer *p_cmd_buf, VectorView<AttachmentClear> p_clears, VectorView<Rect2i> p_rects);
 	void _copy_buffer_to_texture(WGCommandBuffer *p_cmd_buf, WGBuffer *p_src, WGTexture *p_dst, const BufferTextureCopyRegion &p_region, uint32_t p_depth_or_layers);
@@ -294,13 +293,13 @@ public:
 	/// Heap-allocated so that pointers remain stable across HashMap rehashes
 	/// and can safely be passed to async WebGPU map callbacks.
 	struct ReadbackEntry {
-		WGPUBuffer staging = nullptr;   ///< Persistent staging buffer (CopyDst | MapRead).
-		uint8_t *shadow = nullptr;      ///< CPU-side shadow buffer.
-		uint64_t size = 0;              ///< Buffer size in bytes.
-		bool map_complete = false;      ///< Set by async map callback.
-		bool map_pending = false;       ///< True while mapAsync is in flight (not yet completed).
-		bool has_data = false;          ///< True after first successful readback.
-		bool cancelled = false;         ///< Source freed while map pending; callback will clean up.
+		WGPUBuffer staging = nullptr; ///< Persistent staging buffer (CopyDst | MapRead).
+		uint8_t *shadow = nullptr; ///< CPU-side shadow buffer.
+		uint64_t size = 0; ///< Buffer size in bytes.
+		bool map_complete = false; ///< Set by async map callback.
+		bool map_pending = false; ///< True while mapAsync is in flight (not yet completed).
+		bool has_data = false; ///< True after first successful readback.
+		bool cancelled = false; ///< Source freed while map pending; callback will clean up.
 	};
 	HashMap<uint64_t, ReadbackEntry *> _readback_cache; ///< Keyed by source buffer/texture pointer.
 	/// Async map callback — copies GPU data to shadow buffer.

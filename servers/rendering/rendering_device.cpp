@@ -4369,17 +4369,15 @@ Vector<uint8_t> RenderingDevice::shader_compile_binary_from_spirv(const Vector<S
 	// For drivers/webgpu/tests/shader_corpus/validate_spirv_dump.mjs. The hash keeps versions with equal names apart.
 	static const String dump_dir = OS::get_singleton()->get_environment("GODOT_DUMP_SPIRV");
 	if (!dump_dir.is_empty()) {
-		static const char *stage_suffixes[] = { "vert", "frag", "tesc", "tese", "comp" };
 		DirAccess::make_dir_recursive_absolute(dump_dir);
 		for (int i = 0; i < p_spirv.size(); i++) {
 			const Vector<uint8_t> &spirv = p_spirv[i].spirv;
 			if (spirv.is_empty()) {
 				continue;
 			}
-			String stage_ext = (p_spirv[i].shader_stage < 5) ? stage_suffixes[p_spirv[i].shader_stage] : "spv";
 			String safe_name = p_shader_name.is_empty() ? "unnamed" : p_shader_name.validate_filename();
 			String hash = String::num_uint64(hash_murmur3_buffer(spirv.ptr(), spirv.size()), 16);
-			Ref<FileAccess> f = FileAccess::open(dump_dir.path_join(vformat("%s.%s.%s.spv", safe_name, hash, stage_ext)), FileAccess::WRITE);
+			Ref<FileAccess> f = FileAccess::open(dump_dir.path_join(vformat("%s.%s.%s.spv", safe_name, hash, SHADER_STAGE_NAMES[p_spirv[i].shader_stage])), FileAccess::WRITE);
 			if (f.is_valid()) {
 				f->store_buffer(spirv.ptr(), spirv.size());
 			}

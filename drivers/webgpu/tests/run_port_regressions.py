@@ -2,9 +2,9 @@
 
 import argparse
 import os
-from pathlib import Path
 import subprocess
 import sys
+from pathlib import Path
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("--emscripten", type=Path, required=True)
@@ -21,6 +21,7 @@ driver = root / "drivers/webgpu"
 common = [
     f"-I{driver / 'tint_cli'}",
     f"-I{driver}",
+    f"-I{root}",
     f"-I{root / 'thirdparty/tint'}",
     f"-I{root / 'thirdparty/spirv-tools/include'}",
     f"-I{root / 'thirdparty/spirv-headers-webgpu/include'}",

@@ -170,6 +170,7 @@ compile_async "drivers/webgpu/spirv_preprocess.cpp" \
     "$BUILD_DIR/cli/spirv_preprocess.o" \
     "c++17" \
     -I"$SHIM_DIR" \
+    -I. \
     "${SPIRV_TOOLS_INCLUDES[@]}"
 
 # tint_wrapper.cpp — compiled with Tint C++20 environment.
@@ -177,7 +178,8 @@ compile_async "drivers/webgpu/tint_wrapper.cpp" \
     "$BUILD_DIR/cli/tint_wrapper.o" \
     "c++20" \
     "${TINT_INCLUDES[@]}" "${TINT_DEFINES[@]}" \
-    -I"drivers/webgpu/"
+    -I"drivers/webgpu/" \
+    -I.
 
 # main.cpp — compiled with shim + Tint includes.
 compile_async "drivers/webgpu/tint_cli/main.cpp" \
@@ -185,6 +187,7 @@ compile_async "drivers/webgpu/tint_cli/main.cpp" \
     "c++20" \
     -I"$SHIM_DIR" \
     -I"drivers/webgpu/" \
+    -I. \
     "${TINT_INCLUDES[@]}" "${TINT_DEFINES[@]}"
 
 wait_compilers

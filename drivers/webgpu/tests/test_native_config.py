@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 
-class FakeEnvironment(dict):
+class FakeEnvironment(dict[str, list[str]]):
     def AppendUnique(self, **values):
         for name, items in values.items():
             current = self.setdefault(name, [])

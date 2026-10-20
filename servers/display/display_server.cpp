@@ -28,10 +28,10 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
-#include <cstring>
-
 #include "display_server.h"
 #include "display_server.compat.inc"
+
+#include <cstring>
 
 STATIC_ASSERT_INCOMPLETE_TYPE(class, Input);
 STATIC_ASSERT_INCOMPLETE_TYPE(class, NativeMenu);

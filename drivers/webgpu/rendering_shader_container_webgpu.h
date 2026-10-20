@@ -32,8 +32,7 @@
 
 #ifdef WEBGPU_ENABLED
 
-#include "spirv_preprocess.h"
-
+#include "drivers/webgpu/spirv_preprocess.h"
 #include "servers/rendering/rendering_shader_container.h"
 
 class RenderingShaderContainerWebGPU : public RenderingShaderContainer {

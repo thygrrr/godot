@@ -1,13 +1,44 @@
-#include "spirv_preprocess.h"
-#include "spirv-tools/libspirv.h"
+/**************************************************************************/
+/*  binding_array_literals_test.cpp                                       */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
 
-#include "check.h"
+#include "spirv-tools/libspirv.h"
+#include "spirv_preprocess.h"
+
+#include "drivers/webgpu/tests/check.h"
+
 #include <cstdio>
 #include <cstring>
 
 int main() {
-    // Array type ID 112 deliberately collides with offsets, bindings and constants.
-    const char *source = R"(
+	// Array type ID 112 deliberately collides with offsets, bindings and constants.
+	const char *source = R"(
 OpCapability Shader
 OpMemoryModel Logical GLSL450
 OpEntryPoint Fragment %main "main" %color
@@ -50,32 +81,36 @@ OpStore %color %value
 OpReturn
 OpFunctionEnd
 )";
-    auto context = spvContextCreate(SPV_ENV_UNIVERSAL_1_3);
-    spv_binary binary = nullptr;
-    spv_diagnostic diagnostic = nullptr;
-    const spv_result_t assembled = spvTextToBinaryWithOptions(context, source, std::strlen(source), SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS, &binary, &diagnostic);
-    CHECK(assembled == SPV_SUCCESS);
-    Vector<uint8_t> bytes;
-    bytes.resize(binary->wordCount * 4);
-    std::memcpy(bytes.ptrw(), binary->code, bytes.size());
-    auto result = spirv_preprocess::flatten_binding_arrays(bytes);
-    const auto *words = reinterpret_cast<const uint32_t *>(result.ptr());
-    bool offset = false, binding = false, constant = false;
-    for (size_t pos = 5; pos < size_t(result.size() / 4); pos += words[pos] >> 16) {
-        uint32_t opcode = words[pos] & 0xffff;
-        if (opcode == 72 && words[pos + 3] == 35 && words[pos + 2] == 1) {
-            CHECK(words[pos + 4] == 112);
-            offset = true;
-        }
-        if (opcode == 71 && words[pos + 2] == 33 && words[pos + 3] == 112) binding = true;
-        if (opcode == 43 && words[pos + 3] == 112) constant = true;
-        CHECK(opcode != 28); // Handle array type removed.
-    }
-    CHECK(offset && binding && constant);
-    const spv_result_t validated = spvValidateBinary(context, words, result.size() / 4, &diagnostic);
-    CHECK(validated == SPV_SUCCESS);
-    spvBinaryDestroy(binary);
-    spvDiagnosticDestroy(diagnostic);
-    spvContextDestroy(context);
-    std::puts("PASS: handle array flattening preserves colliding literal offsets, bindings and constants");
+	auto context = spvContextCreate(SPV_ENV_UNIVERSAL_1_3);
+	spv_binary binary = nullptr;
+	spv_diagnostic diagnostic = nullptr;
+	const spv_result_t assembled = spvTextToBinaryWithOptions(context, source, std::strlen(source), SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS, &binary, &diagnostic);
+	CHECK(assembled == SPV_SUCCESS);
+	Vector<uint8_t> bytes;
+	bytes.resize(binary->wordCount * 4);
+	std::memcpy(bytes.ptrw(), binary->code, bytes.size());
+	auto result = spirv_preprocess::flatten_binding_arrays(bytes);
+	const auto *words = reinterpret_cast<const uint32_t *>(result.ptr());
+	bool offset = false, binding = false, constant = false;
+	for (size_t pos = 5; pos < size_t(result.size() / 4); pos += words[pos] >> 16) {
+		uint32_t opcode = words[pos] & 0xffff;
+		if (opcode == 72 && words[pos + 3] == 35 && words[pos + 2] == 1) {
+			CHECK(words[pos + 4] == 112);
+			offset = true;
+		}
+		if (opcode == 71 && words[pos + 2] == 33 && words[pos + 3] == 112) {
+			binding = true;
+		}
+		if (opcode == 43 && words[pos + 3] == 112) {
+			constant = true;
+		}
+		CHECK(opcode != 28); // Handle array type removed.
+	}
+	CHECK(offset && binding && constant);
+	const spv_result_t validated = spvValidateBinary(context, words, result.size() / 4, &diagnostic);
+	CHECK(validated == SPV_SUCCESS);
+	spvBinaryDestroy(binary);
+	spvDiagnosticDestroy(diagnostic);
+	spvContextDestroy(context);
+	std::puts("PASS: handle array flattening preserves colliding literal offsets, bindings and constants");
 }

@@ -355,7 +355,7 @@ const Engine = (function () {
 			];
 			desc.requiredFeatures = (desc.requiredFeatures || []).concat(optionalFeatures.filter((feature) => adapter.features.has(feature)));
 			// Like the native backend, request every limit the adapter supports.
-			desc.requiredLimits = desc.requiredLimits || {};
+			desc.requiredLimits ||= {};
 			for (const key in adapter.limits) {
 				if (adapter.limits[key] !== undefined) {
 					desc.requiredLimits[key] = adapter.limits[key];
@@ -366,7 +366,7 @@ const Engine = (function () {
 				device.lost.then(function (info) {
 					const reason = info.reason || 'unknown';
 					const msg = info.message || '';
-					console.error(`[Godot] WebGPU device lost (reason: ${reason}): ${msg}`);
+					console.error(`[Godot] WebGPU device lost (reason: ${reason}): ${msg}`); // eslint-disable-line no-console
 				});
 				device.addEventListener('uncapturederror', function (event) {
 					// Include the full error message — `event.error` alone only
@@ -375,7 +375,7 @@ const Engine = (function () {
 					const err = event.error;
 					const kind = (err && err.constructor && err.constructor.name) || 'UnknownError';
 					const msg = (err && err.message) ? err.message : String(err);
-					console.error(`[Godot] WebGPU uncaptured error: ${kind}: ${msg}`);
+					console.error(`[Godot] WebGPU uncaptured error: ${kind}: ${msg}`); // eslint-disable-line no-console
 				});
 				return device;
 			});

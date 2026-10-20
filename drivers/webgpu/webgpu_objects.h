@@ -48,10 +48,10 @@ struct WGBuffer {
 	WGPUBufferUsage usage = 0;
 	uint8_t *shadow_map = nullptr; // For CPU-side mapping emulation.
 	bool map_dirty = false;
-	bool is_readback = false;      // True for staging buffers that need GPU→CPU readback.
-	bool map_complete = false;     // Set by async map callback.
-	bool map_pending = false;      // True while wgpuBufferMapAsync callback is in flight.
-	bool freed = false;            // Source freed while map pending; callback will clean up.
+	bool is_readback = false; // True for staging buffers that need GPU→CPU readback.
+	bool map_complete = false; // Set by async map callback.
+	bool map_pending = false; // True while wgpuBufferMapAsync callback is in flight.
+	bool freed = false; // Source freed while map pending; callback will clean up.
 	WGPUFuture map_future = {};
 
 	// Dirty range tracking for shadow buffer flushes. On WebGPU, buffer_unmap()
@@ -241,7 +241,8 @@ struct WGFramebuffer {
 // =============================================================================
 
 struct WGPipelineWrapper {
-	enum Type { RENDER, COMPUTE };
+	enum Type { RENDER,
+		COMPUTE };
 	Type type = RENDER;
 	union {
 		WGPURenderPipeline render_handle;
@@ -343,7 +344,9 @@ struct WGCommandBuffer {
 	WGPURenderPassEncoder render_encoder = nullptr;
 	WGPUComputePassEncoder compute_encoder = nullptr;
 
-	enum ActiveEncoder { NONE, RENDER, COMPUTE };
+	enum ActiveEncoder { NONE,
+		RENDER,
+		COMPUTE };
 	ActiveEncoder active_encoder = NONE;
 
 	// Push constant emulation state.
@@ -402,9 +405,13 @@ struct WGCommandBuffer {
 		uint32_t current_pass_attachment_count = 0;
 		void reset_current_pass_attachments() { current_pass_attachment_count = 0; }
 		void add_current_pass_attachment(WGPUTexture t) {
-			if (!t) return;
+			if (!t) {
+				return;
+			}
 			for (uint32_t i = 0; i < current_pass_attachment_count; i++) {
-				if (current_pass_attachments[i] == t) return;
+				if (current_pass_attachments[i] == t) {
+					return;
+				}
 			}
 			if (current_pass_attachment_count < MAX_ATTACHMENT_TEXTURES) {
 				current_pass_attachments[current_pass_attachment_count++] = t;

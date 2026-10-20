@@ -1,12 +1,12 @@
 /**************************************************************************/
 /*  pixel_formats_webgpu.h                                                */
 /**************************************************************************/
-/*                       This file is part of:                            */
-/*                           GODOT ENGINE                                 */
-/*                      https://godotengine.org                           */
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
 /**************************************************************************/
 /* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
-/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                 */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
 /*                                                                        */
 /* Permission is hereby granted, free of charge, to any person obtaining  */
 /* a copy of this software and associated documentation files (the        */
@@ -31,121 +31,231 @@
 #pragma once
 
 #include "servers/rendering/rendering_device_commons.h"
+
 #include <webgpu/webgpu.h>
 
 // Formats omitted here are unsupported by WebGPU.
 static inline WGPUTextureFormat data_format_to_wgpu(RenderingDeviceCommons::DataFormat p_format) {
 	using DF = RenderingDeviceCommons::DataFormat;
 	switch (p_format) {
-		case DF::DATA_FORMAT_R8_UNORM: return WGPUTextureFormat_R8Unorm;
-		case DF::DATA_FORMAT_R8_SNORM: return WGPUTextureFormat_R8Snorm;
-		case DF::DATA_FORMAT_R8_UINT: return WGPUTextureFormat_R8Uint;
-		case DF::DATA_FORMAT_R8_SINT: return WGPUTextureFormat_R8Sint;
-		case DF::DATA_FORMAT_R8G8_UNORM: return WGPUTextureFormat_RG8Unorm;
-		case DF::DATA_FORMAT_R8G8_SNORM: return WGPUTextureFormat_RG8Snorm;
-		case DF::DATA_FORMAT_R8G8_UINT: return WGPUTextureFormat_RG8Uint;
-		case DF::DATA_FORMAT_R8G8_SINT: return WGPUTextureFormat_RG8Sint;
-		case DF::DATA_FORMAT_R8G8B8A8_UNORM: return WGPUTextureFormat_RGBA8Unorm;
-		case DF::DATA_FORMAT_R8G8B8A8_SNORM: return WGPUTextureFormat_RGBA8Snorm;
-		case DF::DATA_FORMAT_R8G8B8A8_UINT: return WGPUTextureFormat_RGBA8Uint;
-		case DF::DATA_FORMAT_R8G8B8A8_SINT: return WGPUTextureFormat_RGBA8Sint;
-		case DF::DATA_FORMAT_R8G8B8A8_SRGB: return WGPUTextureFormat_RGBA8UnormSrgb;
-		case DF::DATA_FORMAT_B8G8R8A8_UNORM: return WGPUTextureFormat_BGRA8Unorm;
-		case DF::DATA_FORMAT_B8G8R8A8_SRGB: return WGPUTextureFormat_BGRA8UnormSrgb;
-		case DF::DATA_FORMAT_A8B8G8R8_UNORM_PACK32: return WGPUTextureFormat_RGBA8Unorm;
-		case DF::DATA_FORMAT_A8B8G8R8_SNORM_PACK32: return WGPUTextureFormat_RGBA8Snorm;
-		case DF::DATA_FORMAT_A8B8G8R8_UINT_PACK32: return WGPUTextureFormat_RGBA8Uint;
-		case DF::DATA_FORMAT_A8B8G8R8_SINT_PACK32: return WGPUTextureFormat_RGBA8Sint;
-		case DF::DATA_FORMAT_A8B8G8R8_SRGB_PACK32: return WGPUTextureFormat_RGBA8UnormSrgb;
-		case DF::DATA_FORMAT_A2B10G10R10_UNORM_PACK32: return WGPUTextureFormat_RGB10A2Unorm;
-		case DF::DATA_FORMAT_A2B10G10R10_UINT_PACK32: return WGPUTextureFormat_RGB10A2Uint;
-		case DF::DATA_FORMAT_R16_UNORM: return WGPUTextureFormat_R16Unorm;
-		case DF::DATA_FORMAT_R16_SNORM: return WGPUTextureFormat_R16Snorm;
-		case DF::DATA_FORMAT_R16_UINT: return WGPUTextureFormat_R16Uint;
-		case DF::DATA_FORMAT_R16_SINT: return WGPUTextureFormat_R16Sint;
-		case DF::DATA_FORMAT_R16_SFLOAT: return WGPUTextureFormat_R16Float;
-		case DF::DATA_FORMAT_R16G16_UNORM: return WGPUTextureFormat_RG16Unorm;
-		case DF::DATA_FORMAT_R16G16_SNORM: return WGPUTextureFormat_RG16Snorm;
-		case DF::DATA_FORMAT_R16G16_UINT: return WGPUTextureFormat_RG16Uint;
-		case DF::DATA_FORMAT_R16G16_SINT: return WGPUTextureFormat_RG16Sint;
-		case DF::DATA_FORMAT_R16G16_SFLOAT: return WGPUTextureFormat_RG16Float;
-		case DF::DATA_FORMAT_R16G16B16A16_UNORM: return WGPUTextureFormat_RGBA16Unorm;
-		case DF::DATA_FORMAT_R16G16B16A16_SNORM: return WGPUTextureFormat_RGBA16Snorm;
-		case DF::DATA_FORMAT_R16G16B16A16_UINT: return WGPUTextureFormat_RGBA16Uint;
-		case DF::DATA_FORMAT_R16G16B16A16_SINT: return WGPUTextureFormat_RGBA16Sint;
-		case DF::DATA_FORMAT_R16G16B16A16_SFLOAT: return WGPUTextureFormat_RGBA16Float;
-		case DF::DATA_FORMAT_R32_UINT: return WGPUTextureFormat_R32Uint;
-		case DF::DATA_FORMAT_R32_SINT: return WGPUTextureFormat_R32Sint;
-		case DF::DATA_FORMAT_R32_SFLOAT: return WGPUTextureFormat_R32Float;
-		case DF::DATA_FORMAT_R32G32_UINT: return WGPUTextureFormat_RG32Uint;
-		case DF::DATA_FORMAT_R32G32_SINT: return WGPUTextureFormat_RG32Sint;
-		case DF::DATA_FORMAT_R32G32_SFLOAT: return WGPUTextureFormat_RG32Float;
-		case DF::DATA_FORMAT_R32G32B32A32_UINT: return WGPUTextureFormat_RGBA32Uint;
-		case DF::DATA_FORMAT_R32G32B32A32_SINT: return WGPUTextureFormat_RGBA32Sint;
-		case DF::DATA_FORMAT_R32G32B32A32_SFLOAT: return WGPUTextureFormat_RGBA32Float;
-		case DF::DATA_FORMAT_B10G11R11_UFLOAT_PACK32: return WGPUTextureFormat_RG11B10Ufloat;
-		case DF::DATA_FORMAT_E5B9G9R9_UFLOAT_PACK32: return WGPUTextureFormat_RGB9E5Ufloat;
-		case DF::DATA_FORMAT_D16_UNORM: return WGPUTextureFormat_Depth16Unorm;
-		case DF::DATA_FORMAT_X8_D24_UNORM_PACK32: return WGPUTextureFormat_Depth24Plus;
-		case DF::DATA_FORMAT_D32_SFLOAT: return WGPUTextureFormat_Depth32Float;
-		case DF::DATA_FORMAT_S8_UINT: return WGPUTextureFormat_Stencil8;
-		case DF::DATA_FORMAT_D24_UNORM_S8_UINT: return WGPUTextureFormat_Depth24PlusStencil8;
-		case DF::DATA_FORMAT_D32_SFLOAT_S8_UINT: return WGPUTextureFormat_Depth32FloatStencil8;
-		case DF::DATA_FORMAT_BC1_RGB_UNORM_BLOCK: return WGPUTextureFormat_BC1RGBAUnorm;
-		case DF::DATA_FORMAT_BC1_RGB_SRGB_BLOCK: return WGPUTextureFormat_BC1RGBAUnormSrgb;
-		case DF::DATA_FORMAT_BC1_RGBA_UNORM_BLOCK: return WGPUTextureFormat_BC1RGBAUnorm;
-		case DF::DATA_FORMAT_BC1_RGBA_SRGB_BLOCK: return WGPUTextureFormat_BC1RGBAUnormSrgb;
-		case DF::DATA_FORMAT_BC2_UNORM_BLOCK: return WGPUTextureFormat_BC2RGBAUnorm;
-		case DF::DATA_FORMAT_BC2_SRGB_BLOCK: return WGPUTextureFormat_BC2RGBAUnormSrgb;
-		case DF::DATA_FORMAT_BC3_UNORM_BLOCK: return WGPUTextureFormat_BC3RGBAUnorm;
-		case DF::DATA_FORMAT_BC3_SRGB_BLOCK: return WGPUTextureFormat_BC3RGBAUnormSrgb;
-		case DF::DATA_FORMAT_BC4_UNORM_BLOCK: return WGPUTextureFormat_BC4RUnorm;
-		case DF::DATA_FORMAT_BC4_SNORM_BLOCK: return WGPUTextureFormat_BC4RSnorm;
-		case DF::DATA_FORMAT_BC5_UNORM_BLOCK: return WGPUTextureFormat_BC5RGUnorm;
-		case DF::DATA_FORMAT_BC5_SNORM_BLOCK: return WGPUTextureFormat_BC5RGSnorm;
-		case DF::DATA_FORMAT_BC6H_UFLOAT_BLOCK: return WGPUTextureFormat_BC6HRGBUfloat;
-		case DF::DATA_FORMAT_BC6H_SFLOAT_BLOCK: return WGPUTextureFormat_BC6HRGBFloat;
-		case DF::DATA_FORMAT_BC7_UNORM_BLOCK: return WGPUTextureFormat_BC7RGBAUnorm;
-		case DF::DATA_FORMAT_BC7_SRGB_BLOCK: return WGPUTextureFormat_BC7RGBAUnormSrgb;
-		case DF::DATA_FORMAT_ETC2_R8G8B8_UNORM_BLOCK: return WGPUTextureFormat_ETC2RGB8Unorm;
-		case DF::DATA_FORMAT_ETC2_R8G8B8_SRGB_BLOCK: return WGPUTextureFormat_ETC2RGB8UnormSrgb;
-		case DF::DATA_FORMAT_ETC2_R8G8B8A1_UNORM_BLOCK: return WGPUTextureFormat_ETC2RGB8A1Unorm;
-		case DF::DATA_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK: return WGPUTextureFormat_ETC2RGB8A1UnormSrgb;
-		case DF::DATA_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK: return WGPUTextureFormat_ETC2RGBA8Unorm;
-		case DF::DATA_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK: return WGPUTextureFormat_ETC2RGBA8UnormSrgb;
-		case DF::DATA_FORMAT_EAC_R11_UNORM_BLOCK: return WGPUTextureFormat_EACR11Unorm;
-		case DF::DATA_FORMAT_EAC_R11_SNORM_BLOCK: return WGPUTextureFormat_EACR11Snorm;
-		case DF::DATA_FORMAT_EAC_R11G11_UNORM_BLOCK: return WGPUTextureFormat_EACRG11Unorm;
-		case DF::DATA_FORMAT_EAC_R11G11_SNORM_BLOCK: return WGPUTextureFormat_EACRG11Snorm;
-		case DF::DATA_FORMAT_ASTC_4x4_UNORM_BLOCK: return WGPUTextureFormat_ASTC4x4Unorm;
-		case DF::DATA_FORMAT_ASTC_4x4_SRGB_BLOCK: return WGPUTextureFormat_ASTC4x4UnormSrgb;
-		case DF::DATA_FORMAT_ASTC_5x4_UNORM_BLOCK: return WGPUTextureFormat_ASTC5x4Unorm;
-		case DF::DATA_FORMAT_ASTC_5x4_SRGB_BLOCK: return WGPUTextureFormat_ASTC5x4UnormSrgb;
-		case DF::DATA_FORMAT_ASTC_5x5_UNORM_BLOCK: return WGPUTextureFormat_ASTC5x5Unorm;
-		case DF::DATA_FORMAT_ASTC_5x5_SRGB_BLOCK: return WGPUTextureFormat_ASTC5x5UnormSrgb;
-		case DF::DATA_FORMAT_ASTC_6x5_UNORM_BLOCK: return WGPUTextureFormat_ASTC6x5Unorm;
-		case DF::DATA_FORMAT_ASTC_6x5_SRGB_BLOCK: return WGPUTextureFormat_ASTC6x5UnormSrgb;
-		case DF::DATA_FORMAT_ASTC_6x6_UNORM_BLOCK: return WGPUTextureFormat_ASTC6x6Unorm;
-		case DF::DATA_FORMAT_ASTC_6x6_SRGB_BLOCK: return WGPUTextureFormat_ASTC6x6UnormSrgb;
-		case DF::DATA_FORMAT_ASTC_8x5_UNORM_BLOCK: return WGPUTextureFormat_ASTC8x5Unorm;
-		case DF::DATA_FORMAT_ASTC_8x5_SRGB_BLOCK: return WGPUTextureFormat_ASTC8x5UnormSrgb;
-		case DF::DATA_FORMAT_ASTC_8x6_UNORM_BLOCK: return WGPUTextureFormat_ASTC8x6Unorm;
-		case DF::DATA_FORMAT_ASTC_8x6_SRGB_BLOCK: return WGPUTextureFormat_ASTC8x6UnormSrgb;
-		case DF::DATA_FORMAT_ASTC_8x8_UNORM_BLOCK: return WGPUTextureFormat_ASTC8x8Unorm;
-		case DF::DATA_FORMAT_ASTC_8x8_SRGB_BLOCK: return WGPUTextureFormat_ASTC8x8UnormSrgb;
-		case DF::DATA_FORMAT_ASTC_10x5_UNORM_BLOCK: return WGPUTextureFormat_ASTC10x5Unorm;
-		case DF::DATA_FORMAT_ASTC_10x5_SRGB_BLOCK: return WGPUTextureFormat_ASTC10x5UnormSrgb;
-		case DF::DATA_FORMAT_ASTC_10x6_UNORM_BLOCK: return WGPUTextureFormat_ASTC10x6Unorm;
-		case DF::DATA_FORMAT_ASTC_10x6_SRGB_BLOCK: return WGPUTextureFormat_ASTC10x6UnormSrgb;
-		case DF::DATA_FORMAT_ASTC_10x8_UNORM_BLOCK: return WGPUTextureFormat_ASTC10x8Unorm;
-		case DF::DATA_FORMAT_ASTC_10x8_SRGB_BLOCK: return WGPUTextureFormat_ASTC10x8UnormSrgb;
-		case DF::DATA_FORMAT_ASTC_10x10_UNORM_BLOCK: return WGPUTextureFormat_ASTC10x10Unorm;
-		case DF::DATA_FORMAT_ASTC_10x10_SRGB_BLOCK: return WGPUTextureFormat_ASTC10x10UnormSrgb;
-		case DF::DATA_FORMAT_ASTC_12x10_UNORM_BLOCK: return WGPUTextureFormat_ASTC12x10Unorm;
-		case DF::DATA_FORMAT_ASTC_12x10_SRGB_BLOCK: return WGPUTextureFormat_ASTC12x10UnormSrgb;
-		case DF::DATA_FORMAT_ASTC_12x12_UNORM_BLOCK: return WGPUTextureFormat_ASTC12x12Unorm;
-		case DF::DATA_FORMAT_ASTC_12x12_SRGB_BLOCK: return WGPUTextureFormat_ASTC12x12UnormSrgb;
-		default: return WGPUTextureFormat_Undefined;
+		case DF::DATA_FORMAT_R8_UNORM:
+			return WGPUTextureFormat_R8Unorm;
+		case DF::DATA_FORMAT_R8_SNORM:
+			return WGPUTextureFormat_R8Snorm;
+		case DF::DATA_FORMAT_R8_UINT:
+			return WGPUTextureFormat_R8Uint;
+		case DF::DATA_FORMAT_R8_SINT:
+			return WGPUTextureFormat_R8Sint;
+		case DF::DATA_FORMAT_R8G8_UNORM:
+			return WGPUTextureFormat_RG8Unorm;
+		case DF::DATA_FORMAT_R8G8_SNORM:
+			return WGPUTextureFormat_RG8Snorm;
+		case DF::DATA_FORMAT_R8G8_UINT:
+			return WGPUTextureFormat_RG8Uint;
+		case DF::DATA_FORMAT_R8G8_SINT:
+			return WGPUTextureFormat_RG8Sint;
+		case DF::DATA_FORMAT_R8G8B8A8_UNORM:
+			return WGPUTextureFormat_RGBA8Unorm;
+		case DF::DATA_FORMAT_R8G8B8A8_SNORM:
+			return WGPUTextureFormat_RGBA8Snorm;
+		case DF::DATA_FORMAT_R8G8B8A8_UINT:
+			return WGPUTextureFormat_RGBA8Uint;
+		case DF::DATA_FORMAT_R8G8B8A8_SINT:
+			return WGPUTextureFormat_RGBA8Sint;
+		case DF::DATA_FORMAT_R8G8B8A8_SRGB:
+			return WGPUTextureFormat_RGBA8UnormSrgb;
+		case DF::DATA_FORMAT_B8G8R8A8_UNORM:
+			return WGPUTextureFormat_BGRA8Unorm;
+		case DF::DATA_FORMAT_B8G8R8A8_SRGB:
+			return WGPUTextureFormat_BGRA8UnormSrgb;
+		case DF::DATA_FORMAT_A8B8G8R8_UNORM_PACK32:
+			return WGPUTextureFormat_RGBA8Unorm;
+		case DF::DATA_FORMAT_A8B8G8R8_SNORM_PACK32:
+			return WGPUTextureFormat_RGBA8Snorm;
+		case DF::DATA_FORMAT_A8B8G8R8_UINT_PACK32:
+			return WGPUTextureFormat_RGBA8Uint;
+		case DF::DATA_FORMAT_A8B8G8R8_SINT_PACK32:
+			return WGPUTextureFormat_RGBA8Sint;
+		case DF::DATA_FORMAT_A8B8G8R8_SRGB_PACK32:
+			return WGPUTextureFormat_RGBA8UnormSrgb;
+		case DF::DATA_FORMAT_A2B10G10R10_UNORM_PACK32:
+			return WGPUTextureFormat_RGB10A2Unorm;
+		case DF::DATA_FORMAT_A2B10G10R10_UINT_PACK32:
+			return WGPUTextureFormat_RGB10A2Uint;
+		case DF::DATA_FORMAT_R16_UNORM:
+			return WGPUTextureFormat_R16Unorm;
+		case DF::DATA_FORMAT_R16_SNORM:
+			return WGPUTextureFormat_R16Snorm;
+		case DF::DATA_FORMAT_R16_UINT:
+			return WGPUTextureFormat_R16Uint;
+		case DF::DATA_FORMAT_R16_SINT:
+			return WGPUTextureFormat_R16Sint;
+		case DF::DATA_FORMAT_R16_SFLOAT:
+			return WGPUTextureFormat_R16Float;
+		case DF::DATA_FORMAT_R16G16_UNORM:
+			return WGPUTextureFormat_RG16Unorm;
+		case DF::DATA_FORMAT_R16G16_SNORM:
+			return WGPUTextureFormat_RG16Snorm;
+		case DF::DATA_FORMAT_R16G16_UINT:
+			return WGPUTextureFormat_RG16Uint;
+		case DF::DATA_FORMAT_R16G16_SINT:
+			return WGPUTextureFormat_RG16Sint;
+		case DF::DATA_FORMAT_R16G16_SFLOAT:
+			return WGPUTextureFormat_RG16Float;
+		case DF::DATA_FORMAT_R16G16B16A16_UNORM:
+			return WGPUTextureFormat_RGBA16Unorm;
+		case DF::DATA_FORMAT_R16G16B16A16_SNORM:
+			return WGPUTextureFormat_RGBA16Snorm;
+		case DF::DATA_FORMAT_R16G16B16A16_UINT:
+			return WGPUTextureFormat_RGBA16Uint;
+		case DF::DATA_FORMAT_R16G16B16A16_SINT:
+			return WGPUTextureFormat_RGBA16Sint;
+		case DF::DATA_FORMAT_R16G16B16A16_SFLOAT:
+			return WGPUTextureFormat_RGBA16Float;
+		case DF::DATA_FORMAT_R32_UINT:
+			return WGPUTextureFormat_R32Uint;
+		case DF::DATA_FORMAT_R32_SINT:
+			return WGPUTextureFormat_R32Sint;
+		case DF::DATA_FORMAT_R32_SFLOAT:
+			return WGPUTextureFormat_R32Float;
+		case DF::DATA_FORMAT_R32G32_UINT:
+			return WGPUTextureFormat_RG32Uint;
+		case DF::DATA_FORMAT_R32G32_SINT:
+			return WGPUTextureFormat_RG32Sint;
+		case DF::DATA_FORMAT_R32G32_SFLOAT:
+			return WGPUTextureFormat_RG32Float;
+		case DF::DATA_FORMAT_R32G32B32A32_UINT:
+			return WGPUTextureFormat_RGBA32Uint;
+		case DF::DATA_FORMAT_R32G32B32A32_SINT:
+			return WGPUTextureFormat_RGBA32Sint;
+		case DF::DATA_FORMAT_R32G32B32A32_SFLOAT:
+			return WGPUTextureFormat_RGBA32Float;
+		case DF::DATA_FORMAT_B10G11R11_UFLOAT_PACK32:
+			return WGPUTextureFormat_RG11B10Ufloat;
+		case DF::DATA_FORMAT_E5B9G9R9_UFLOAT_PACK32:
+			return WGPUTextureFormat_RGB9E5Ufloat;
+		case DF::DATA_FORMAT_D16_UNORM:
+			return WGPUTextureFormat_Depth16Unorm;
+		case DF::DATA_FORMAT_X8_D24_UNORM_PACK32:
+			return WGPUTextureFormat_Depth24Plus;
+		case DF::DATA_FORMAT_D32_SFLOAT:
+			return WGPUTextureFormat_Depth32Float;
+		case DF::DATA_FORMAT_S8_UINT:
+			return WGPUTextureFormat_Stencil8;
+		case DF::DATA_FORMAT_D24_UNORM_S8_UINT:
+			return WGPUTextureFormat_Depth24PlusStencil8;
+		case DF::DATA_FORMAT_D32_SFLOAT_S8_UINT:
+			return WGPUTextureFormat_Depth32FloatStencil8;
+		case DF::DATA_FORMAT_BC1_RGB_UNORM_BLOCK:
+			return WGPUTextureFormat_BC1RGBAUnorm;
+		case DF::DATA_FORMAT_BC1_RGB_SRGB_BLOCK:
+			return WGPUTextureFormat_BC1RGBAUnormSrgb;
+		case DF::DATA_FORMAT_BC1_RGBA_UNORM_BLOCK:
+			return WGPUTextureFormat_BC1RGBAUnorm;
+		case DF::DATA_FORMAT_BC1_RGBA_SRGB_BLOCK:
+			return WGPUTextureFormat_BC1RGBAUnormSrgb;
+		case DF::DATA_FORMAT_BC2_UNORM_BLOCK:
+			return WGPUTextureFormat_BC2RGBAUnorm;
+		case DF::DATA_FORMAT_BC2_SRGB_BLOCK:
+			return WGPUTextureFormat_BC2RGBAUnormSrgb;
+		case DF::DATA_FORMAT_BC3_UNORM_BLOCK:
+			return WGPUTextureFormat_BC3RGBAUnorm;
+		case DF::DATA_FORMAT_BC3_SRGB_BLOCK:
+			return WGPUTextureFormat_BC3RGBAUnormSrgb;
+		case DF::DATA_FORMAT_BC4_UNORM_BLOCK:
+			return WGPUTextureFormat_BC4RUnorm;
+		case DF::DATA_FORMAT_BC4_SNORM_BLOCK:
+			return WGPUTextureFormat_BC4RSnorm;
+		case DF::DATA_FORMAT_BC5_UNORM_BLOCK:
+			return WGPUTextureFormat_BC5RGUnorm;
+		case DF::DATA_FORMAT_BC5_SNORM_BLOCK:
+			return WGPUTextureFormat_BC5RGSnorm;
+		case DF::DATA_FORMAT_BC6H_UFLOAT_BLOCK:
+			return WGPUTextureFormat_BC6HRGBUfloat;
+		case DF::DATA_FORMAT_BC6H_SFLOAT_BLOCK:
+			return WGPUTextureFormat_BC6HRGBFloat;
+		case DF::DATA_FORMAT_BC7_UNORM_BLOCK:
+			return WGPUTextureFormat_BC7RGBAUnorm;
+		case DF::DATA_FORMAT_BC7_SRGB_BLOCK:
+			return WGPUTextureFormat_BC7RGBAUnormSrgb;
+		case DF::DATA_FORMAT_ETC2_R8G8B8_UNORM_BLOCK:
+			return WGPUTextureFormat_ETC2RGB8Unorm;
+		case DF::DATA_FORMAT_ETC2_R8G8B8_SRGB_BLOCK:
+			return WGPUTextureFormat_ETC2RGB8UnormSrgb;
+		case DF::DATA_FORMAT_ETC2_R8G8B8A1_UNORM_BLOCK:
+			return WGPUTextureFormat_ETC2RGB8A1Unorm;
+		case DF::DATA_FORMAT_ETC2_R8G8B8A1_SRGB_BLOCK:
+			return WGPUTextureFormat_ETC2RGB8A1UnormSrgb;
+		case DF::DATA_FORMAT_ETC2_R8G8B8A8_UNORM_BLOCK:
+			return WGPUTextureFormat_ETC2RGBA8Unorm;
+		case DF::DATA_FORMAT_ETC2_R8G8B8A8_SRGB_BLOCK:
+			return WGPUTextureFormat_ETC2RGBA8UnormSrgb;
+		case DF::DATA_FORMAT_EAC_R11_UNORM_BLOCK:
+			return WGPUTextureFormat_EACR11Unorm;
+		case DF::DATA_FORMAT_EAC_R11_SNORM_BLOCK:
+			return WGPUTextureFormat_EACR11Snorm;
+		case DF::DATA_FORMAT_EAC_R11G11_UNORM_BLOCK:
+			return WGPUTextureFormat_EACRG11Unorm;
+		case DF::DATA_FORMAT_EAC_R11G11_SNORM_BLOCK:
+			return WGPUTextureFormat_EACRG11Snorm;
+		case DF::DATA_FORMAT_ASTC_4x4_UNORM_BLOCK:
+			return WGPUTextureFormat_ASTC4x4Unorm;
+		case DF::DATA_FORMAT_ASTC_4x4_SRGB_BLOCK:
+			return WGPUTextureFormat_ASTC4x4UnormSrgb;
+		case DF::DATA_FORMAT_ASTC_5x4_UNORM_BLOCK:
+			return WGPUTextureFormat_ASTC5x4Unorm;
+		case DF::DATA_FORMAT_ASTC_5x4_SRGB_BLOCK:
+			return WGPUTextureFormat_ASTC5x4UnormSrgb;
+		case DF::DATA_FORMAT_ASTC_5x5_UNORM_BLOCK:
+			return WGPUTextureFormat_ASTC5x5Unorm;
+		case DF::DATA_FORMAT_ASTC_5x5_SRGB_BLOCK:
+			return WGPUTextureFormat_ASTC5x5UnormSrgb;
+		case DF::DATA_FORMAT_ASTC_6x5_UNORM_BLOCK:
+			return WGPUTextureFormat_ASTC6x5Unorm;
+		case DF::DATA_FORMAT_ASTC_6x5_SRGB_BLOCK:
+			return WGPUTextureFormat_ASTC6x5UnormSrgb;
+		case DF::DATA_FORMAT_ASTC_6x6_UNORM_BLOCK:
+			return WGPUTextureFormat_ASTC6x6Unorm;
+		case DF::DATA_FORMAT_ASTC_6x6_SRGB_BLOCK:
+			return WGPUTextureFormat_ASTC6x6UnormSrgb;
+		case DF::DATA_FORMAT_ASTC_8x5_UNORM_BLOCK:
+			return WGPUTextureFormat_ASTC8x5Unorm;
+		case DF::DATA_FORMAT_ASTC_8x5_SRGB_BLOCK:
+			return WGPUTextureFormat_ASTC8x5UnormSrgb;
+		case DF::DATA_FORMAT_ASTC_8x6_UNORM_BLOCK:
+			return WGPUTextureFormat_ASTC8x6Unorm;
+		case DF::DATA_FORMAT_ASTC_8x6_SRGB_BLOCK:
+			return WGPUTextureFormat_ASTC8x6UnormSrgb;
+		case DF::DATA_FORMAT_ASTC_8x8_UNORM_BLOCK:
+			return WGPUTextureFormat_ASTC8x8Unorm;
+		case DF::DATA_FORMAT_ASTC_8x8_SRGB_BLOCK:
+			return WGPUTextureFormat_ASTC8x8UnormSrgb;
+		case DF::DATA_FORMAT_ASTC_10x5_UNORM_BLOCK:
+			return WGPUTextureFormat_ASTC10x5Unorm;
+		case DF::DATA_FORMAT_ASTC_10x5_SRGB_BLOCK:
+			return WGPUTextureFormat_ASTC10x5UnormSrgb;
+		case DF::DATA_FORMAT_ASTC_10x6_UNORM_BLOCK:
+			return WGPUTextureFormat_ASTC10x6Unorm;
+		case DF::DATA_FORMAT_ASTC_10x6_SRGB_BLOCK:
+			return WGPUTextureFormat_ASTC10x6UnormSrgb;
+		case DF::DATA_FORMAT_ASTC_10x8_UNORM_BLOCK:
+			return WGPUTextureFormat_ASTC10x8Unorm;
+		case DF::DATA_FORMAT_ASTC_10x8_SRGB_BLOCK:
+			return WGPUTextureFormat_ASTC10x8UnormSrgb;
+		case DF::DATA_FORMAT_ASTC_10x10_UNORM_BLOCK:
+			return WGPUTextureFormat_ASTC10x10Unorm;
+		case DF::DATA_FORMAT_ASTC_10x10_SRGB_BLOCK:
+			return WGPUTextureFormat_ASTC10x10UnormSrgb;
+		case DF::DATA_FORMAT_ASTC_12x10_UNORM_BLOCK:
+			return WGPUTextureFormat_ASTC12x10Unorm;
+		case DF::DATA_FORMAT_ASTC_12x10_SRGB_BLOCK:
+			return WGPUTextureFormat_ASTC12x10UnormSrgb;
+		case DF::DATA_FORMAT_ASTC_12x12_UNORM_BLOCK:
+			return WGPUTextureFormat_ASTC12x12Unorm;
+		case DF::DATA_FORMAT_ASTC_12x12_SRGB_BLOCK:
+			return WGPUTextureFormat_ASTC12x12UnormSrgb;
+		default:
+			return WGPUTextureFormat_Undefined;
 	}
 }
 
@@ -164,54 +274,94 @@ static inline WGPUVertexFormat data_format_to_wgpu_vertex(RenderingDeviceCommons
 	using DF = RenderingDeviceCommons::DataFormat;
 	switch (p_format) {
 		// 8-bit
-		case DF::DATA_FORMAT_R8_UINT: return WGPUVertexFormat_Uint8;
-		case DF::DATA_FORMAT_R8_SINT: return WGPUVertexFormat_Sint8;
-		case DF::DATA_FORMAT_R8G8_UINT: return WGPUVertexFormat_Uint8x2;
-		case DF::DATA_FORMAT_R8G8_SINT: return WGPUVertexFormat_Sint8x2;
-		case DF::DATA_FORMAT_R8G8B8A8_UINT: return WGPUVertexFormat_Uint8x4;
-		case DF::DATA_FORMAT_R8G8B8A8_SINT: return WGPUVertexFormat_Sint8x4;
-		case DF::DATA_FORMAT_R8_UNORM: return WGPUVertexFormat_Unorm8;
-		case DF::DATA_FORMAT_R8_SNORM: return WGPUVertexFormat_Snorm8;
-		case DF::DATA_FORMAT_R8G8_UNORM: return WGPUVertexFormat_Unorm8x2;
-		case DF::DATA_FORMAT_R8G8_SNORM: return WGPUVertexFormat_Snorm8x2;
-		case DF::DATA_FORMAT_R8G8B8A8_UNORM: return WGPUVertexFormat_Unorm8x4;
-		case DF::DATA_FORMAT_R8G8B8A8_SNORM: return WGPUVertexFormat_Snorm8x4;
+		case DF::DATA_FORMAT_R8_UINT:
+			return WGPUVertexFormat_Uint8;
+		case DF::DATA_FORMAT_R8_SINT:
+			return WGPUVertexFormat_Sint8;
+		case DF::DATA_FORMAT_R8G8_UINT:
+			return WGPUVertexFormat_Uint8x2;
+		case DF::DATA_FORMAT_R8G8_SINT:
+			return WGPUVertexFormat_Sint8x2;
+		case DF::DATA_FORMAT_R8G8B8A8_UINT:
+			return WGPUVertexFormat_Uint8x4;
+		case DF::DATA_FORMAT_R8G8B8A8_SINT:
+			return WGPUVertexFormat_Sint8x4;
+		case DF::DATA_FORMAT_R8_UNORM:
+			return WGPUVertexFormat_Unorm8;
+		case DF::DATA_FORMAT_R8_SNORM:
+			return WGPUVertexFormat_Snorm8;
+		case DF::DATA_FORMAT_R8G8_UNORM:
+			return WGPUVertexFormat_Unorm8x2;
+		case DF::DATA_FORMAT_R8G8_SNORM:
+			return WGPUVertexFormat_Snorm8x2;
+		case DF::DATA_FORMAT_R8G8B8A8_UNORM:
+			return WGPUVertexFormat_Unorm8x4;
+		case DF::DATA_FORMAT_R8G8B8A8_SNORM:
+			return WGPUVertexFormat_Snorm8x4;
 
 		// 16-bit
-		case DF::DATA_FORMAT_R16_UINT: return WGPUVertexFormat_Uint16;
-		case DF::DATA_FORMAT_R16_SINT: return WGPUVertexFormat_Sint16;
-		case DF::DATA_FORMAT_R16G16_UINT: return WGPUVertexFormat_Uint16x2;
-		case DF::DATA_FORMAT_R16G16_SINT: return WGPUVertexFormat_Sint16x2;
-		case DF::DATA_FORMAT_R16G16B16A16_UINT: return WGPUVertexFormat_Uint16x4;
-		case DF::DATA_FORMAT_R16G16B16A16_SINT: return WGPUVertexFormat_Sint16x4;
-		case DF::DATA_FORMAT_R16_UNORM: return WGPUVertexFormat_Unorm16;
-		case DF::DATA_FORMAT_R16_SNORM: return WGPUVertexFormat_Snorm16;
-		case DF::DATA_FORMAT_R16G16_UNORM: return WGPUVertexFormat_Unorm16x2;
-		case DF::DATA_FORMAT_R16G16_SNORM: return WGPUVertexFormat_Snorm16x2;
-		case DF::DATA_FORMAT_R16G16B16A16_UNORM: return WGPUVertexFormat_Unorm16x4;
-		case DF::DATA_FORMAT_R16G16B16A16_SNORM: return WGPUVertexFormat_Snorm16x4;
-		case DF::DATA_FORMAT_R16_SFLOAT: return WGPUVertexFormat_Float16;
-		case DF::DATA_FORMAT_R16G16_SFLOAT: return WGPUVertexFormat_Float16x2;
-		case DF::DATA_FORMAT_R16G16B16A16_SFLOAT: return WGPUVertexFormat_Float16x4;
+		case DF::DATA_FORMAT_R16_UINT:
+			return WGPUVertexFormat_Uint16;
+		case DF::DATA_FORMAT_R16_SINT:
+			return WGPUVertexFormat_Sint16;
+		case DF::DATA_FORMAT_R16G16_UINT:
+			return WGPUVertexFormat_Uint16x2;
+		case DF::DATA_FORMAT_R16G16_SINT:
+			return WGPUVertexFormat_Sint16x2;
+		case DF::DATA_FORMAT_R16G16B16A16_UINT:
+			return WGPUVertexFormat_Uint16x4;
+		case DF::DATA_FORMAT_R16G16B16A16_SINT:
+			return WGPUVertexFormat_Sint16x4;
+		case DF::DATA_FORMAT_R16_UNORM:
+			return WGPUVertexFormat_Unorm16;
+		case DF::DATA_FORMAT_R16_SNORM:
+			return WGPUVertexFormat_Snorm16;
+		case DF::DATA_FORMAT_R16G16_UNORM:
+			return WGPUVertexFormat_Unorm16x2;
+		case DF::DATA_FORMAT_R16G16_SNORM:
+			return WGPUVertexFormat_Snorm16x2;
+		case DF::DATA_FORMAT_R16G16B16A16_UNORM:
+			return WGPUVertexFormat_Unorm16x4;
+		case DF::DATA_FORMAT_R16G16B16A16_SNORM:
+			return WGPUVertexFormat_Snorm16x4;
+		case DF::DATA_FORMAT_R16_SFLOAT:
+			return WGPUVertexFormat_Float16;
+		case DF::DATA_FORMAT_R16G16_SFLOAT:
+			return WGPUVertexFormat_Float16x2;
+		case DF::DATA_FORMAT_R16G16B16A16_SFLOAT:
+			return WGPUVertexFormat_Float16x4;
 
 		// 32-bit float
-		case DF::DATA_FORMAT_R32_SFLOAT: return WGPUVertexFormat_Float32;
-		case DF::DATA_FORMAT_R32G32_SFLOAT: return WGPUVertexFormat_Float32x2;
-		case DF::DATA_FORMAT_R32G32B32_SFLOAT: return WGPUVertexFormat_Float32x3; // 3-comp OK for vertex!
-		case DF::DATA_FORMAT_R32G32B32A32_SFLOAT: return WGPUVertexFormat_Float32x4;
+		case DF::DATA_FORMAT_R32_SFLOAT:
+			return WGPUVertexFormat_Float32;
+		case DF::DATA_FORMAT_R32G32_SFLOAT:
+			return WGPUVertexFormat_Float32x2;
+		case DF::DATA_FORMAT_R32G32B32_SFLOAT:
+			return WGPUVertexFormat_Float32x3; // 3-comp OK for vertex!
+		case DF::DATA_FORMAT_R32G32B32A32_SFLOAT:
+			return WGPUVertexFormat_Float32x4;
 
 		// 32-bit integer
-		case DF::DATA_FORMAT_R32_UINT: return WGPUVertexFormat_Uint32;
-		case DF::DATA_FORMAT_R32G32_UINT: return WGPUVertexFormat_Uint32x2;
-		case DF::DATA_FORMAT_R32G32B32_UINT: return WGPUVertexFormat_Uint32x3; // 3-comp OK for vertex!
-		case DF::DATA_FORMAT_R32G32B32A32_UINT: return WGPUVertexFormat_Uint32x4;
-		case DF::DATA_FORMAT_R32_SINT: return WGPUVertexFormat_Sint32;
-		case DF::DATA_FORMAT_R32G32_SINT: return WGPUVertexFormat_Sint32x2;
-		case DF::DATA_FORMAT_R32G32B32_SINT: return WGPUVertexFormat_Sint32x3; // 3-comp OK for vertex!
-		case DF::DATA_FORMAT_R32G32B32A32_SINT: return WGPUVertexFormat_Sint32x4;
+		case DF::DATA_FORMAT_R32_UINT:
+			return WGPUVertexFormat_Uint32;
+		case DF::DATA_FORMAT_R32G32_UINT:
+			return WGPUVertexFormat_Uint32x2;
+		case DF::DATA_FORMAT_R32G32B32_UINT:
+			return WGPUVertexFormat_Uint32x3; // 3-comp OK for vertex!
+		case DF::DATA_FORMAT_R32G32B32A32_UINT:
+			return WGPUVertexFormat_Uint32x4;
+		case DF::DATA_FORMAT_R32_SINT:
+			return WGPUVertexFormat_Sint32;
+		case DF::DATA_FORMAT_R32G32_SINT:
+			return WGPUVertexFormat_Sint32x2;
+		case DF::DATA_FORMAT_R32G32B32_SINT:
+			return WGPUVertexFormat_Sint32x3; // 3-comp OK for vertex!
+		case DF::DATA_FORMAT_R32G32B32A32_SINT:
+			return WGPUVertexFormat_Sint32x4;
 
 		// 10-10-10-2 packed (A2B10G10R10)
-		case DF::DATA_FORMAT_A2B10G10R10_UNORM_PACK32: return WGPUVertexFormat_Unorm10_10_10_2;
+		case DF::DATA_FORMAT_A2B10G10R10_UNORM_PACK32:
+			return WGPUVertexFormat_Unorm10_10_10_2;
 
 		default:
 			return (WGPUVertexFormat)0; // WGPUVertexFormat_Undefined was removed in Dawn
@@ -347,9 +497,9 @@ static inline uint32_t wg_texel_component_size(WGTexelType p_type) {
 // Packed, depth and compressed formats return false.
 static inline bool wgpu_format_texel_info(WGPUTextureFormat p_format, uint32_t &r_channels, WGTexelType &r_type) {
 #define WG_TEXEL_CASE(m_format, m_channels, m_type) \
-	case WGPUTextureFormat_##m_format:              \
-		r_channels = m_channels;                    \
-		r_type = m_type;                            \
+	case WGPUTextureFormat_##m_format: \
+		r_channels = m_channels; \
+		r_type = m_type; \
 		return true;
 	switch (p_format) {
 		WG_TEXEL_CASE(R8Unorm, 1, WG_TEXEL_UNORM8)
@@ -405,18 +555,38 @@ static inline double wg_texel_decode(WGTexelType p_type, const uint8_t *p_src) {
 	int32_t i32;
 	float f32;
 	switch (p_type) {
-		case WG_TEXEL_UNORM8: return p_src[0] / 255.0;
-		case WG_TEXEL_SNORM8: return MAX((int8_t)p_src[0] / 127.0, -1.0);
-		case WG_TEXEL_UINT8: return p_src[0];
-		case WG_TEXEL_SINT8: return (int8_t)p_src[0];
-		case WG_TEXEL_UNORM16: memcpy(&u16, p_src, 2); return u16 / 65535.0;
-		case WG_TEXEL_SNORM16: memcpy(&i16, p_src, 2); return MAX(i16 / 32767.0, -1.0);
-		case WG_TEXEL_UINT16: memcpy(&u16, p_src, 2); return u16;
-		case WG_TEXEL_SINT16: memcpy(&i16, p_src, 2); return i16;
-		case WG_TEXEL_FLOAT16: memcpy(&u16, p_src, 2); return Math::half_to_float(u16);
-		case WG_TEXEL_UINT32: memcpy(&u32, p_src, 4); return u32;
-		case WG_TEXEL_SINT32: memcpy(&i32, p_src, 4); return i32;
-		case WG_TEXEL_FLOAT32: memcpy(&f32, p_src, 4); return f32;
+		case WG_TEXEL_UNORM8:
+			return p_src[0] / 255.0;
+		case WG_TEXEL_SNORM8:
+			return MAX((int8_t)p_src[0] / 127.0, -1.0);
+		case WG_TEXEL_UINT8:
+			return p_src[0];
+		case WG_TEXEL_SINT8:
+			return (int8_t)p_src[0];
+		case WG_TEXEL_UNORM16:
+			memcpy(&u16, p_src, 2);
+			return u16 / 65535.0;
+		case WG_TEXEL_SNORM16:
+			memcpy(&i16, p_src, 2);
+			return MAX(i16 / 32767.0, -1.0);
+		case WG_TEXEL_UINT16:
+			memcpy(&u16, p_src, 2);
+			return u16;
+		case WG_TEXEL_SINT16:
+			memcpy(&i16, p_src, 2);
+			return i16;
+		case WG_TEXEL_FLOAT16:
+			memcpy(&u16, p_src, 2);
+			return Math::half_to_float(u16);
+		case WG_TEXEL_UINT32:
+			memcpy(&u32, p_src, 4);
+			return u32;
+		case WG_TEXEL_SINT32:
+			memcpy(&i32, p_src, 4);
+			return i32;
+		case WG_TEXEL_FLOAT32:
+			memcpy(&f32, p_src, 4);
+			return f32;
 	}
 	return 0.0;
 }
@@ -428,17 +598,49 @@ static inline void wg_texel_encode(WGTexelType p_type, double p_value, uint8_t *
 	int32_t i32;
 	float f32;
 	switch (p_type) {
-		case WG_TEXEL_UNORM8: r_dst[0] = (uint8_t)Math::round(CLAMP(p_value, 0.0, 1.0) * 255.0); break;
-		case WG_TEXEL_SNORM8: r_dst[0] = (uint8_t)(int8_t)Math::round(CLAMP(p_value, -1.0, 1.0) * 127.0); break;
-		case WG_TEXEL_UINT8: r_dst[0] = (uint8_t)CLAMP(Math::round(p_value), 0.0, 255.0); break;
-		case WG_TEXEL_SINT8: r_dst[0] = (uint8_t)(int8_t)CLAMP(Math::round(p_value), -128.0, 127.0); break;
-		case WG_TEXEL_UNORM16: u16 = (uint16_t)Math::round(CLAMP(p_value, 0.0, 1.0) * 65535.0); memcpy(r_dst, &u16, 2); break;
-		case WG_TEXEL_SNORM16: i16 = (int16_t)Math::round(CLAMP(p_value, -1.0, 1.0) * 32767.0); memcpy(r_dst, &i16, 2); break;
-		case WG_TEXEL_UINT16: u16 = (uint16_t)CLAMP(Math::round(p_value), 0.0, 65535.0); memcpy(r_dst, &u16, 2); break;
-		case WG_TEXEL_SINT16: i16 = (int16_t)CLAMP(Math::round(p_value), -32768.0, 32767.0); memcpy(r_dst, &i16, 2); break;
-		case WG_TEXEL_FLOAT16: u16 = Math::make_half_float((float)p_value); memcpy(r_dst, &u16, 2); break;
-		case WG_TEXEL_UINT32: u32 = (uint32_t)CLAMP(Math::round(p_value), 0.0, 4294967295.0); memcpy(r_dst, &u32, 4); break;
-		case WG_TEXEL_SINT32: i32 = (int32_t)CLAMP(Math::round(p_value), -2147483648.0, 2147483647.0); memcpy(r_dst, &i32, 4); break;
-		case WG_TEXEL_FLOAT32: f32 = (float)p_value; memcpy(r_dst, &f32, 4); break;
+		case WG_TEXEL_UNORM8:
+			r_dst[0] = (uint8_t)Math::round(CLAMP(p_value, 0.0, 1.0) * 255.0);
+			break;
+		case WG_TEXEL_SNORM8:
+			r_dst[0] = (uint8_t)(int8_t)Math::round(CLAMP(p_value, -1.0, 1.0) * 127.0);
+			break;
+		case WG_TEXEL_UINT8:
+			r_dst[0] = (uint8_t)CLAMP(Math::round(p_value), 0.0, 255.0);
+			break;
+		case WG_TEXEL_SINT8:
+			r_dst[0] = (uint8_t)(int8_t)CLAMP(Math::round(p_value), -128.0, 127.0);
+			break;
+		case WG_TEXEL_UNORM16:
+			u16 = (uint16_t)Math::round(CLAMP(p_value, 0.0, 1.0) * 65535.0);
+			memcpy(r_dst, &u16, 2);
+			break;
+		case WG_TEXEL_SNORM16:
+			i16 = (int16_t)Math::round(CLAMP(p_value, -1.0, 1.0) * 32767.0);
+			memcpy(r_dst, &i16, 2);
+			break;
+		case WG_TEXEL_UINT16:
+			u16 = (uint16_t)CLAMP(Math::round(p_value), 0.0, 65535.0);
+			memcpy(r_dst, &u16, 2);
+			break;
+		case WG_TEXEL_SINT16:
+			i16 = (int16_t)CLAMP(Math::round(p_value), -32768.0, 32767.0);
+			memcpy(r_dst, &i16, 2);
+			break;
+		case WG_TEXEL_FLOAT16:
+			u16 = Math::make_half_float((float)p_value);
+			memcpy(r_dst, &u16, 2);
+			break;
+		case WG_TEXEL_UINT32:
+			u32 = (uint32_t)CLAMP(Math::round(p_value), 0.0, 4294967295.0);
+			memcpy(r_dst, &u32, 4);
+			break;
+		case WG_TEXEL_SINT32:
+			i32 = (int32_t)CLAMP(Math::round(p_value), -2147483648.0, 2147483647.0);
+			memcpy(r_dst, &i32, 4);
+			break;
+		case WG_TEXEL_FLOAT32:
+			f32 = (float)p_value;
+			memcpy(r_dst, &f32, 4);
+			break;
 	}
 }

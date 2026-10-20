@@ -1,77 +1,132 @@
-#include "spirv_preprocess.h"
-#include "spirv-tools/libspirv.h"
+/**************************************************************************/
+/*  storage_access_test.cpp                                               */
+/**************************************************************************/
+/*                         This file is part of:                          */
+/*                             GODOT ENGINE                               */
+/*                        https://godotengine.org                         */
+/**************************************************************************/
+/* Copyright (c) 2014-present Godot Engine contributors (see AUTHORS.md). */
+/* Copyright (c) 2007-2014 Juan Linietsky, Ariel Manzur.                  */
+/*                                                                        */
+/* Permission is hereby granted, free of charge, to any person obtaining  */
+/* a copy of this software and associated documentation files (the        */
+/* "Software"), to deal in the Software without restriction, including    */
+/* without limitation the rights to use, copy, modify, merge, publish,    */
+/* distribute, sublicense, and/or sell copies of the Software, and to     */
+/* permit persons to whom the Software is furnished to do so, subject to  */
+/* the following conditions:                                              */
+/*                                                                        */
+/* The above copyright notice and this permission notice shall be         */
+/* included in all copies or substantial portions of the Software.        */
+/*                                                                        */
+/* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,        */
+/* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF     */
+/* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. */
+/* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY   */
+/* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,   */
+/* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE      */
+/* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
+/**************************************************************************/
 
-#include "check.h"
+#include "spirv-tools/libspirv.h"
+#include "spirv_preprocess.h"
+
+#include "drivers/webgpu/tests/check.h"
+
 #include <cstdio>
 #include <cstring>
 
 static Vector<uint8_t> assemble(const char *p_source) {
-    spv_context context = spvContextCreate(SPV_ENV_UNIVERSAL_1_3);
-    spv_binary binary = nullptr;
-    spv_diagnostic diagnostic = nullptr;
-    const spv_result_t assembled = spvTextToBinaryWithOptions(context, p_source, std::strlen(p_source), SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS, &binary, &diagnostic);
-    if (diagnostic) std::fprintf(stderr, "%s\n", diagnostic->error);
-    CHECK(assembled == SPV_SUCCESS);
-    Vector<uint8_t> bytes;
-    bytes.resize(binary->wordCount * 4);
-    std::memcpy(bytes.ptrw(), binary->code, bytes.size());
-    spvBinaryDestroy(binary);
-    spvDiagnosticDestroy(diagnostic);
-    spvContextDestroy(context);
-    return bytes;
+	spv_context context = spvContextCreate(SPV_ENV_UNIVERSAL_1_3);
+	spv_binary binary = nullptr;
+	spv_diagnostic diagnostic = nullptr;
+	const spv_result_t assembled = spvTextToBinaryWithOptions(context, p_source, std::strlen(p_source), SPV_TEXT_TO_BINARY_OPTION_PRESERVE_NUMERIC_IDS, &binary, &diagnostic);
+	if (diagnostic) {
+		std::fprintf(stderr, "%s\n", diagnostic->error);
+	}
+	CHECK(assembled == SPV_SUCCESS);
+	Vector<uint8_t> bytes;
+	bytes.resize(binary->wordCount * 4);
+	std::memcpy(bytes.ptrw(), binary->code, bytes.size());
+	spvBinaryDestroy(binary);
+	spvDiagnosticDestroy(diagnostic);
+	spvContextDestroy(context);
+	return bytes;
 }
 
 // Word index of the first instruction with p_opcode (and p_operand as its first operand, if nonzero), or 0.
 static size_t find_instruction(const Vector<uint8_t> &p_bytes, uint32_t p_opcode, uint32_t p_operand = 0) {
-    const auto *words = reinterpret_cast<const uint32_t *>(p_bytes.ptr());
-    for (size_t pos = 5; pos < size_t(p_bytes.size() / 4); pos += words[pos] >> 16) {
-        if ((words[pos] & 0xffff) == p_opcode && (!p_operand || words[pos + 1] == p_operand)) {
-            return pos;
-        }
-    }
-    return 0;
+	const auto *words = reinterpret_cast<const uint32_t *>(p_bytes.ptr());
+	for (size_t pos = 5; pos < size_t(p_bytes.size() / 4); pos += words[pos] >> 16) {
+		if ((words[pos] & 0xffff) == p_opcode && (!p_operand || words[pos + 1] == p_operand)) {
+			return pos;
+		}
+	}
+	return 0;
 }
 
 static bool is_non_writable(const Vector<uint8_t> &p_bytes, uint32_t p_var) {
-    const auto *words = reinterpret_cast<const uint32_t *>(p_bytes.ptr());
-    for (size_t pos = 5; pos < size_t(p_bytes.size() / 4); pos += words[pos] >> 16) {
-        if (words[pos] == ((3u << 16) | 71) && words[pos + 1] == p_var && words[pos + 2] == 24) {
-            return true;
-        }
-    }
-    return false;
+	const auto *words = reinterpret_cast<const uint32_t *>(p_bytes.ptr());
+	for (size_t pos = 5; pos < size_t(p_bytes.size() / 4); pos += words[pos] >> 16) {
+		if (words[pos] == ((3u << 16) | 71) && words[pos + 1] == p_var && words[pos + 2] == 24) {
+			return true;
+		}
+	}
+	return false;
 }
 
 int main() {
-    // Storage-buffer access qualifiers change; image and unrelated members stay.
-    const uint32_t words[] = {
-        0x07230203, 0x00010300, 0, 101, 0,
-        (3u << 16) | 71, 20, 25,
-        (4u << 16) | 72, 10, 0, 25,
-        (3u << 16) | 71, 30, 25,
-        (4u << 16) | 72, 11, 0, 25,
-        (3u << 16) | 71, 20, 24,
-        (4u << 16) | 32, 100, 12, 10,
-        (4u << 16) | 59, 100, 20, 12,
-    };
-    Vector<uint8_t> bytes;
-    bytes.resize(sizeof(words));
-    std::memcpy(bytes.ptrw(), words, sizeof(words));
-    auto result = spirv_preprocess::normalize_storage_buffer_access(bytes);
-    CHECK(result.size() == sizeof(words) - 7 * sizeof(uint32_t));
-    const auto* output = reinterpret_cast<const uint32_t*>(result.ptr());
-    CHECK(output[6] == 30 && output[7] == 25); // Image NonReadable retained.
-    CHECK(output[9] == 11 && output[11] == 25); // Unrelated member retained.
-    CHECK(output[13] == 20 && output[14] == 24); // NonWritable retained.
-    auto repeated = spirv_preprocess::normalize_storage_buffer_access(result);
-    CHECK(repeated.size() == result.size());
-    CHECK(std::memcmp(repeated.ptr(), result.ptr(), result.size()) == 0);
-    bytes.resize(21);
-    CHECK(spirv_preprocess::normalize_storage_buffer_access(bytes).size() == 21);
+	// Storage-buffer access qualifiers change; image and unrelated members stay.
+	const uint32_t words[] = {
+		0x07230203,
+		0x00010300,
+		0,
+		101,
+		0,
+		(3u << 16) | 71,
+		20,
+		25,
+		(4u << 16) | 72,
+		10,
+		0,
+		25,
+		(3u << 16) | 71,
+		30,
+		25,
+		(4u << 16) | 72,
+		11,
+		0,
+		25,
+		(3u << 16) | 71,
+		20,
+		24,
+		(4u << 16) | 32,
+		100,
+		12,
+		10,
+		(4u << 16) | 59,
+		100,
+		20,
+		12,
+	};
+	Vector<uint8_t> bytes;
+	bytes.resize(sizeof(words));
+	std::memcpy(bytes.ptrw(), words, sizeof(words));
+	auto result = spirv_preprocess::normalize_storage_buffer_access(bytes);
+	CHECK(result.size() == sizeof(words) - 7 * sizeof(uint32_t));
+	const auto *output = reinterpret_cast<const uint32_t *>(result.ptr());
+	CHECK(output[6] == 30 && output[7] == 25); // Image NonReadable retained.
+	CHECK(output[9] == 11 && output[11] == 25); // Unrelated member retained.
+	CHECK(output[13] == 20 && output[14] == 24); // NonWritable retained.
+	auto repeated = spirv_preprocess::normalize_storage_buffer_access(result);
+	CHECK(repeated.size() == result.size());
+	CHECK(std::memcmp(repeated.ptr(), result.ptr(), result.size()) == 0);
+	bytes.resize(21);
+	CHECK(spirv_preprocess::normalize_storage_buffer_access(bytes).size() == 21);
 
-    // Writes through copied, selected and phi pointers and float atomics keep buffers writable. %21 is
-    // only read. The phi deliberately refers to a pointer defined after it.
-    const Vector<uint8_t> writes = assemble(R"(
+	// Writes through copied, selected and phi pointers and float atomics keep buffers writable. %21 is
+	// only read. The phi deliberately refers to a pointer defined after it.
+	const Vector<uint8_t> writes = assemble(R"(
 OpCapability Shader
 OpCapability AtomicFloat32AddEXT
 OpExtension "SPV_EXT_shader_atomic_float_add"
@@ -121,14 +176,14 @@ OpBranch %42
 OpReturn
 OpFunctionEnd
 )");
-    const Vector<uint8_t> inferred = spirv_preprocess::infer_readonly_storage(writes);
-    CHECK(is_non_writable(inferred, 21));
-    for (uint32_t var = 22; var <= 26; var++) {
-        CHECK(!is_non_writable(inferred, var));
-    }
+	const Vector<uint8_t> inferred = spirv_preprocess::infer_readonly_storage(writes);
+	CHECK(is_non_writable(inferred, 21));
+	for (uint32_t var = 22; var <= 26; var++) {
+		CHECK(!is_non_writable(inferred, var));
+	}
 
-    // Without other annotations the decoration still goes before the type declarations.
-    const Vector<uint8_t> bare = assemble(R"(
+	// Without other annotations the decoration still goes before the type declarations.
+	const Vector<uint8_t> bare = assemble(R"(
 OpCapability Shader
 OpMemoryModel Logical GLSL450
 OpEntryPoint GLCompute %1 "main"
@@ -144,8 +199,8 @@ OpExecutionMode %1 LocalSize 1 1 1
 OpReturn
 OpFunctionEnd
 )");
-    const Vector<uint8_t> decorated = spirv_preprocess::infer_readonly_storage(bare);
-    const size_t decoration = find_instruction(decorated, 71, 21);
-    CHECK(decoration && decoration < find_instruction(decorated, 19));
-    std::puts("PASS: storage access normalization and read-only inference");
+	const Vector<uint8_t> decorated = spirv_preprocess::infer_readonly_storage(bare);
+	const size_t decoration = find_instruction(decorated, 71, 21);
+	CHECK(decoration && decoration < find_instruction(decorated, 19));
+	std::puts("PASS: storage access normalization and read-only inference");
 }
