@@ -28,8 +28,7 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
-#ifndef PIXEL_FORMATS_WEBGPU_H
-#define PIXEL_FORMATS_WEBGPU_H
+#pragma once
 
 #include "servers/rendering/rendering_device_commons.h"
 #include <webgpu/webgpu.h>
@@ -60,12 +59,18 @@ static inline WGPUTextureFormat data_format_to_wgpu(RenderingDeviceCommons::Data
 		case DF::DATA_FORMAT_A8B8G8R8_SRGB_PACK32: return WGPUTextureFormat_RGBA8UnormSrgb;
 		case DF::DATA_FORMAT_A2B10G10R10_UNORM_PACK32: return WGPUTextureFormat_RGB10A2Unorm;
 		case DF::DATA_FORMAT_A2B10G10R10_UINT_PACK32: return WGPUTextureFormat_RGB10A2Uint;
+		case DF::DATA_FORMAT_R16_UNORM: return WGPUTextureFormat_R16Unorm;
+		case DF::DATA_FORMAT_R16_SNORM: return WGPUTextureFormat_R16Snorm;
 		case DF::DATA_FORMAT_R16_UINT: return WGPUTextureFormat_R16Uint;
 		case DF::DATA_FORMAT_R16_SINT: return WGPUTextureFormat_R16Sint;
 		case DF::DATA_FORMAT_R16_SFLOAT: return WGPUTextureFormat_R16Float;
+		case DF::DATA_FORMAT_R16G16_UNORM: return WGPUTextureFormat_RG16Unorm;
+		case DF::DATA_FORMAT_R16G16_SNORM: return WGPUTextureFormat_RG16Snorm;
 		case DF::DATA_FORMAT_R16G16_UINT: return WGPUTextureFormat_RG16Uint;
 		case DF::DATA_FORMAT_R16G16_SINT: return WGPUTextureFormat_RG16Sint;
 		case DF::DATA_FORMAT_R16G16_SFLOAT: return WGPUTextureFormat_RG16Float;
+		case DF::DATA_FORMAT_R16G16B16A16_UNORM: return WGPUTextureFormat_RGBA16Unorm;
+		case DF::DATA_FORMAT_R16G16B16A16_SNORM: return WGPUTextureFormat_RGBA16Snorm;
 		case DF::DATA_FORMAT_R16G16B16A16_UINT: return WGPUTextureFormat_RGBA16Uint;
 		case DF::DATA_FORMAT_R16G16B16A16_SINT: return WGPUTextureFormat_RGBA16Sint;
 		case DF::DATA_FORMAT_R16G16B16A16_SFLOAT: return WGPUTextureFormat_RGBA16Float;
@@ -165,6 +170,8 @@ static inline WGPUVertexFormat data_format_to_wgpu_vertex(RenderingDeviceCommons
 		case DF::DATA_FORMAT_R8G8_SINT: return WGPUVertexFormat_Sint8x2;
 		case DF::DATA_FORMAT_R8G8B8A8_UINT: return WGPUVertexFormat_Uint8x4;
 		case DF::DATA_FORMAT_R8G8B8A8_SINT: return WGPUVertexFormat_Sint8x4;
+		case DF::DATA_FORMAT_R8_UNORM: return WGPUVertexFormat_Unorm8;
+		case DF::DATA_FORMAT_R8_SNORM: return WGPUVertexFormat_Snorm8;
 		case DF::DATA_FORMAT_R8G8_UNORM: return WGPUVertexFormat_Unorm8x2;
 		case DF::DATA_FORMAT_R8G8_SNORM: return WGPUVertexFormat_Snorm8x2;
 		case DF::DATA_FORMAT_R8G8B8A8_UNORM: return WGPUVertexFormat_Unorm8x4;
@@ -177,6 +184,8 @@ static inline WGPUVertexFormat data_format_to_wgpu_vertex(RenderingDeviceCommons
 		case DF::DATA_FORMAT_R16G16_SINT: return WGPUVertexFormat_Sint16x2;
 		case DF::DATA_FORMAT_R16G16B16A16_UINT: return WGPUVertexFormat_Uint16x4;
 		case DF::DATA_FORMAT_R16G16B16A16_SINT: return WGPUVertexFormat_Sint16x4;
+		case DF::DATA_FORMAT_R16_UNORM: return WGPUVertexFormat_Unorm16;
+		case DF::DATA_FORMAT_R16_SNORM: return WGPUVertexFormat_Snorm16;
 		case DF::DATA_FORMAT_R16G16_UNORM: return WGPUVertexFormat_Unorm16x2;
 		case DF::DATA_FORMAT_R16G16_SNORM: return WGPUVertexFormat_Snorm16x2;
 		case DF::DATA_FORMAT_R16G16B16A16_UNORM: return WGPUVertexFormat_Unorm16x4;
@@ -238,25 +247,6 @@ static inline bool has_stencil_wgpu(WGPUTextureFormat p_format) {
 }
 
 // ============================================================================
-// Texture aspect mapping
-// ============================================================================
-
-static inline WGPUTextureAspect texture_aspect_to_wgpu(
-		RenderingDeviceDriver::TextureAspect p_aspect) {
-	using TA = RenderingDeviceDriver::TextureAspect;
-	switch (p_aspect) {
-		case TA::TEXTURE_ASPECT_COLOR:
-			return WGPUTextureAspect_All;
-		case TA::TEXTURE_ASPECT_DEPTH:
-			return WGPUTextureAspect_DepthOnly;
-		case TA::TEXTURE_ASPECT_STENCIL:
-			return WGPUTextureAspect_StencilOnly;
-		default:
-			return WGPUTextureAspect_All;
-	}
-}
-
-// ============================================================================
 // Bytes per pixel for supported formats (used for buffer<->texture copies)
 // ============================================================================
 
@@ -274,7 +264,8 @@ static inline uint32_t wgpu_format_pixel_size(WGPUTextureFormat p_format) {
 		case WGPUTextureFormat_R16Uint:
 		case WGPUTextureFormat_R16Sint:
 		case WGPUTextureFormat_R16Float:
-		// R16Unorm/R16Snorm not in base WebGPU spec (emdawnwebgpu 4.0.10)
+		case WGPUTextureFormat_R16Unorm:
+		case WGPUTextureFormat_R16Snorm:
 		case WGPUTextureFormat_RG8Unorm:
 		case WGPUTextureFormat_RG8Snorm:
 		case WGPUTextureFormat_RG8Uint:
@@ -289,7 +280,8 @@ static inline uint32_t wgpu_format_pixel_size(WGPUTextureFormat p_format) {
 		case WGPUTextureFormat_RG16Uint:
 		case WGPUTextureFormat_RG16Sint:
 		case WGPUTextureFormat_RG16Float:
-		// RG16Unorm/RG16Snorm not in base WebGPU spec (emdawnwebgpu 4.0.10)
+		case WGPUTextureFormat_RG16Unorm:
+		case WGPUTextureFormat_RG16Snorm:
 		case WGPUTextureFormat_RGBA8Unorm:
 		case WGPUTextureFormat_RGBA8UnormSrgb:
 		case WGPUTextureFormat_RGBA8Snorm:
@@ -312,7 +304,8 @@ static inline uint32_t wgpu_format_pixel_size(WGPUTextureFormat p_format) {
 		case WGPUTextureFormat_RGBA16Uint:
 		case WGPUTextureFormat_RGBA16Sint:
 		case WGPUTextureFormat_RGBA16Float:
-		// RGBA16Unorm/RGBA16Snorm not in base WebGPU spec (emdawnwebgpu 4.0.10)
+		case WGPUTextureFormat_RGBA16Unorm:
+		case WGPUTextureFormat_RGBA16Snorm:
 		case WGPUTextureFormat_Depth24PlusStencil8:
 		case WGPUTextureFormat_Depth32FloatStencil8:
 			return 8;
@@ -328,4 +321,124 @@ static inline uint32_t wgpu_format_pixel_size(WGPUTextureFormat p_format) {
 	}
 }
 
-#endif // PIXEL_FORMATS_WEBGPU_H
+// ============================================================================
+// Per-component encoding of plain color formats (CPU-side conversions)
+// ============================================================================
+
+enum WGTexelType : uint8_t {
+	WG_TEXEL_UNORM8,
+	WG_TEXEL_SNORM8,
+	WG_TEXEL_UINT8,
+	WG_TEXEL_SINT8,
+	WG_TEXEL_UNORM16,
+	WG_TEXEL_SNORM16,
+	WG_TEXEL_UINT16,
+	WG_TEXEL_SINT16,
+	WG_TEXEL_FLOAT16,
+	WG_TEXEL_UINT32,
+	WG_TEXEL_SINT32,
+	WG_TEXEL_FLOAT32,
+};
+
+static inline uint32_t wg_texel_component_size(WGTexelType p_type) {
+	return p_type <= WG_TEXEL_SINT8 ? 1 : (p_type <= WG_TEXEL_FLOAT16 ? 2 : 4);
+}
+
+// Packed, depth and compressed formats return false.
+static inline bool wgpu_format_texel_info(WGPUTextureFormat p_format, uint32_t &r_channels, WGTexelType &r_type) {
+#define WG_TEXEL_CASE(m_format, m_channels, m_type) \
+	case WGPUTextureFormat_##m_format:              \
+		r_channels = m_channels;                    \
+		r_type = m_type;                            \
+		return true;
+	switch (p_format) {
+		WG_TEXEL_CASE(R8Unorm, 1, WG_TEXEL_UNORM8)
+		WG_TEXEL_CASE(R8Snorm, 1, WG_TEXEL_SNORM8)
+		WG_TEXEL_CASE(R8Uint, 1, WG_TEXEL_UINT8)
+		WG_TEXEL_CASE(R8Sint, 1, WG_TEXEL_SINT8)
+		WG_TEXEL_CASE(RG8Unorm, 2, WG_TEXEL_UNORM8)
+		WG_TEXEL_CASE(RG8Snorm, 2, WG_TEXEL_SNORM8)
+		WG_TEXEL_CASE(RG8Uint, 2, WG_TEXEL_UINT8)
+		WG_TEXEL_CASE(RG8Sint, 2, WG_TEXEL_SINT8)
+		WG_TEXEL_CASE(RGBA8Unorm, 4, WG_TEXEL_UNORM8)
+		WG_TEXEL_CASE(RGBA8UnormSrgb, 4, WG_TEXEL_UNORM8)
+		WG_TEXEL_CASE(BGRA8Unorm, 4, WG_TEXEL_UNORM8)
+		WG_TEXEL_CASE(BGRA8UnormSrgb, 4, WG_TEXEL_UNORM8)
+		WG_TEXEL_CASE(RGBA8Snorm, 4, WG_TEXEL_SNORM8)
+		WG_TEXEL_CASE(RGBA8Uint, 4, WG_TEXEL_UINT8)
+		WG_TEXEL_CASE(RGBA8Sint, 4, WG_TEXEL_SINT8)
+		WG_TEXEL_CASE(R16Unorm, 1, WG_TEXEL_UNORM16)
+		WG_TEXEL_CASE(R16Snorm, 1, WG_TEXEL_SNORM16)
+		WG_TEXEL_CASE(R16Uint, 1, WG_TEXEL_UINT16)
+		WG_TEXEL_CASE(R16Sint, 1, WG_TEXEL_SINT16)
+		WG_TEXEL_CASE(R16Float, 1, WG_TEXEL_FLOAT16)
+		WG_TEXEL_CASE(RG16Unorm, 2, WG_TEXEL_UNORM16)
+		WG_TEXEL_CASE(RG16Snorm, 2, WG_TEXEL_SNORM16)
+		WG_TEXEL_CASE(RG16Uint, 2, WG_TEXEL_UINT16)
+		WG_TEXEL_CASE(RG16Sint, 2, WG_TEXEL_SINT16)
+		WG_TEXEL_CASE(RG16Float, 2, WG_TEXEL_FLOAT16)
+		WG_TEXEL_CASE(RGBA16Unorm, 4, WG_TEXEL_UNORM16)
+		WG_TEXEL_CASE(RGBA16Snorm, 4, WG_TEXEL_SNORM16)
+		WG_TEXEL_CASE(RGBA16Uint, 4, WG_TEXEL_UINT16)
+		WG_TEXEL_CASE(RGBA16Sint, 4, WG_TEXEL_SINT16)
+		WG_TEXEL_CASE(RGBA16Float, 4, WG_TEXEL_FLOAT16)
+		WG_TEXEL_CASE(R32Uint, 1, WG_TEXEL_UINT32)
+		WG_TEXEL_CASE(R32Sint, 1, WG_TEXEL_SINT32)
+		WG_TEXEL_CASE(R32Float, 1, WG_TEXEL_FLOAT32)
+		WG_TEXEL_CASE(RG32Uint, 2, WG_TEXEL_UINT32)
+		WG_TEXEL_CASE(RG32Sint, 2, WG_TEXEL_SINT32)
+		WG_TEXEL_CASE(RG32Float, 2, WG_TEXEL_FLOAT32)
+		WG_TEXEL_CASE(RGBA32Uint, 4, WG_TEXEL_UINT32)
+		WG_TEXEL_CASE(RGBA32Sint, 4, WG_TEXEL_SINT32)
+		WG_TEXEL_CASE(RGBA32Float, 4, WG_TEXEL_FLOAT32)
+		default:
+			return false;
+	}
+#undef WG_TEXEL_CASE
+}
+
+// Normalized and float components decode to their shader-visible value, integers to their integer value.
+static inline double wg_texel_decode(WGTexelType p_type, const uint8_t *p_src) {
+	uint16_t u16;
+	int16_t i16;
+	uint32_t u32;
+	int32_t i32;
+	float f32;
+	switch (p_type) {
+		case WG_TEXEL_UNORM8: return p_src[0] / 255.0;
+		case WG_TEXEL_SNORM8: return MAX((int8_t)p_src[0] / 127.0, -1.0);
+		case WG_TEXEL_UINT8: return p_src[0];
+		case WG_TEXEL_SINT8: return (int8_t)p_src[0];
+		case WG_TEXEL_UNORM16: memcpy(&u16, p_src, 2); return u16 / 65535.0;
+		case WG_TEXEL_SNORM16: memcpy(&i16, p_src, 2); return MAX(i16 / 32767.0, -1.0);
+		case WG_TEXEL_UINT16: memcpy(&u16, p_src, 2); return u16;
+		case WG_TEXEL_SINT16: memcpy(&i16, p_src, 2); return i16;
+		case WG_TEXEL_FLOAT16: memcpy(&u16, p_src, 2); return Math::half_to_float(u16);
+		case WG_TEXEL_UINT32: memcpy(&u32, p_src, 4); return u32;
+		case WG_TEXEL_SINT32: memcpy(&i32, p_src, 4); return i32;
+		case WG_TEXEL_FLOAT32: memcpy(&f32, p_src, 4); return f32;
+	}
+	return 0.0;
+}
+
+static inline void wg_texel_encode(WGTexelType p_type, double p_value, uint8_t *r_dst) {
+	uint16_t u16;
+	int16_t i16;
+	uint32_t u32;
+	int32_t i32;
+	float f32;
+	switch (p_type) {
+		case WG_TEXEL_UNORM8: r_dst[0] = (uint8_t)Math::round(CLAMP(p_value, 0.0, 1.0) * 255.0); break;
+		case WG_TEXEL_SNORM8: r_dst[0] = (uint8_t)(int8_t)Math::round(CLAMP(p_value, -1.0, 1.0) * 127.0); break;
+		case WG_TEXEL_UINT8: r_dst[0] = (uint8_t)CLAMP(Math::round(p_value), 0.0, 255.0); break;
+		case WG_TEXEL_SINT8: r_dst[0] = (uint8_t)(int8_t)CLAMP(Math::round(p_value), -128.0, 127.0); break;
+		case WG_TEXEL_UNORM16: u16 = (uint16_t)Math::round(CLAMP(p_value, 0.0, 1.0) * 65535.0); memcpy(r_dst, &u16, 2); break;
+		case WG_TEXEL_SNORM16: i16 = (int16_t)Math::round(CLAMP(p_value, -1.0, 1.0) * 32767.0); memcpy(r_dst, &i16, 2); break;
+		case WG_TEXEL_UINT16: u16 = (uint16_t)CLAMP(Math::round(p_value), 0.0, 65535.0); memcpy(r_dst, &u16, 2); break;
+		case WG_TEXEL_SINT16: i16 = (int16_t)CLAMP(Math::round(p_value), -32768.0, 32767.0); memcpy(r_dst, &i16, 2); break;
+		case WG_TEXEL_FLOAT16: u16 = Math::make_half_float((float)p_value); memcpy(r_dst, &u16, 2); break;
+		case WG_TEXEL_UINT32: u32 = (uint32_t)CLAMP(Math::round(p_value), 0.0, 4294967295.0); memcpy(r_dst, &u32, 4); break;
+		case WG_TEXEL_SINT32: i32 = (int32_t)CLAMP(Math::round(p_value), -2147483648.0, 2147483647.0); memcpy(r_dst, &i32, 4); break;
+		case WG_TEXEL_FLOAT32: f32 = (float)p_value; memcpy(r_dst, &f32, 4); break;
+	}
+}

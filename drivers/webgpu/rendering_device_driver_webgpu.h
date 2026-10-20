@@ -35,6 +35,8 @@
 #include "webgpu_objects.h"
 
 #include "servers/rendering/rendering_device_driver.h"
+#include "core/os/mutex.h"
+#include "core/templates/safe_refcount.h"
 #include "core/templates/hash_map.h"
 
 #include <webgpu/webgpu.h>
@@ -51,7 +53,7 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 	uint32_t frame_index = 0;
 	uint32_t frames_drawn = 0;
 
-	// Per-frame performance counters (logged once per second via EM_ASM).
+	// Per-frame performance counters (logged once per second in WEBGPU_VERBOSE builds).
 	struct PerfCounters {
 		uint32_t draw_calls = 0;
 		uint32_t set_bind_group_calls = 0;
@@ -86,7 +88,6 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 	FragmentShadingRateCapabilities fsr_capabilities;
 	FragmentDensityMapCapabilities fdm_capabilities;
 	WGPULimits device_limits = WGPU_LIMITS_INIT;
-	bool timestamp_supported = false;
 	bool has_texture_formats_tier1 = false;
 	bool has_rw_storage_textures = false; // readonly-and-readwrite-storage-textures
 
@@ -94,7 +95,9 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 	// When a source texture is updated (command_copy_buffer_to_texture), the new
 	// data is also copied to every registered shadow so compute shaders see
 	// the latest contents through the read-only shadow binding.
+	// Guarded by rw_shadow_copy_mutex: transfer workers read it while the render thread writes it.
 	HashMap<WGPUTexture, LocalVector<WGPUTexture>> rw_shadow_copy_map;
+	Mutex rw_shadow_copy_mutex;
 	bool float32_filterable_supported = false;
 	bool float32_blendable_supported = false;
 	// Optional texture-compression features (BC, ETC2, ASTC). Requested by the JS
@@ -119,11 +122,18 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 	static constexpr uint32_t PUSH_CONSTANT_RING_BINDING = 120;
 	uint32_t push_constant_ring_offset = 0;
 
-	// CPU-side shadow of the ring buffer for batched writes.
+	// When the ring fills up mid-segment, recording continues in a new "page": the page's data
+	// goes to push_constant_pages[page - 1] and an in-encoder copy moves it into the ring, so
+	// every draw sees its own data in submission order without submitting mid-recording.
+	uint32_t push_constant_page = 0;
+	LocalVector<WGPUBuffer> push_constant_pages; // CopySrc | CopyDst, PUSH_CONSTANT_RING_SIZE each.
+
+	// CPU-side shadow of all pages (page N at N * PUSH_CONSTANT_RING_SIZE) for batched writes.
 	// Accumulated during command recording, flushed once before queue submit.
-	uint8_t push_constant_shadow[PUSH_CONSTANT_RING_SIZE] = {};
-	uint32_t push_constant_shadow_dirty_start = UINT32_MAX;
-	uint32_t push_constant_shadow_dirty_end = 0;
+	LocalVector<uint8_t> push_constant_shadow;
+	uint64_t push_constant_shadow_dirty_start = UINT64_MAX;
+	uint64_t push_constant_shadow_dirty_end = 0;
+	void _flush_push_constant_shadow();
 
 	// Universal push constant bind group layout: group N, binding PUSH_CONSTANT_RING_BINDING,
 	// ReadOnlyStorage buffer with hasDynamicOffset=true. Created once at initialize().
@@ -172,14 +182,10 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 	// --- BGL Rebinding Helper ---
 	WGPUBindGroup _get_compatible_bind_group(WGUniformSet *p_us, WGShader *p_target_shader, uint32_t p_set_idx);
 
-	// --- Pixel Format Mapping ---
-	// TODO: Move to dedicated pixel_formats_webgpu.h/cpp when ready.
-
 	// --- Internal Helpers ---
 	void _check_capabilities();
 	WGPUTextureFormat _data_format_to_wgpu(DataFormat p_format) const;
 	DataFormat _wgpu_to_data_format(WGPUTextureFormat p_format) const;
-	static WGPUVertexFormat _data_format_to_wgpu_vertex(DataFormat p_format);
 	// Promotes R8/RG8/R16/RG16 formats to their 32-bit equivalents when a texture
 	// or render target needs STORAGE usage (base WebGPU does not support those as
 	// storage texel formats). With texture-formats-tier1, these formats are valid
@@ -191,7 +197,19 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 	WGPUTextureViewDimension _texture_type_to_view_dimension(TextureType p_type) const;
 
 	void _flush_push_constants(WGCommandBuffer *p_cmd_buf, WGShader *p_shader);
-	WGPUShaderModule _create_module_with_spec_constants(const PackedByteArray &p_spirv, VectorView<PipelineSpecializationConstant> p_constants, ShaderStage p_stage);
+	void _restart_pass_after_push_constant_page(WGCommandBuffer *p_cmd_buf, bool p_compute);
+	void _copy_buffer_to_texture(WGCommandBuffer *p_cmd_buf, WGBuffer *p_src, WGTexture *p_dst, const BufferTextureCopyRegion &p_region, uint32_t p_depth_or_layers);
+	WGPUShaderModule _create_module_with_spec_constants(const PackedByteArray &p_spirv, VectorView<PipelineSpecializationConstant> p_constants, ShaderStage p_stage, const WGShader *p_shader);
+
+	// Bindings rewritten by _postprocess_wgsl that the bind group layouts must mirror.
+	struct WGSLRewrites {
+		HashMap<uint32_t, uint32_t> rw_storage_splits;
+		HashSet<uint32_t> read_storage_to_sampled;
+		HashMap<uint32_t, WGPUTextureFormat> read_storage_formats;
+	};
+	// Applies the WebGPU-compatibility text rewrites to Tint's WGSL for one stage.
+	CharString _postprocess_wgsl(const char *p_wgsl, ShaderStage p_stage, const HashSet<uint32_t> &p_vertex_storage_buffers, WGSLRewrites &r_rewrites) const;
+	SafeNumeric<uint64_t> shader_uid_counter;
 
 public:
 	RenderingDeviceDriverWebGPU(RenderingContextDriverWebGPU *p_context_driver);
@@ -247,7 +265,8 @@ public:
 	/// Stub — WebGPU has no buffer device addresses. Returns 0.
 	virtual uint64_t buffer_get_device_address(BufferID p_buffer) override final;
 	/// WebGPU-specific: direct buffer readback using persistent staging buffer cache.
-	/// First call returns zeros (1-frame latency), subsequent calls return previous frame's data.
+	/// Always handles the request on web: r_data stays empty until the first async readback
+	/// lands (1-frame latency), then holds the most recent completed readback.
 	/// Bypasses the default staging buffer path which can't handle WebGPU's async-only map.
 	virtual bool buffer_get_data_direct(BufferID p_buffer, uint64_t p_offset, uint64_t p_size, Vector<uint8_t> &r_data) override final;
 
@@ -454,10 +473,8 @@ public:
 	virtual void command_clear_depth_stencil_texture(CommandBufferID p_cmd_buffer, TextureID p_texture, TextureLayout p_texture_layout, float p_depth, uint8_t p_stencil, const TextureSubresourceRange &p_subresources) override final;
 	/// Copy data from a buffer to a texture.
 	virtual void command_copy_buffer_to_texture(CommandBufferID p_cmd_buffer, BufferID p_src_buffer, TextureID p_dst_texture, TextureLayout p_dst_texture_layout, VectorView<BufferTextureCopyRegion> p_regions) override final;
-	/// Multi-layer copy from staging buffer to texture: collapses N per-layer
-	/// wgpuQueueWriteTexture calls into one (extent.depthOrArrayLayers = N),
-	/// removing N-1 wasm↔JS↔WebGPU bridge crossings — the dominant cost
-	/// during initial Texture2DArray uploads on web.
+	/// Multi-layer copy from staging buffer to texture: one copy covering N layers
+	/// (extent.depthOrArrayLayers = N) instead of N per-layer copies.
 	virtual void command_copy_buffer_to_texture_layered(CommandBufferID p_cmd_buffer, BufferID p_src_buffer, TextureID p_dst_texture, TextureLayout p_dst_texture_layout, const BufferTextureCopyRegion &p_base_region, uint32_t p_layer_count, uint64_t p_per_layer_byte_stride) override final;
 	/// Direct CPU->GPU multi-layer texture write via wgpuQueueWriteTexture.
 	/// Skips the transfer-worker GPU staging buffer and command encoder
@@ -573,19 +590,12 @@ public:
 	// QUERIES
 	// -----------------------------------------------------------------------
 
-	/// Create a timestamp query pool. Falls back to a dummy pool if the
-	/// timestamp-query feature is not available in the browser.
+	/// Timestamps are unsupported (as on Metal): dummy pool, results are zeros.
 	virtual QueryPoolID timestamp_query_pool_create(uint32_t p_query_count) override final;
-	/// Release a timestamp query pool and its GPU resources.
 	virtual void timestamp_query_pool_free(QueryPoolID p_pool_id) override final;
-	/// Get timestamp query results. Data is populated asynchronously via
-	/// wgpuBufferMapAsync callbacks between frames.
 	virtual void timestamp_query_pool_get_results(QueryPoolID p_pool_id, uint32_t p_query_count, uint64_t *r_results) override final;
-	/// Convert a raw timestamp query result to nanoseconds.
 	virtual uint64_t timestamp_query_result_to_time(uint64_t p_result) override final;
-	/// Reset a timestamp query pool (no-op — WebGPU resets on use).
 	virtual void command_timestamp_query_pool_reset(CommandBufferID p_cmd_buffer, QueryPoolID p_pool_id, uint32_t p_query_count) override final;
-	/// Write a timestamp to a query pool at the given index.
 	virtual void command_timestamp_write(CommandBufferID p_cmd_buffer, QueryPoolID p_pool_id, uint32_t p_index) override final;
 
 	// -----------------------------------------------------------------------
@@ -603,7 +613,7 @@ public:
 	// SUBMISSION
 	// -----------------------------------------------------------------------
 
-	/// Begin a new frame segment. Resets performance counters and push constant ring offset.
+	/// Begin a new frame segment. Resets the push constant ring (and logs perf counters when verbose).
 	virtual void begin_segment(uint32_t p_frame_index, uint32_t p_frames_drawn) override final;
 	/// End a frame segment. Flushes accumulated push constant data to the GPU.
 	virtual void end_segment() override final;
@@ -631,7 +641,7 @@ public:
 
 	/// Set a debug name on a GPU resource. Stub — resource labeling not yet implemented.
 	virtual void set_object_name(ObjectType p_type, ID p_driver_id, const String &p_name) override final;
-	/// Get a native handle for a resource. Returns 0 (no native handles in WebGPU/WASM).
+	/// Get the underlying WGPU handle (WGPUDevice, WGPUTexture, ...) for a resource.
 	virtual uint64_t get_resource_native_handle(DriverResource p_type, ID p_driver_id) override final;
 	/// Get total GPU memory used. Returns 0 (not tracked in WebGPU).
 	virtual uint64_t get_total_memory_used() override final;

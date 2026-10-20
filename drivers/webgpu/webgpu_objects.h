@@ -92,7 +92,6 @@ struct WGTexture {
 		DEV_ASSERT(view_source || handle);
 		return view_source ? view_source : handle;
 	}
-	uint32_t debug_create_id = UINT32_MAX; // Monotonic counter for correlating [WGTEX] log lines.
 	WGPUTextureFormat format = WGPUTextureFormat_Undefined;
 	// Godot-side DataFormat remembered at creation so readback / allocation-size
 	// paths can look up true bytes-per-pixel instead of hardcoding bpp=4.
@@ -108,7 +107,8 @@ struct WGTexture {
 	uint32_t base_mipmap = 0;
 	uint32_t base_layer = 0;
 	WGPUTextureUsage usage = 0;
-	bool is_from_swap_chain = false;
+	// sRGB/linear sibling listed in viewFormats at creation; Undefined if views can't change format.
+	WGPUTextureFormat view_format_alt = WGPUTextureFormat_Undefined;
 };
 
 // =============================================================================
@@ -141,7 +141,8 @@ struct WGVertexFormat {
 struct WGShader {
 	// Per-stage shader modules. Indexed by RDD::ShaderStage enum value.
 	WGPUShaderModule stage_modules[6] = {}; // SHADER_STAGE_MAX = 6 (vertex/frag/tess×2/compute/max)
-	WGPUShaderModule module = nullptr; // Legacy alias — points to first non-null module.
+	// Never reused, unlike the WGShader address or its layout handles; keys WGUniformSet::rebind_cache.
+	uint64_t uid = 0;
 
 	// Per-stage raw SPIR-V bytes. Stored for deferred specialization constant patching.
 	PackedByteArray stage_spirv[6];
@@ -153,7 +154,6 @@ struct WGShader {
 	uint32_t push_constant_size = 0;
 	uint32_t push_constant_bind_group = UINT32_MAX; // UINT32_MAX = no push constants.
 	uint32_t push_constant_binding = 0;
-	BitField<RDD::ShaderStage> push_constant_stages;
 	// Merged bind group layout for the PC group when it also has material uniforms.
 	// nullptr = PC group has no other uniforms; pipeline uses the universal PC-only layout.
 	WGPUBindGroupLayout merged_pc_group_layout = nullptr;
@@ -185,6 +185,10 @@ struct WGShader {
 	// is unavailable, read-only storage textures are converted to sampled textures
 	// in the WGSL and BGL so the shader compiles on Firefox/wgpu.
 	HashSet<uint32_t> read_storage_to_sampled;
+
+	// (set << 16 | binding) of storage buffers the vertex stage declares. Fragment read_write
+	// declarations of these are demoted to read: a BGL entry can't be writable and vertex-visible.
+	HashSet<uint32_t> vertex_storage_buffers;
 
 	// Pipeline layout gap indices — slots between set_count and pc_group that
 	// need empty bind groups bound before draw (Firefox/wgpu requirement).
@@ -286,7 +290,7 @@ struct WGUniformSet {
 	// re-create the bind group with the correct BGL and cache it.
 	LocalVector<WGPUBindGroupEntry> cached_entries;
 	WGShader *source_shader = nullptr;
-	HashMap<WGPUBindGroupLayout, WGPUBindGroup> rebind_cache;
+	HashMap<uint64_t, WGPUBindGroup> rebind_cache; // Key: target WGShader::uid << 8 | set index.
 
 	// Maps binding index → WGTexture* for texture entries, used during rebind
 	// to create compatible views when the target BGL has a different dimension.
@@ -324,11 +328,12 @@ struct WGCommandQueue {
 	WGPUQueue queue = nullptr;
 };
 
+struct WGCommandBuffer;
+
 struct WGCommandPool {
 	RDD::CommandBufferType buffer_type = RDD::COMMAND_BUFFER_TYPE_PRIMARY;
+	LocalVector<WGCommandBuffer *> buffers; // Owned; freed with the pool like Vulkan command buffers.
 };
-
-struct WGQueryPool; // Forward declaration for WGCommandBuffer.
 
 struct WGCommandBuffer {
 	WGPUCommandEncoder encoder = nullptr;
@@ -371,6 +376,14 @@ struct WGCommandBuffer {
 		uint32_t render_area_width = 0;
 		uint32_t render_area_height = 0;
 
+		// Dynamic state of the current pass, re-applied when a push constant page restarts it.
+		bool viewport_set = false;
+		float viewport[4] = {};
+		bool scissor_set = false;
+		uint32_t scissor[4] = {};
+		bool blend_constant_set = false;
+		WGPUColor blend_constant = {};
+
 		// Redundant state elimination for per-draw calls.
 		WGPUBuffer current_index_buffer = nullptr;
 		uint64_t current_index_offset = 0;
@@ -404,7 +417,7 @@ struct WGCommandBuffer {
 	WGPUBindGroup bound_bind_groups[MAX_BIND_GROUPS] = {};
 	WGShader *bound_shader = nullptr; // Shader whose BGL the bound groups were created for.
 
-	// Full bind group state for mid-pass restart (push constant ring overflow).
+	// Full bind group state for mid-pass restart (new push constant page).
 	// Stores the resolved bind group + dynamic offsets for each slot so we can
 	// rebind everything after ending/restarting the render pass.
 	static constexpr uint32_t MAX_BIND_GROUP_DYN_OFFSETS = 9; // 8 material + 1 PC ring
@@ -418,15 +431,13 @@ struct WGCommandBuffer {
 	void invalidate_bind_groups() {
 		for (uint32_t i = 0; i < MAX_BIND_GROUPS; i++) {
 			bound_bind_groups[i] = nullptr;
+			last_bound_state[i] = {}; // A pass restart must not rebind groups from an older pass.
 		}
 		bound_shader = nullptr;
 		current_pc_bind_group = nullptr;
 		last_flushed_pc_offset = 0;
 		pc_group_material_dyn_count = 0;
 	}
-
-	// Track query pools that had timestamps written, for resolve at command buffer end.
-	LocalVector<WGQueryPool *> written_query_pools;
 
 	// Helpers.
 	void end_active_encoder() {
@@ -449,11 +460,9 @@ struct WGCommandBuffer {
 // =============================================================================
 
 struct WGFence {
-	bool signaled = false;
-	uint64_t submission_id = 0;
-	bool work_done_pending = false; // True while wgpuQueueOnSubmittedWorkDone callback is in flight.
-	bool freed = false;             // Freed while callback pending; callback will delete.
-	WGPUFuture future = {};
+	uint32_t pending_callbacks = 0; // wgpuQueueOnSubmittedWorkDone callbacks in flight (a fence can be resubmitted).
+	bool freed = false; // Freed while callbacks pending; the last callback deletes it.
+	WGPUFuture future = {}; // Most recent submission.
 };
 
 // =============================================================================
@@ -461,23 +470,5 @@ struct WGFence {
 // =============================================================================
 
 struct WGSemaphore {};
-
-// =============================================================================
-// Query Pool
-// =============================================================================
-
-struct WGQueryPool {
-	WGPUQuerySet handle = nullptr;
-	WGPUBuffer resolve_buffer = nullptr; // GPU buffer for query set resolve (CopySrc | QueryResolve).
-	WGPUBuffer readback_buffer = nullptr; // CPU-readable staging buffer (CopyDst | MapRead).
-	uint32_t count = 0;
-	bool is_real = false; // True if backed by actual timestamp-query hardware.
-
-	// Shadow CPU buffer for async readback results.
-	uint64_t *cpu_results = nullptr;
-	bool readback_pending = false;
-	uint32_t map_generation = 0;    // Incremented each time mapAsync is issued; stale callbacks are ignored.
-	bool freed = false;             // Freed while readback pending; callback will clean up.
-};
 
 #endif // WEBGPU_ENABLED

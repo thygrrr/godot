@@ -45,3 +45,27 @@ for name in (
         env=os.environ.copy(),
     )
     subprocess.run(["node", str(target)], check=True)
+
+# Header-only driver helpers build against the real engine headers instead of the converter shims.
+target = output / "texel_convert.js"
+port = root / "thirdparty/emdawnwebgpu/emdawnwebgpu.port.py"
+subprocess.run(
+    [
+        sys.executable,
+        str(compiler),
+        str(root / "webgpu_tests/texel_convert_test.cpp"),
+        f"-I{root}",
+        f"-I{root / 'platform/web'}",
+        f"-I{driver}",
+        f"--use-port={port}",
+        "-std=c++17",
+        "-DWEBGPU_ENABLED",
+        "-sENVIRONMENT=node",
+        "-sASSERTIONS=1",
+        "-o",
+        str(target),
+    ],
+    check=True,
+    env=os.environ.copy(),
+)
+subprocess.run(["node", str(target)], check=True)
