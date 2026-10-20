@@ -189,7 +189,6 @@ uint option_to_count(uint option, uint bound) {
 	}
 #ifdef RENDER_DRIVER_WEBGPU
 	return result;
-#else
 #endif
 }
 
