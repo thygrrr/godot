@@ -300,6 +300,21 @@ bool profile_gpu = false;
 // Constants.
 
 static const String NULL_DISPLAY_DRIVER("headless");
+
+static const char *webgpu_unavailable_reason() {
+#if defined(WEB_ENABLED) && defined(THREADS_ENABLED)
+	return "WebGPU is unavailable in multithreaded browser runtimes. Use a single-threaded runtime or OpenGL Compatibility.";
+#elif defined(REAL_T_IS_DOUBLE)
+	return "WebGPU is unavailable in double-precision runtimes. Use a single-precision runtime or another rendering driver.";
+#elif defined(ANDROID_ENABLED)
+	return "WebGPU is unavailable on Android. Use Vulkan or OpenGL Compatibility.";
+#elif !defined(WEBGPU_ENABLED)
+	return "WebGPU is not included in this runtime. Use a WebGPU-enabled runtime or another rendering driver.";
+#else
+	return nullptr;
+#endif
+}
+
 static const String EMBEDDED_DISPLAY_DRIVER("embedded");
 static const String NULL_AUDIO_DRIVER("Dummy");
 
@@ -2796,6 +2811,11 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 		renderer_hints = "dummy";
 	}
 
+	if (display_driver != NULL_DISPLAY_DRIVER && rendering_driver.to_lower() == "webgpu" && webgpu_unavailable_reason()) {
+		OS::get_singleton()->print("%s\n", webgpu_unavailable_reason());
+		goto error;
+	}
+
 	if (!rendering_driver.is_empty()) {
 		// As the rendering drivers available may depend on the display driver and renderer
 		// selected, we can't do an exhaustive check here, but we can look through all
@@ -2929,6 +2949,11 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 			rendering_driver = GLOBAL_GET("rendering/rendering_device/driver");
 			rendering_driver_source = OS::RenderingSource::RENDERING_SOURCE_PROJECT_SETTING;
 		}
+	}
+
+	if (display_driver != NULL_DISPLAY_DRIVER && rendering_driver.to_lower() == "webgpu" && webgpu_unavailable_reason()) {
+		OS::get_singleton()->print("%s\n", webgpu_unavailable_reason());
+		goto error;
 	}
 
 	// Forward+ uses shader features which the current WebGPU/Tint integration

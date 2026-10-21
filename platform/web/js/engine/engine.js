@@ -9,6 +9,7 @@
  * @header Web export JavaScript reference
  */
 const Engine = (function () {
+	const webgpuUnavailableReason = ___GODOT_WEBGPU_UNAVAILABLE_REASON___;
 	const preloader = new Preloader();
 
 	let loadPromise = null;
@@ -80,6 +81,15 @@ const Engine = (function () {
 			init: function (basePath) {
 				if (initPromise) {
 					return initPromise;
+				}
+				const args = this.config.args;
+				for (let i = 0; i + 1 < args.length; i++) {
+					if (args[i] === '--rendering-driver') {
+						this.config.renderingDriver = args[++i];
+					}
+				}
+				if (this.config.renderingDriver === 'webgpu' && webgpuUnavailableReason) {
+					return Promise.reject(new Error(webgpuUnavailableReason));
 				}
 				if (loadPromise == null) {
 					if (!basePath) {
@@ -321,6 +331,9 @@ const Engine = (function () {
 	 * @function Engine.requestWebGPUDevice
 	 */
 	Engine.requestWebGPUDevice = function (adapterOptions, deviceDescriptor) {
+		if (webgpuUnavailableReason) {
+			return Promise.reject(new Error(webgpuUnavailableReason));
+		}
 		if (typeof navigator === 'undefined' || !navigator.gpu) {
 			return Promise.reject(new Error(
 				'WebGPU is not supported in this browser.\n'

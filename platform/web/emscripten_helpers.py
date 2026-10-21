@@ -24,10 +24,25 @@ def run_closure_compiler(target, source, env, for_signature):
 
 
 def create_engine_file(env, target, source, externs, threads_enabled):
+    reason = ""
+    if threads_enabled:
+        reason = "WebGPU is unavailable in multithreaded browser runtimes. Use a single-threaded runtime or OpenGL Compatibility."
+    elif env["precision"] == "double":
+        reason = "WebGPU is unavailable in double-precision runtimes. Use a single-precision runtime or another rendering driver."
+    elif not env["webgpu"]:
+        reason = "WebGPU is not included in this runtime. Use a WebGPU-enabled runtime or another rendering driver."
+    subst_dict = {
+        "___GODOT_THREADS_ENABLED": "true" if threads_enabled else "false",
+        "___GODOT_WEBGPU_UNAVAILABLE_REASON___": json.dumps(reason),
+    }
+    prepared = env.Substfile(
+        target=str(target) + ".pre.js" if env["use_closure_compiler"] else target,
+        source=[env.File(s) for s in source],
+        SUBST_DICT=subst_dict,
+    )
     if env["use_closure_compiler"]:
-        return env.BuildJS(target, source, JSEXTERNS=externs)
-    subst_dict = {"___GODOT_THREADS_ENABLED": "true" if threads_enabled else "false"}
-    return env.Substfile(target=target, source=[env.File(s) for s in source], SUBST_DICT=subst_dict)
+        return env.BuildJS(target, prepared, JSEXTERNS=externs)
+    return prepared
 
 
 def create_template_zip(env, js, wasm, side, libgodot):

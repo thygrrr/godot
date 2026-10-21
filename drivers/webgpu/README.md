@@ -5,9 +5,11 @@ This opt-in backend ports `dwalter/godotwebgpu` at
 It supports browser WebGPU and optional native Dawn on Windows, Linux and macOS.
 Existing rendering defaults and other backends remain available.
 
-`2dog-4.7.2-webgpu-mobile` supports the Mobile renderer. The later
-`2dog-4.7.2-webgpu` branch adds Forward+ support and its compiler regressions.
-Both branches permit headless resource imports and exports for WebGPU projects.
+This experimental backend supports the Mobile renderer. Forward+, Android,
+double-precision and multithreaded browser runtimes reject WebGPU explicitly.
+Headless resource imports and exports remain supported for WebGPU projects.
+Read/write storage textures require adapter-native format support; unsupported
+formats and overlapping writable storage-buffer bindings fail explicitly.
 
 ## Dependencies and builds
 
@@ -39,8 +41,7 @@ isolates Dawn's compiler symbols from Godot's patched Tint.
 
 ## Runtime selection
 
-Select `--rendering-driver webgpu --rendering-method mobile` for the Mobile
-branch. The Forward+ branch also supports `--rendering-method forward_plus`.
+Select `--rendering-driver webgpu --rendering-method mobile`.
 Use the OpenGL driver when selecting `gl_compatibility`.
 
 A custom browser shell must set `renderingDriver: 'webgpu'` before Engine

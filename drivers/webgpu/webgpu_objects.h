@@ -176,12 +176,6 @@ struct WGShader {
 	// Used by uniform_set_create to add extra bind group entries for split depth textures.
 	HashMap<uint32_t, uint32_t> depth_alias_bindings;
 
-	// Read-write storage texture splits: maps (set << 16 | write_binding) → read_shadow_binding.
-	// When the language feature or format lacks read/write support, storage
-	// textures are split into separate write (original) + read (shadow) bindings.
-	// The shadow binding receives a GPU copy before each compute dispatch.
-	HashMap<uint32_t, uint32_t> rw_storage_splits;
-
 	// Read-only storage texture → sampled texture conversions.
 	// Set of (set << 16 | binding) keys. When readonly-and-readwrite-storage-textures
 	// is unavailable, read-only storage textures are converted to sampled textures
@@ -275,19 +269,6 @@ struct WGUniformSet {
 	WGPUBindGroup handle = nullptr;
 	uint32_t set_index = 0;
 	LocalVector<WGPUTextureView> temp_views; // Re-dimensioned views for Cube↔2D fixups.
-	// Shadow textures/views for read_write storage texture splits.
-	// Owned by the uniform set; released when the set is destroyed.
-	LocalVector<WGPUTexture> rw_shadow_textures;
-	LocalVector<WGPUTextureView> rw_shadow_views;
-
-	// Tracks which source→shadow registrations this uniform set created in
-	// rw_shadow_copy_map, so they can be deregistered when the set is freed.
-	struct RWShadowRegistration {
-		WGPUTexture source;
-		WGPUTexture shadow;
-	};
-	LocalVector<RWShadowRegistration> rw_shadow_registrations;
-
 	// Rebind cache: when a bind group is created with shader A's BGL but
 	// needs to be used with shader B's pipeline (different BGL), we
 	// re-create the bind group with the correct BGL and cache it.
@@ -433,7 +414,6 @@ struct WGCommandBuffer {
 	static constexpr uint32_t MAX_BIND_GROUP_DYN_OFFSETS = 9; // 8 material + 1 PC ring
 	struct BoundGroupState {
 		WGPUBindGroup group = nullptr;
-		WGUniformSet *uniform_set = nullptr;
 		uint32_t dynamic_offsets[MAX_BIND_GROUP_DYN_OFFSETS] = {};
 		uint32_t dynamic_offset_count = 0;
 	};

@@ -92,13 +92,6 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 	bool has_texture_formats_tier2 = false;
 	bool has_rw_storage_textures = false; // readonly-and-readwrite-storage-textures
 
-	// Source WGPUTexture → shadow WGPUTexture handles for read_write storage splits.
-	// When a source texture is updated (command_copy_buffer_to_texture), the new
-	// data is also copied to every registered shadow so compute shaders see
-	// the latest contents through the read-only shadow binding.
-	// Guarded by rw_shadow_copy_mutex: transfer workers read it while the render thread writes it.
-	HashMap<WGPUTexture, LocalVector<WGPUTexture>> rw_shadow_copy_map;
-	Mutex rw_shadow_copy_mutex;
 	bool float32_filterable_supported = false;
 	bool float32_blendable_supported = false;
 	// Optional texture-compression features (BC, ETC2, ASTC). Requested by the JS
@@ -161,15 +154,6 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 	WGPUTexture fallback_ms_texture = nullptr;
 	WGPUTextureView fallback_ms_texture_view = nullptr;
 
-	// --- Aliasing Stub Buffer ---
-	// Substituted for the second writable storage buffer binding when two
-	// bindings in the same uniform set alias the same WGPUBuffer. WebGPU
-	// forbids two writable storage bindings overlapping the same buffer in
-	// a single dispatch (Vulkan allows it via barriers). The shader writes
-	// to this throwaway buffer instead of triggering a validation error.
-	WGPUBuffer aliasing_stub_buffer = nullptr;
-	static constexpr uint64_t ALIASING_STUB_BUFFER_SIZE = 65536; // 64KB — large enough for any sub-emitter emission buffer
-
 	// --- Dummy Samplers for BGL Rebinding ---
 	// When a bind group must be re-created with a different BGL (e.g., because
 	// the original BGL has a Comparison sampler but the target has Filtering),
@@ -195,7 +179,6 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 	WGPUTextureViewDimension _texture_type_to_view_dimension(TextureType p_type) const;
 
 	void _flush_push_constants(WGCommandBuffer *p_cmd_buf, WGShader *p_shader);
-	void _sync_compute_storage_shadows(WGCommandBuffer *p_cmd_buf);
 	void _restart_pass_after_push_constant_page(WGCommandBuffer *p_cmd_buf, bool p_compute);
 	void _rebind_render_state(WGCommandBuffer *p_cmd_buf);
 
@@ -224,7 +207,7 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 
 	// Bindings rewritten by _postprocess_wgsl that the bind group layouts must mirror.
 	struct WGSLRewrites {
-		HashMap<uint32_t, uint32_t> rw_storage_splits;
+		String error;
 		HashSet<uint32_t> read_storage_to_sampled;
 		HashMap<uint32_t, WGPUTextureFormat> read_storage_formats;
 	};

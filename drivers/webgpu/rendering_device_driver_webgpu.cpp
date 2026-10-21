@@ -402,12 +402,6 @@ RenderingDeviceDriverWebGPU::~RenderingDeviceDriverWebGPU() {
 		dummy_comparison_sampler = nullptr;
 	}
 
-	// Release aliasing stub buffer.
-	if (aliasing_stub_buffer) {
-		wgpuBufferRelease(aliasing_stub_buffer);
-		aliasing_stub_buffer = nullptr;
-	}
-
 	// Clean up readback cache — release persistent staging buffers and shadow memory.
 	for (KeyValue<uint64_t, ReadbackEntry *> &kv : _readback_cache) {
 		ReadbackEntry *entry = kv.value;
@@ -617,18 +611,6 @@ Error RenderingDeviceDriverWebGPU::initialize(uint32_t p_device_index, uint32_t 
 		csd.maxAnisotropy = 1;
 		csd.compare = WGPUCompareFunction_Less;
 		dummy_comparison_sampler = wgpuDeviceCreateSampler(device, &csd);
-	}
-
-	// Create aliasing stub buffer — substituted for duplicate writable storage buffer bindings
-	// in the same uniform set. WebGPU forbids two writable storage bindings that alias the same
-	// underlying buffer (Vulkan allows it via barriers). When Godot passes the same buffer for
-	// both SourceEmission and DestEmission in the particle compute shader, we redirect the
-	// second occurrence to this dummy buffer so the bind group passes validation.
-	{
-		WGPUBufferDescriptor stub_desc = {};
-		stub_desc.size = ALIASING_STUB_BUFFER_SIZE;
-		stub_desc.usage = WGPUBufferUsage_Storage | WGPUBufferUsage_CopyDst;
-		aliasing_stub_buffer = wgpuDeviceCreateBuffer(device, &stub_desc);
 	}
 
 	// Create shader container format.
@@ -854,7 +836,7 @@ void RenderingDeviceDriverWebGPU::_check_capabilities() {
 	if (has_rw_storage_textures) {
 		print_verbose("WebGPU: readonly-and-readwrite-storage-textures feature is available.");
 	} else {
-		print_verbose("WebGPU: readonly-and-readwrite-storage-textures NOT available — will split read_write storage textures.");
+		print_verbose("WebGPU: readonly-and-readwrite-storage-textures NOT available — read/write storage textures are unavailable.");
 	}
 
 	// Optional texture-compression families. The JS shell opts in to these when
@@ -1546,9 +1528,9 @@ RDD::TextureID RenderingDeviceDriverWebGPU::texture_create(const TextureFormat &
 	// Upgrade to 32-bit equivalents when storage binding is needed.
 	if (tex->usage & WGPUTextureUsage_StorageBinding) {
 		tex->format = _promote_storage_format(tex->format);
-		// Unsupported read/write access uses sampled shadow copies instead.
-		if (!wgpu_storage_format_supports_read_write(tex->format, has_rw_storage_textures, has_texture_formats_tier2)) {
-			tex->usage |= WGPUTextureUsage_CopySrc | WGPUTextureUsage_TextureBinding;
+		// Read-only storage becomes a sampled texture without the WGSL language feature.
+		if (!has_rw_storage_textures) {
+			tex->usage |= WGPUTextureUsage_TextureBinding;
 		}
 	}
 
@@ -1802,13 +1784,6 @@ void RenderingDeviceDriverWebGPU::texture_free(TextureID p_texture) {
 		for (uint64_t k : to_remove) {
 			_readback_cache.erase(k);
 		}
-	}
-
-	// Remove any rw_shadow_copy_map entries keyed on this texture's handle,
-	// so stale handles can't match a recycled WGPUTexture later.
-	if (tex->handle) {
-		MutexLock lock(rw_shadow_copy_mutex);
-		rw_shadow_copy_map.erase(tex->handle);
 	}
 
 	if (tex->default_view) {
@@ -3241,201 +3216,24 @@ CharString RenderingDeviceDriverWebGPU::_postprocess_wgsl(const char *p_wgsl, Sh
 		}
 	}
 
-	// Split unsupported read_write storage formats into write + sampled shadow bindings.
-	// Native access requires both the WGSL language feature and format support.
-	// The shadow read binding uses the odd slot (B+1) which is free for IMAGE
-	// types due to preprocessing's binding doubling (even=resource, odd=sampler for combined).
-	if (strstr(cs.get_data(), "read_write>")) {
-		struct RWSplitInfo {
-			uint32_t grp, bnd;
-			String var_name, dim_type, fmt;
-		};
-		LocalVector<RWSplitInfo> rw_infos;
-
-		// Scan for texture_storage_*<fmt,read_write> declarations.
-		{
-			const char *p = cs.get_data();
-			while ((p = strstr(p, "@group(")) != nullptr) {
-				unsigned int grp = 0, bnd = 0;
-				if (!parse_group_binding(p, grp, bnd)) {
-					p++;
-					continue;
-				}
-				const char *semi = strchr(p, ';');
-				if (!semi) {
-					p++;
-					continue;
-				}
-				const char *rw = strstr(p, "read_write>");
-				if (!rw || rw >= semi) {
-					p = semi;
-					continue;
-				}
-				const char *ts = strstr(p, "texture_storage_");
-				if (!ts || ts >= semi) {
-					p = semi;
-					continue;
-				}
-				// Variable name: "var NAME:"
-				const char *vp = strstr(p, "var ");
-				if (!vp || vp > ts) {
-					p = semi;
-					continue;
-				}
-				vp += 4;
-				const char *colon = strchr(vp, ':');
-				if (!colon || colon > ts) {
-					p = semi;
-					continue;
-				}
-				const char *ne = colon;
-				while (ne > vp && (*(ne - 1) == ' ' || *(ne - 1) == '\t')) {
-					ne--;
-				}
-				if (ne <= vp) {
-					p = semi;
-					continue;
-				}
-				// Dim type: texture_storage_Xd
-				const char *lt = strchr(ts, '<');
-				if (!lt || lt > rw) {
-					p = semi;
-					continue;
-				}
-				// Format: between < and , before read_write
-				const char *comma = strchr(lt + 1, ',');
-				if (!comma || comma >= rw) {
-					p = semi;
-					continue;
-				}
-				int fmt_len = (int)(comma - lt - 1);
-				if (fmt_len <= 0 || fmt_len >= 64) {
-					p = semi;
-					continue;
-				}
-
-				if (wgpu_storage_format_supports_read_write(wgpu_storage_format_from_wgsl(lt + 1), has_rw_storage_textures, has_texture_formats_tier2)) {
-					p = semi;
-					continue;
-				}
-
-				RWSplitInfo info;
-				info.grp = grp;
-				info.bnd = bnd;
-				{
-					char buf[256];
-					int len = (int)(ne - vp);
-					if (len > 255) {
-						len = 255;
-					}
-					memcpy(buf, vp, len);
-					buf[len] = '\0';
-					info.var_name = buf;
-				}
-				{
-					char buf[256];
-					int len = (int)(lt - ts);
-					if (len > 255) {
-						len = 255;
-					}
-					memcpy(buf, ts, len);
-					buf[len] = '\0';
-					info.dim_type = buf;
-				}
-				{
-					char buf[64];
-					if (fmt_len > 63) {
-						fmt_len = 63;
-					}
-					memcpy(buf, lt + 1, fmt_len);
-					buf[fmt_len] = '\0';
-					info.fmt = String(buf).strip_edges();
-				}
-				rw_infos.push_back(info);
-				p = semi;
-			}
+	// A sampled snapshot cannot preserve reads after writes within one dispatch.
+	const char *storage = cs.get_data();
+	while ((storage = strstr(storage, "texture_storage_")) != nullptr) {
+		const char *format = strchr(storage, '<');
+		const char *comma = format ? strchr(format, ',') : nullptr;
+		if (!comma) {
+			break;
 		}
-
-		if (rw_infos.size() > 0) {
-			String ws(cs.get_data());
-			for (const RWSplitInfo &info : rw_infos) {
-				uint32_t shadow_bnd = info.bnd + 1;
-				String shadow_name = info.var_name + "_rw_in";
-
-				// 1. Replace read_write with write in the declaration.
-				ws = ws.replace(
-						info.dim_type + "<" + info.fmt + ",read_write>",
-						info.dim_type + "<" + info.fmt + ",write>");
-				ws = ws.replace(
-						info.dim_type + "<" + info.fmt + ", read_write>",
-						info.dim_type + "<" + info.fmt + ", write>");
-
-				// 2. Insert shadow read binding as a sampled texture (not storage).
-				// ReadOnly storage textures require the readonly-and-readwrite-storage-textures
-				// feature which Firefox lacks. A regular sampled texture works everywhere.
-				String write_pat = info.dim_type + "<" + info.fmt + ",write>;";
-				int64_t wt_pos = ws.find(write_pat);
-				if (wt_pos == -1) {
-					write_pat = info.dim_type + "<" + info.fmt + ", write>;";
-					wt_pos = ws.find(write_pat);
-				}
-				if (wt_pos != -1) {
-					int64_t insert_pos = wt_pos + write_pat.length();
-					// Map texture_storage_Xd → texture_Xd and determine component type.
-					String sampled_dim = info.dim_type.replace("texture_storage_", "texture_");
-					String comp_type = "f32";
-					if (info.fmt.find("uint") != -1) {
-						comp_type = "u32";
-					} else if (info.fmt.find("sint") != -1) {
-						comp_type = "i32";
-					}
-					String shadow_decl = "\n@group(" + itos(info.grp) + ") @binding(" + itos(shadow_bnd) + ") \nvar " + shadow_name + ": " + sampled_dim + "<" + comp_type + ">;";
-					ws = ws.substr(0, insert_pos) + shadow_decl + ws.substr(insert_pos);
-				}
-
-				// 3. Redirect textureLoad to the shadow (not textureStore).
-				ws = ws.replace("textureLoad(" + info.var_name + ",", "textureLoad(" + shadow_name + ",");
-				ws = ws.replace("textureLoad(" + info.var_name + ")", "textureLoad(" + shadow_name + ")");
-
-				// 4. Sampled textures need a mip level parameter in textureLoad.
-				// textureLoad(shadow, coords) → textureLoad(shadow, coords, 0)
-				{
-					String search = "textureLoad(" + shadow_name;
-					int64_t pos = 0;
-					while ((pos = ws.find(search, pos)) != -1) {
-						int64_t paren_start = pos + String("textureLoad").length();
-						int depth = 0;
-						int64_t insert_mip = -1;
-						for (int64_t k = paren_start; k < ws.length(); k++) {
-							if (ws[k] == '(') {
-								depth++;
-							} else if (ws[k] == ')') {
-								depth--;
-								if (depth == 0) {
-									insert_mip = k;
-									break;
-								}
-							}
-						}
-						if (insert_mip != -1) {
-							ws = ws.substr(0, insert_mip) + ", 0" + ws.substr(insert_mip);
-							pos = insert_mip + 3;
-						} else {
-							pos += search.length();
-						}
-					}
-				}
-
-				// Record the split for BGL/bind-group creation.
-				uint32_t key = ((uint32_t)info.grp << 16) | info.bnd;
-				r_rewrites.rw_storage_splits[key] = shadow_bnd;
-			}
-			// Log the transformed WGSL for debugging.
-			WEBGPU_DIAG({ console.log('[RW-SPLIT] Split ' + $0 + ' read_write storage texture(s)'); }, (int)rw_infos.size());
-			print_verbose("WebGPU rw_storage split WGSL:\n" + ws);
-
-			cs = ws.utf8();
+		const char *access = comma + 1;
+		while (*access == ' ' || *access == '\t') {
+			access++;
 		}
+		if (strncmp(access, "read_write>", 11) == 0 &&
+				!wgpu_storage_format_supports_read_write(wgpu_storage_format_from_wgsl(format + 1), has_rw_storage_textures, has_texture_formats_tier2)) {
+			r_rewrites.error = "WebGPU: read/write storage texture format is unsupported on this adapter. Use supported R32 formats or separate read and write textures.";
+			return CharString();
+		}
+		storage = comma + 1;
 	}
 
 	// When readonly-and-readwrite-storage-textures is not available, convert
@@ -3784,7 +3582,6 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 
 	// Read-write storage texture splits: maps (set << 16 | write_binding) → shadow_read_binding.
 	// Populated when readonly-and-readwrite-storage-textures is unavailable.
-	HashMap<uint32_t, uint32_t> wgsl_rw_storage_splits;
 
 	// Read-only storage texture → sampled texture conversions.
 	// Set of (set << 16 | binding) keys for read-only storage textures converted to texture_2d.
@@ -3837,8 +3634,9 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 		WGSLRewrites rewrites;
 		const CharString wgsl_cs = _postprocess_wgsl(stage_wgsl[i].get_data(), s.shader_stage, shader->vertex_storage_buffers, rewrites);
 		const char *wgsl_str = wgsl_cs.get_data();
-		for (const KeyValue<uint32_t, uint32_t> &kv : rewrites.rw_storage_splits) {
-			wgsl_rw_storage_splits[kv.key] = kv.value;
+		if (!rewrites.error.is_empty()) {
+			error_text = rewrites.error;
+			break;
 		}
 		for (const uint32_t key : rewrites.read_storage_to_sampled) {
 			wgsl_read_storage_to_sampled.insert(key);
@@ -4552,28 +4350,6 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 				entries.push_back(alias_entry);
 			}
 
-			// Add BGL entries for read_write storage texture shadow read bindings.
-			// Each shadow is a sampled texture at (write_binding + 1), NOT a ReadOnly
-			// storage texture, because ReadOnly access requires the
-			// readonly-and-readwrite-storage-textures feature which Firefox lacks.
-			for (const KeyValue<uint32_t, uint32_t> &kv : wgsl_rw_storage_splits) {
-				uint32_t write_key = kv.key;
-				uint32_t shadow_bnd = kv.value;
-				uint32_t split_grp = write_key >> 16;
-				if (split_grp != set) {
-					continue;
-				}
-				uint32_t shadow_key = ((uint32_t)split_grp << 16) | shadow_bnd;
-				WGPUTextureFormat shadow_fmt = wgsl_storage_tex_format.has(write_key) ? wgsl_storage_tex_format[write_key] : WGPUTextureFormat_RGBA8Unorm;
-				WGPUBindGroupLayoutEntry shadow_entry = {};
-				shadow_entry.binding = shadow_bnd;
-				shadow_entry.visibility = WGPUShaderStage_Compute;
-				shadow_entry.texture.sampleType = _texture_sample_type_for_format(shadow_fmt);
-				shadow_entry.texture.viewDimension = wgsl_tex_dims.has(shadow_key) ? wgsl_tex_dims[shadow_key] : WGPUTextureViewDimension_2D;
-				shadow_entry.texture.multisampled = false;
-				entries.push_back(shadow_entry);
-			}
-
 			// Unused samplers must not count against WebGPU's per-stage limits.
 			// Tint reflection includes resources reached through helper functions.
 			if (has_resource_usage) {
@@ -4581,12 +4357,6 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 					uint32_t key = (set << 16) | entry.binding;
 					if (wgsl_depth_alias_bindings.has(key)) {
 						key = (set << 16) | wgsl_depth_alias_bindings[key];
-					}
-					for (const auto &split : wgsl_rw_storage_splits) {
-						if ((split.key >> 16) == set && split.value == entry.binding) {
-							key = split.key;
-							break;
-						}
 					}
 					entry.visibility = (WGPUShaderStage)(wgsl_resource_stages.has(key) ? wgsl_resource_stages[key] : 0);
 				}
@@ -4628,8 +4398,6 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 		// Store depth alias bindings on the shader for use during uniform_set_create.
 		shader->depth_alias_bindings = wgsl_depth_alias_bindings;
 
-		// Store read_write storage texture splits for bind group creation.
-		shader->rw_storage_splits = wgsl_rw_storage_splits;
 		shader->read_storage_to_sampled = wgsl_read_storage_to_sampled;
 
 		// --- Build WGPUPipelineLayout ---
@@ -4732,24 +4500,6 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 						ae.texture.multisampled = false;
 						merged_entries.push_back(ae);
 					}
-					// Add rw_storage split entries to the merged layout (sampled texture, not ReadOnly storage).
-					for (const KeyValue<uint32_t, uint32_t> &kv : wgsl_rw_storage_splits) {
-						uint32_t split_grp = kv.key >> 16;
-						uint32_t shadow_bnd = kv.value;
-						if (split_grp != i) {
-							continue;
-						}
-						uint32_t shadow_key = ((uint32_t)split_grp << 16) | shadow_bnd;
-						WGPUTextureFormat shadow_fmt = wgsl_storage_tex_format.has(kv.key) ? wgsl_storage_tex_format[kv.key] : WGPUTextureFormat_RGBA8Unorm;
-						WGPUBindGroupLayoutEntry se = {};
-						se.binding = shadow_bnd;
-						se.visibility = WGPUShaderStage_Compute;
-						se.texture.sampleType = _texture_sample_type_for_format(shadow_fmt);
-						se.texture.viewDimension = wgsl_tex_dims.has(shadow_key) ? wgsl_tex_dims[shadow_key] : WGPUTextureViewDimension_2D;
-						se.texture.multisampled = false;
-						merged_entries.push_back(se);
-					}
-
 					WGPUBindGroupLayoutDescriptor merged_desc = {};
 					merged_desc.entryCount = merged_entries.size();
 					merged_desc.entries = merged_entries.ptr();
@@ -4910,6 +4660,30 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 		}
 	}
 
+	// Reject overlapping writable aliases instead of silently redirecting their writes.
+	HashMap<WGPUBuffer, bool> storage_buffers;
+	for (const BoundUniform &uniform : expanded_uniforms) {
+		if ((uniform.type != UNIFORM_TYPE_STORAGE_BUFFER && uniform.type != UNIFORM_TYPE_STORAGE_BUFFER_DYNAMIC) || uniform.ids.is_empty()) {
+			continue;
+		}
+		WGPUBufferBindingType access = WGPUBufferBindingType_Undefined;
+		for (const auto &info : shader->bind_group_infos[p_set_index].entries) {
+			if (info.layout_entry.binding == uniform.binding * 2 && info.layout_entry.visibility != 0) {
+				access = info.layout_entry.buffer.type;
+				break;
+			}
+		}
+		if (access == WGPUBufferBindingType_Undefined) {
+			continue;
+		}
+		WGBuffer *buffer = (WGBuffer *)uniform.ids[0].id;
+		ERR_FAIL_NULL_V(buffer, UniformSetID());
+		bool writable = access == WGPUBufferBindingType_Storage;
+		const bool *previous = storage_buffers.getptr(buffer->handle);
+		ERR_FAIL_COND_V_MSG(previous && (*previous || writable), UniformSetID(), "WebGPU: overlapping writable storage-buffer bindings are unsupported. Use distinct buffers.");
+		storage_buffers[buffer->handle] = writable;
+	}
+
 	// Each BoundUniform may expand to one or two WGPUBindGroupEntry items.
 	LocalVector<WGPUBindGroupEntry> entries;
 	entries.reserve(expanded_uniforms.size() * 2);
@@ -4917,12 +4691,6 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 	// Allocate the uniform set early so texture handlers can store temp views.
 	WGUniformSet *us = memnew(WGUniformSet);
 	us->set_index = p_set_index;
-
-	// Track WGPUBuffer handles that have already been bound as STORAGE_BUFFER in this set.
-	// WebGPU forbids aliased writable storage buffer bindings in a single dispatch
-	// (Vulkan allows this via barriers). When the same buffer appears a second time,
-	// redirect it to aliasing_stub_buffer so the bind group passes validation.
-	HashMap<WGPUBuffer, uint32_t> dup_storage_seen; // buffer handle → first uniform index
 
 	for (uint32_t i = 0; i < expanded_uniforms.size(); i++) {
 		const BoundUniform &uniform = expanded_uniforms[i];
@@ -5146,24 +4914,8 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 				WGPUBindGroupEntry entry = {};
 				entry.binding = uniform.binding * 2; // Preprocessing doubles all non-combined bindings.
 				entry.offset = 0;
-				// Alias detection: if this exact WGPUBuffer handle was already added as a
-				// storage binding in this set, redirect the duplicate to the stub buffer.
-				// This avoids the WebGPU "writable storage buffer aliasing" validation error
-				// that fires when e.g. the particle system passes the same buffer for both
-				// SourceEmission (binding 2) and DestEmission (binding 3).
-				if (aliasing_stub_buffer && dup_storage_seen.has(buf->handle)) {
-					static bool alias_stub_logged = false;
-					if (!alias_stub_logged) {
-						alias_stub_logged = true;
-						WEBGPU_DIAG({ console.warn('[ALIAS-STUB] Writable storage buffer aliasing at set=' + $0 + ' binding=' + $1 + ', redirected to stub buffer'); }, (int)p_set_index, (int)uniform.binding);
-					}
-					entry.buffer = aliasing_stub_buffer;
-					entry.size = ALIASING_STUB_BUFFER_SIZE;
-				} else {
-					dup_storage_seen[buf->handle] = i;
-					entry.buffer = buf->handle;
-					entry.size = buf->size;
-				}
+				entry.buffer = buf->handle;
+				entry.size = buf->size;
 				entries.push_back(entry);
 			} break;
 
@@ -5256,67 +5008,6 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 		}
 	}
 
-	// Add shadow read bindings for read_write storage texture splits.
-	// For each split, create a GPU copy of the original texture and bind it
-	// at the shadow read slot (write_binding + 1).
-	for (const KeyValue<uint32_t, uint32_t> &kv : shader->rw_storage_splits) {
-		uint32_t split_grp = kv.key >> 16;
-		uint32_t write_bnd = kv.key & 0xFFFF;
-		uint32_t shadow_bnd = kv.value;
-		if (split_grp != p_set_index) {
-			continue;
-		}
-		// Find the original texture from the write binding.
-		WGTexture *orig_tex = nullptr;
-		if (us->bound_textures.has(write_bnd)) {
-			orig_tex = us->bound_textures[write_bnd];
-		}
-		if (!orig_tex) {
-			continue;
-		}
-		// Create a shadow texture with the same format and size.
-		WGPUTextureDescriptor shadow_desc = {};
-		shadow_desc.usage = WGPUTextureUsage_TextureBinding | WGPUTextureUsage_CopyDst;
-		shadow_desc.dimension = orig_tex->dimension;
-		shadow_desc.size = { orig_tex->width, orig_tex->height, orig_tex->dimension == WGPUTextureDimension_3D ? orig_tex->depth : orig_tex->layers };
-		shadow_desc.format = orig_tex->format;
-		shadow_desc.mipLevelCount = orig_tex->mipmaps;
-		shadow_desc.sampleCount = orig_tex->sample_count;
-		WGPUTexture shadow_tex = wgpuDeviceCreateTexture(device, &shadow_desc);
-		if (!shadow_tex) {
-			WARN_PRINT("WebGPU: failed to create shadow read texture for rw_storage split.");
-			continue;
-		}
-		// Copy at dispatch time so uploads and preceding GPU writes are visible.
-		// Create a view and bind it at the shadow slot.
-		WGPUTextureViewDescriptor vd = {};
-		vd.format = orig_tex->format;
-		vd.dimension = orig_tex->view_dimension;
-		vd.baseMipLevel = 0;
-		vd.mipLevelCount = orig_tex->mipmaps;
-		vd.baseArrayLayer = 0;
-		vd.arrayLayerCount = orig_tex->layers;
-		vd.aspect = WGPUTextureAspect_All;
-		WGPUTextureView shadow_view = wgpuTextureCreateView(shadow_tex, &vd);
-		if (shadow_view) {
-			WGPUBindGroupEntry shadow_entry = {};
-			shadow_entry.binding = shadow_bnd;
-			shadow_entry.textureView = shadow_view;
-			entries.push_back(shadow_entry);
-			us->rw_shadow_textures.push_back(shadow_tex);
-			us->rw_shadow_views.push_back(shadow_view);
-			// Register in the driver-level map so future texture_update calls
-			// on the source also copy to this shadow.
-			{
-				MutexLock lock(rw_shadow_copy_mutex);
-				rw_shadow_copy_map[orig_tex->gpu_handle()].push_back(shadow_tex);
-			}
-			us->rw_shadow_registrations.push_back({ orig_tex->gpu_handle(), shadow_tex });
-		} else {
-			wgpuTextureRelease(shadow_tex);
-		}
-	}
-
 	// If this is the merged PC group, inject the push constant ring buffer at PUSH_CONSTANT_RING_BINDING.
 	// Dynamic offset is 0 here; _flush_push_constants will rebind with the correct offset.
 	if (is_pc_group) {
@@ -5344,7 +5035,7 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 
 	WGPUBindGroup bg = wgpuDeviceCreateBindGroup(device, &bg_desc);
 	if (bg == nullptr) {
-		uniform_set_free(UniformSetID(us)); // Releases temp views, shadows and their registrations.
+		uniform_set_free(UniformSetID(us)); // Releases temporary views.
 		ERR_FAIL_V_MSG(UniformSetID(), "WebGPU: wgpuDeviceCreateBindGroup failed.");
 	}
 
@@ -5532,13 +5223,6 @@ WGPUBindGroup RenderingDeviceDriverWebGPU::_get_compatible_bind_group(WGUniformS
 			target_bindings.insert(alias_bnd);
 		}
 	}
-	// Add rw_storage shadow read bindings.
-	for (const KeyValue<uint32_t, uint32_t> &kv : p_target_shader->rw_storage_splits) {
-		uint32_t split_grp = kv.key >> 16;
-		if (split_grp == p_set_idx) {
-			target_bindings.insert(kv.value);
-		}
-	}
 	// Add push constant ring buffer binding if this is the PC group.
 	if (p_target_shader->merged_pc_group_layout && p_set_idx == p_target_shader->push_constant_bind_group) {
 		target_bindings.insert(PUSH_CONSTANT_RING_BINDING);
@@ -5576,33 +5260,6 @@ void RenderingDeviceDriverWebGPU::uniform_set_free(UniformSetID p_uniform_set) {
 	for (WGPUTextureView v : us->temp_views) {
 		if (v) {
 			wgpuTextureViewRelease(v);
-		}
-	}
-	// Release shadow read textures/views from read_write storage splits.
-	for (WGPUTextureView v : us->rw_shadow_views) {
-		if (v) {
-			wgpuTextureViewRelease(v);
-		}
-	}
-	for (WGPUTexture t : us->rw_shadow_textures) {
-		if (t) {
-			wgpuTextureRelease(t);
-		}
-	}
-	// Deregister shadow copy targets from the driver-level map.
-	MutexLock lock(rw_shadow_copy_mutex);
-	for (const WGUniformSet::RWShadowRegistration &reg : us->rw_shadow_registrations) {
-		if (rw_shadow_copy_map.has(reg.source)) {
-			LocalVector<WGPUTexture> &shadows = rw_shadow_copy_map[reg.source];
-			for (int i = (int)shadows.size() - 1; i >= 0; i--) {
-				if (shadows[i] == reg.shadow) {
-					shadows.remove_at(i);
-					break;
-				}
-			}
-			if (shadows.is_empty()) {
-				rw_shadow_copy_map.erase(reg.source);
-			}
 		}
 	}
 	// Release cached rebind bind groups.
@@ -5972,8 +5629,7 @@ void RenderingDeviceDriverWebGPU::command_clear_depth_stencil_texture(CommandBuf
 	}
 }
 
-// Records one buffer→texture copy covering p_depth_or_layers images, plus the same copy into every
-// read_write split shadow of the destination. CPU-staged sources (shadow_map) are first flushed with
+// Records one buffer→texture copy covering p_depth_or_layers images. CPU-staged sources are flushed with
 // wgpuQueueWriteBuffer: RD never reuses a staging region within a frame, and the encoder copy keeps
 // the texture write in command order (queue.writeTexture would run before already-recorded work).
 void RenderingDeviceDriverWebGPU::_copy_buffer_to_texture(WGCommandBuffer *p_cmd_buf, WGBuffer *p_src, WGTexture *p_dst, const BufferTextureCopyRegion &p_region, uint32_t p_depth_or_layers) {
@@ -6008,16 +5664,6 @@ void RenderingDeviceDriverWebGPU::_copy_buffer_to_texture(WGCommandBuffer *p_cmd
 
 	const WGPUExtent3D extent = { copy_w, copy_h, p_depth_or_layers };
 	wgpuCommandEncoderCopyBufferToTexture(p_cmd_buf->encoder, &src_info, &dst_copy, &extent);
-
-	// Read_write storage splits read through shadow textures (see uniform_set_create).
-	MutexLock lock(rw_shadow_copy_mutex);
-	if (const LocalVector<WGPUTexture> *shadows = rw_shadow_copy_map.getptr(dst_copy.texture)) {
-		for (WGPUTexture shadow : *shadows) {
-			WGPUTexelCopyTextureInfo shadow_copy = dst_copy;
-			shadow_copy.texture = shadow;
-			wgpuCommandEncoderCopyBufferToTexture(p_cmd_buf->encoder, &src_info, &shadow_copy, &extent);
-		}
-	}
 }
 
 void RenderingDeviceDriverWebGPU::command_copy_buffer_to_texture(CommandBufferID p_cmd_buffer, BufferID p_src_buffer, TextureID p_dst_texture, TextureLayout p_dst_texture_layout, VectorView<BufferTextureCopyRegion> p_regions) {
@@ -7665,6 +7311,7 @@ WGPUShaderModule RenderingDeviceDriverWebGPU::_create_module_with_spec_constants
 	WGSLRewrites rewrites; // Already mirrored by p_shader's layouts.
 	const CharString wgsl_cs = _postprocess_wgsl(wgsl_str, p_stage, p_shader->vertex_storage_buffers, rewrites);
 	free(wgsl_str);
+	ERR_FAIL_COND_V_MSG(!rewrites.error.is_empty(), nullptr, rewrites.error);
 
 	WGPUShaderSourceWGSL wgsl_source = {};
 	wgsl_source.chain.sType = WGPUSType_ShaderSourceWGSL;
@@ -8279,7 +7926,6 @@ void RenderingDeviceDriverWebGPU::command_bind_compute_uniform_sets(CommandBuffe
 			// Save full state for mid-pass restart on ring overflow.
 			if (set_idx < WGCommandBuffer::MAX_BIND_GROUPS) {
 				auto &bs = cmd->last_bound_state[set_idx];
-				bs.uniform_set = us;
 				bs.group = bg_to_bind;
 				bs.dynamic_offset_count = num_dyn;
 				for (uint32_t j = 0; j < num_dyn && j < WGCommandBuffer::MAX_BIND_GROUP_DYN_OFFSETS; j++) {
@@ -8290,47 +7936,11 @@ void RenderingDeviceDriverWebGPU::command_bind_compute_uniform_sets(CommandBuffe
 	}
 }
 
-void RenderingDeviceDriverWebGPU::_sync_compute_storage_shadows(WGCommandBuffer *p_cmd) {
-	WGShader *shader = p_cmd->render_state.current_pipeline ? p_cmd->render_state.current_pipeline->shader : nullptr;
-	if (!shader || shader->rw_storage_splits.is_empty()) {
-		return;
-	}
-	p_cmd->end_active_encoder();
-	for (const KeyValue<uint32_t, uint32_t> &split : shader->rw_storage_splits) {
-		uint32_t set = split.key >> 16;
-		uint32_t binding = split.key & 0xFFFF;
-		WGUniformSet *us = set < WGCommandBuffer::MAX_BIND_GROUPS ? p_cmd->last_bound_state[set].uniform_set : nullptr;
-		if (!us || !us->bound_textures.has(binding)) {
-			continue;
-		}
-		WGTexture *tex = us->bound_textures[binding];
-		for (const auto &registration : us->rw_shadow_registrations) {
-			if (registration.source != tex->gpu_handle()) {
-				continue;
-			}
-			for (uint32_t mip = 0; mip < tex->mipmaps; mip++) {
-				WGPUTexelCopyTextureInfo src = {};
-				src.texture = registration.source;
-				src.mipLevel = mip;
-				src.aspect = WGPUTextureAspect_All;
-				WGPUTexelCopyTextureInfo dst = src;
-				dst.texture = registration.shadow;
-				WGPUExtent3D extent = { MAX(1u, tex->width >> mip), MAX(1u, tex->height >> mip),
-					tex->dimension == WGPUTextureDimension_3D ? MAX(1u, tex->depth >> mip) : tex->layers };
-				wgpuCommandEncoderCopyTextureToTexture(p_cmd->encoder, &src, &dst, &extent);
-			}
-		}
-	}
-	_restart_pass_after_push_constant_page(p_cmd, true);
-	p_cmd->push_constants_dirty = true;
-}
-
 void RenderingDeviceDriverWebGPU::command_compute_dispatch(CommandBufferID p_cmd_buffer, uint32_t p_x_groups, uint32_t p_y_groups, uint32_t p_z_groups) {
 	WGCommandBuffer *cmd = (WGCommandBuffer *)(p_cmd_buffer.id);
 	ERR_FAIL_NULL(cmd);
 	ERR_FAIL_COND(!cmd->compute_encoder);
 
-	_sync_compute_storage_shadows(cmd);
 	if (cmd->render_state.current_pipeline) {
 		_flush_push_constants(cmd, cmd->render_state.current_pipeline->shader);
 	}
@@ -8345,7 +7955,6 @@ void RenderingDeviceDriverWebGPU::command_compute_dispatch_indirect(CommandBuffe
 	ERR_FAIL_NULL(indirect);
 	ERR_FAIL_COND(!cmd->compute_encoder);
 
-	_sync_compute_storage_shadows(cmd);
 	if (cmd->render_state.current_pipeline) {
 		_flush_push_constants(cmd, cmd->render_state.current_pipeline->shader);
 	}

@@ -6,7 +6,7 @@ import vm from 'node:vm';
 const configSource = readFileSync(new URL('../../../platform/web/js/engine/config.js', import.meta.url), 'utf8');
 const engineSource = readFileSync(new URL('../../../platform/web/js/engine/engine.js', import.meta.url), 'utf8');
 
-function harness(gpu) {
+function harness(gpu, unavailableReason = '') {
     const modules = [];
     const context = vm.createContext({
         Response, console, window: {}, navigator: { gpu },
@@ -21,7 +21,7 @@ function harness(gpu) {
             return Promise.resolve({ initFS: () => Promise.resolve() });
         },
     });
-    vm.runInContext(configSource + '\n' + engineSource, context);
+    vm.runInContext(configSource + '\n' + engineSource.replace('___GODOT_WEBGPU_UNAVAILABLE_REASON___', JSON.stringify(unavailableReason)), context);
     return { Engine: context.window.Engine, modules };
 }
 
@@ -87,4 +87,29 @@ test('the browser requests the same optional features and all limits as the nati
     await new Engine({ renderingDriver: 'webgpu' }).init('godot');
     assert.deepEqual([...descriptor.requiredFeatures], ['indirect-first-instance']);
     assert.equal(descriptor.requiredLimits.maxComputeWorkgroupSizeX, 256);
+});
+
+for (const reason of [
+    'WebGPU is unavailable in multithreaded browser runtimes.',
+    'WebGPU is unavailable in double-precision runtimes.',
+    'WebGPU is not included in this runtime.',
+]) {
+    test(reason + ' rejects before adapter requests or runtime creation', async () => {
+        const { Engine, modules } = harness({ requestAdapter() { throw new Error('Unexpected adapter request'); } }, reason);
+        await assert.rejects(Engine.requestWebGPUDevice(), { message: reason });
+        await assert.rejects(new Engine({ renderingDriver: 'webgpu', preinitializedWebGPUDevice: {} }).init('godot'), { message: reason });
+        await assert.rejects(new Engine({ args: ['--rendering-driver', 'webgpu'] }).init('godot'), { message: reason });
+        assert.equal(modules.length, 0);
+        await new Engine({ renderingDriver: 'opengl3' }).init('godot');
+        assert.equal(modules.length, 1);
+    });
+}
+
+test('an argv-only WebGPU request initializes the device', async () => {
+    const device = { lost: new Promise(() => {}), addEventListener() {} };
+    const { Engine, modules } = harness({ async requestAdapter() {
+        return { features: new Set(), limits: {}, async requestDevice() { return device; } };
+    } });
+    await new Engine({ args: ['--rendering-driver', 'opengl3', '--rendering-driver', 'webgpu'] }).init('godot');
+    assert.equal(modules[0].preinitializedWebGPUDevice, device);
 });
