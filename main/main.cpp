@@ -2812,7 +2812,7 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 	}
 
 	if (display_driver != NULL_DISPLAY_DRIVER && rendering_driver.to_lower() == "webgpu" && webgpu_unavailable_reason()) {
-		OS::get_singleton()->print("%s\n", webgpu_unavailable_reason());
+		OS::get_singleton()->printerr("%s\n", webgpu_unavailable_reason());
 		goto error;
 	}
 
@@ -2952,7 +2952,7 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 	}
 
 	if (display_driver != NULL_DISPLAY_DRIVER && rendering_driver.to_lower() == "webgpu" && webgpu_unavailable_reason()) {
-		OS::get_singleton()->print("%s\n", webgpu_unavailable_reason());
+		OS::get_singleton()->printerr("%s\n", webgpu_unavailable_reason());
 		goto error;
 	}
 
@@ -2960,7 +2960,7 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 	// cannot translate. Headless imports/exports use the dummy renderer and must
 	// still work with these project settings; reject only an actual GPU startup.
 	if (display_driver != NULL_DISPLAY_DRIVER && rendering_driver.to_lower() == "webgpu" && rendering_method == "forward_plus") {
-		OS::get_singleton()->print("WebGPU currently supports only the Mobile rendering method. Use --rendering-method mobile or select Mobile in the project settings.\n");
+		OS::get_singleton()->printerr("WebGPU currently supports only the Mobile rendering method. Use --rendering-method mobile or select Mobile in the project settings.\n");
 		goto error;
 	}
 
