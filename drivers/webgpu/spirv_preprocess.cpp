@@ -210,8 +210,14 @@ Vector<uint8_t> freeze_and_inline(const Vector<uint8_t> &p_bytes) {
 		}
 	});
 	// The driver patches specialization values into the defaults first. Merged returns let opaque calls inline.
-	optimizer.RegisterPass(spvtools::CreateFreezeSpecConstantValuePass())
-			.RegisterPass(spvtools::CreateFoldSpecConstantOpAndCompositePass())
+	// Preserve scalar SpecIds as WGSL overrides; only unsupported composite operations need freezing.
+	for (const Inst inst : SpirvView(p_bytes)) {
+		if (inst.op() == spv::OpSpecConstantComposite || (inst.op() == spv::OpSpecConstantOp && (inst[3] == spv::OpCompositeInsert || inst[3] == spv::OpVectorShuffle || inst[3] == spv::OpSelect))) {
+			optimizer.RegisterPass(spvtools::CreateFreezeSpecConstantValuePass());
+			break;
+		}
+	}
+	optimizer.RegisterPass(spvtools::CreateFoldSpecConstantOpAndCompositePass())
 			.RegisterPass(spvtools::CreateMergeReturnPass())
 			.RegisterPass(spvtools::CreateInlineOpaquePass())
 			.RegisterPass(spvtools::CreateDeadBranchElimPass())
@@ -842,7 +848,7 @@ Vector<uint8_t> strip_restrict_decoration(const Vector<uint8_t> &p_bytes) {
 	return strip_instructions(p_bytes, [](const Inst &p_inst) {
 		const uint32_t decoration = p_inst.op() == spv::OpDecorate ? p_inst[2] : p_inst.op() == spv::OpMemberDecorate ? p_inst[3]
 																													  : UINT32_MAX;
-		return decoration == spv::DecorationRestrict || decoration == spv::DecorationInputAttachmentIndex;
+		return decoration == spv::DecorationRestrict || decoration == spv::DecorationVolatile || decoration == spv::DecorationInputAttachmentIndex;
 	});
 }
 

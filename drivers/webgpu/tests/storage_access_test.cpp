@@ -76,6 +76,34 @@ static bool is_non_writable(const Vector<uint8_t> &p_bytes, uint32_t p_var) {
 }
 
 int main() {
+	// Both variable and member Volatile decorations must be removed; keep layout offsets.
+	const uint32_t volatile_words[] = {
+		0x07230203,
+		0x00010300,
+		0,
+		101,
+		0,
+		(3u << 16) | 71,
+		20,
+		21,
+		(4u << 16) | 72,
+		10,
+		0,
+		21,
+		(5u << 16) | 72,
+		10,
+		0,
+		35,
+		0,
+	};
+	Vector<uint8_t> volatile_bytes;
+	volatile_bytes.resize(sizeof(volatile_words));
+	std::memcpy(volatile_bytes.ptrw(), volatile_words, sizeof(volatile_words));
+	const auto stripped = spirv_preprocess::strip_restrict_decoration(volatile_bytes);
+	CHECK(stripped.size() == 10 * 4);
+	CHECK(!find_instruction(stripped, 71));
+	CHECK(find_instruction(stripped, 72, 10) == 5);
+
 	// Storage-buffer access qualifiers change; image and unrelated members stay.
 	const uint32_t words[] = {
 		0x07230203,

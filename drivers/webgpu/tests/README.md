@@ -33,6 +33,9 @@ These cover storage access and read-only inference, resource IDs colliding with
 literal operands, typed resource reflection, varying compaction, malformed
 metadata and old-libc++ float parsing. The metadata checks compile the current
 Tint wrapper against the archive's compiler dependencies.
+Compiler edge cases cover PointCoord (whole vectors, components and unused
+interfaces), loop exits across switches, typed and hinted depth textures,
+scalar WGSL overrides and repeated internal-error recovery in one Wasm process.
 `native_smoke/` checks material color, ambient and directional light by readback.
 Its `binding_arrays.gd` checks dynamic indexing of four differently colored textures
 through the actual shader, layout and uniform-set paths:
@@ -49,6 +52,12 @@ browser rendering checks also cover two user varyings and a textured lightmapped
 material with a shadow-mask atlas. The browser `limited-bindings` query constrains
 sampled textures and inter-stage variables to 16 so these paths exercise the
 adapter budget rather than the development GPU's higher limits.
+The native check also executes a fragment shader against an empty framebuffer
+and verifies its storage-buffer output. Native and browser pixels cover point
+coordinates, a linear `hint_depth_texture` read and both RA-as-RG compressed
+normal-map formats. Native texture readback checks the packed formats and all
+compressed mip levels. The browser `base-formats` query also omits the optional
+`depth32float-stencil8` device feature.
 
 ## Optional upstream diagnostics and demos
 

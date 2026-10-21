@@ -56,8 +56,11 @@ use the same driver-selection mechanism as the other backends.
 ## Portable shaders and baking
 
 WebGPU shader containers carry compressed WGSL, typed Tint inspector metadata,
-and SPIR-V for runtime specialization. Loading a current container avoids the
-SPIR-V-to-WGSL conversion; adapter-specific format and storage-access rewrites
+and SPIR-V for unsupported specialization expressions. Supported scalar
+specialization constants remain WGSL overrides, so changing them only creates a
+new pipeline. Composite/select specialization expressions retain the SPIR-V
+retranslation fallback. Loading a current container avoids SPIR-V-to-WGSL
+conversion; adapter-specific format and storage-access rewrites
 still run on the selected device. Older SPIR-V-only containers remain readable.
 
 Desktop editors built with `webgpu=yes` include the WebGPU shader baker. To add
@@ -73,6 +76,17 @@ The WebGPU baker skips multiview and input-attachment variants enabled by the ho
 The varying-location compaction and adapter-aware lightmap budget are adapted
 from [V-Sekai-fire/entities-godot at 3a5f1a4](https://github.com/V-Sekai-fire/entities-godot/tree/3a5f1a4baa38c246c5e7c7f3ef79ebe306c96281).
 That branch also informed the WGSL container and structured metadata design.
+Its PointCoord emulation, loop-exit repair and depth-sampling lowering also inform
+the local Tint patches. Point coordinates read `(0.5, 0.5)` because WebGPU points
+cover one pixel. Tint internal compiler errors return shader diagnostics through
+a compiler-only exception boundary; all compiler frames support unwinding.
+Non-comparison 2D depth sampling uses texel loads. A depth-specific framebuffer
+copy populates the float backbuffer used by `hint_depth_texture`. The lowering
+emulates linear-clamp sampling and recognizes Godot's nearest samplers;
+implicit LOD and gradients use mip zero, matching Godot's single-mip scene
+depth. Arbitrary RD depth samplers with other addressing modes need explicit
+texel loads.
+
 Our existing compiler pipeline, native support and push-constant paging remain
 in use. Compaction preserves vertex-input and color-output locations and keeps
 matrix and array varyings aligned across stages.

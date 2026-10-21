@@ -1968,6 +1968,9 @@ BitField<RDD::TextureUsageBits> RenderingDeviceDriverWebGPU::texture_get_usages_
 			break;
 	}
 
+	if (p_format == DATA_FORMAT_D32_SFLOAT_S8_UINT && !wgpuDeviceHasFeature(device, WGPUFeatureName_Depth32FloatStencil8)) {
+		return 0;
+	}
 	if (is_depth_stencil) {
 		flags.set_flag(TEXTURE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
 		// Depth textures can't be updated via CAN_UPDATE (CopyDst is not allowed).
@@ -4286,7 +4289,7 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 								entry.textureView = fallback_float_texture_view;
 							}
 						} else if (expected_dim != WGPUTextureViewDimension_Undefined &&
-								expected_dim != tex->view_dimension) {
+								(expected_dim != tex->view_dimension || (expected_sample == WGPUTextureSampleType_Depth && has_stencil_wgpu(tex->format)))) {
 							// Fix dimension mismatch: if the layout expects a different dimension
 							// than the texture's default view (e.g., 2D vs Cube), create a
 							// compatible view or use a fallback texture.
@@ -4298,13 +4301,13 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 								// Use slice base offsets so slice views don't
 								// silently remap to mip 0 / layer 0 of the parent.
 								WGPUTextureViewDescriptor vd = {};
-								vd.format = tex->format;
+								vd.format = expected_sample == WGPUTextureSampleType_Depth ? WGPUTextureFormat_Undefined : tex->format;
 								vd.dimension = expected_dim;
 								vd.baseMipLevel = tex->base_mipmap;
 								vd.mipLevelCount = tex->mipmaps;
 								vd.baseArrayLayer = tex->base_layer;
 								vd.arrayLayerCount = (expected_dim == WGPUTextureViewDimension_2D) ? 1 : tex->layers;
-								vd.aspect = WGPUTextureAspect_All;
+								vd.aspect = expected_sample == WGPUTextureSampleType_Depth ? WGPUTextureAspect_DepthOnly : WGPUTextureAspect_All;
 								WGPUTextureView fixed_view = wgpuTextureCreateView(tex->view_source, &vd);
 								if (fixed_view) {
 									entry.textureView = fixed_view;
@@ -4330,12 +4333,14 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 				// Sampler at binding*2+j*2+0, texture at binding*2+j*2+1 (matches layout and SPIR-V preprocessor).
 				// Look up expected texture dimension and sample type from the shader layout.
 				WGPUTextureViewDimension swt_expected_dim = WGPUTextureViewDimension_Undefined;
+				WGPUTextureSampleType swt_expected_sample = WGPUTextureSampleType_Float;
 				bool swt_expected_ms = false;
 				if (p_set_index < (uint32_t)shader->bind_group_infos.size()) {
 					uint32_t tex_binding = uniform.binding * 2 + 1;
 					for (const auto &bge : shader->bind_group_infos[p_set_index].entries) {
 						if (bge.layout_entry.binding == tex_binding) {
 							swt_expected_dim = bge.layout_entry.texture.viewDimension;
+							swt_expected_sample = bge.layout_entry.texture.sampleType;
 							swt_expected_ms = (bool)bge.layout_entry.texture.multisampled;
 							break;
 						}
@@ -4360,13 +4365,12 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 						// which binds an MSAA depth texture into a float MSAA slot (WebGPU
 						// forbids sampling depth as float, so the MSAA fallback is used).
 						bool tex_is_ms = (tex->sample_count > 1);
-						if (swt_expected_ms && (!tex_is_ms || is_depth_format_wgpu(tex->format)) &&
+						if (swt_expected_ms && (!tex_is_ms || (is_depth_format_wgpu(tex->format) && swt_expected_sample != WGPUTextureSampleType_Depth)) &&
 								fallback_ms_texture_view != nullptr) {
 							te.textureView = fallback_ms_texture_view;
-						} else if (is_depth_format_wgpu(tex->format) && fallback_float_texture_view != nullptr) {
-							// Fix depth/float mismatch: combined sampler+texture bindings
-							// are always Float. If a depth fallback texture is provided,
-							// substitute a float fallback.
+						} else if (swt_expected_sample == WGPUTextureSampleType_Float &&
+								is_depth_format_wgpu(tex->format) && fallback_float_texture_view != nullptr) {
+							// Only substitute when the shader actually expects a color texture.
 							if (swt_expected_dim == WGPUTextureViewDimension_Cube && fallback_cube_texture_view != nullptr) {
 								te.textureView = fallback_cube_texture_view;
 							} else {
@@ -4382,7 +4386,7 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 								te.textureView = fallback_float_texture_view;
 							}
 						} else if (swt_expected_dim != WGPUTextureViewDimension_Undefined &&
-								swt_expected_dim != tex->view_dimension) {
+								(swt_expected_dim != tex->view_dimension || (swt_expected_sample == WGPUTextureSampleType_Depth && has_stencil_wgpu(tex->format)))) {
 							// Fix dimension mismatch (e.g., Cube↔2D with fallback textures).
 							if (swt_expected_dim == WGPUTextureViewDimension_Cube && tex->layers < 6 &&
 									fallback_cube_texture_view != nullptr) {
@@ -4391,13 +4395,13 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 								// Use slice base offsets so slice views don't
 								// silently remap to mip 0 / layer 0 of the parent.
 								WGPUTextureViewDescriptor vd = {};
-								vd.format = tex->format;
+								vd.format = swt_expected_sample == WGPUTextureSampleType_Depth ? WGPUTextureFormat_Undefined : tex->format;
 								vd.dimension = swt_expected_dim;
 								vd.baseMipLevel = tex->base_mipmap;
 								vd.mipLevelCount = tex->mipmaps;
 								vd.baseArrayLayer = tex->base_layer;
 								vd.arrayLayerCount = (swt_expected_dim == WGPUTextureViewDimension_2D) ? 1 : tex->layers;
-								vd.aspect = WGPUTextureAspect_All;
+								vd.aspect = swt_expected_sample == WGPUTextureSampleType_Depth ? WGPUTextureAspect_DepthOnly : WGPUTextureAspect_All;
 								WGPUTextureView fixed_view = wgpuTextureCreateView(tex->view_source, &vd);
 								if (fixed_view) {
 									te.textureView = fixed_view;
@@ -4715,20 +4719,21 @@ WGPUBindGroup RenderingDeviceDriverWebGPU::_get_compatible_bind_group(WGUniformS
 					WGTexture *tex = p_us->bound_textures[entry.binding];
 					// A previous variant may have replaced the default view with another dimension.
 					if (tex && tex->view_dimension == target_dim &&
-							entry.textureView != fallback_float_texture_view && entry.textureView != fallback_cube_texture_view && entry.textureView != fallback_ms_texture_view) {
+							((target_tex_sample == WGPUTextureSampleType_Depth && is_depth_format_wgpu(tex->format)) ||
+									(entry.textureView != fallback_float_texture_view && entry.textureView != fallback_cube_texture_view && entry.textureView != fallback_ms_texture_view))) {
 						entry.textureView = tex->default_view;
 					}
-					if (tex && tex->view_dimension != target_dim && tex->view_source) {
+					if (tex && tex->view_source && (tex->view_dimension != target_dim || (target_tex_sample == WGPUTextureSampleType_Depth && has_stencil_wgpu(tex->format)))) {
 						// Use slice base offsets so slice views don't
 						// silently remap to mip 0 / layer 0 of the parent.
 						WGPUTextureViewDescriptor vd = {};
-						vd.format = tex->format;
+						vd.format = target_tex_sample == WGPUTextureSampleType_Depth ? WGPUTextureFormat_Undefined : tex->format;
 						vd.dimension = target_dim;
 						vd.baseMipLevel = tex->base_mipmap;
 						vd.mipLevelCount = tex->mipmaps;
 						vd.baseArrayLayer = tex->base_layer;
 						vd.arrayLayerCount = (target_dim == WGPUTextureViewDimension_2D) ? 1 : tex->layers;
-						vd.aspect = WGPUTextureAspect_All;
+						vd.aspect = target_tex_sample == WGPUTextureSampleType_Depth ? WGPUTextureAspect_DepthOnly : WGPUTextureAspect_All;
 						WGPUTextureView fixed = wgpuTextureCreateView(tex->view_source, &vd);
 						if (fixed) {
 							entry.textureView = fixed;
@@ -7940,7 +7945,7 @@ bool RenderingDeviceDriverWebGPU::has_feature(Features p_feature) {
 		case SUPPORTS_HALF_FLOAT:
 			return false; // WebGPU shader-f16 extension not reliably available; avoid f16 in generated SPIR-V.
 		case SUPPORTS_FRAGMENT_SHADER_WITH_ONLY_SIDE_EFFECTS:
-			return true; // WebGPU render passes work with no color attachments.
+			return false; // WebGPU requires at least one color or depth/stencil attachment.
 		case SUPPORTS_IMAGE_ATOMIC_32_BIT:
 			return false; // WebGPU has no image atomics support.
 		case SUPPORTS_MULTIVIEW:

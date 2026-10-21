@@ -3766,6 +3766,12 @@ RenderingDevice::FramebufferFormatID RenderingDevice::framebuffer_format_create_
 
 RenderingDevice::FramebufferFormatID RenderingDevice::framebuffer_format_create_empty(TextureSamples p_samples) {
 	_THREAD_SAFE_METHOD_
+	if (!driver->has_feature(SUPPORTS_FRAGMENT_SHADER_WITH_ONLY_SIDE_EFFECTS)) {
+		AttachmentFormat attachment;
+		attachment.samples = p_samples;
+		attachment.usage_flags = TEXTURE_USAGE_COLOR_ATTACHMENT_BIT;
+		return framebuffer_format_create({ attachment });
+	}
 
 	FramebufferFormatKey key;
 	key.passes.push_back(FramebufferPass());
@@ -3811,6 +3817,23 @@ RenderingDevice::TextureSamples RenderingDevice::framebuffer_format_get_texture_
 
 RID RenderingDevice::framebuffer_create_empty(const Size2i &p_size, TextureSamples p_samples, FramebufferFormatID p_format_check) {
 	_THREAD_SAFE_METHOD_
+	if (!driver->has_feature(SUPPORTS_FRAGMENT_SHADER_WITH_ONLY_SIDE_EFFECTS)) {
+		TextureFormat format;
+		format.format = DATA_FORMAT_R8G8B8A8_UNORM;
+		format.width = p_size.width;
+		format.height = p_size.height;
+		format.samples = p_samples;
+		format.usage_bits = TEXTURE_USAGE_COLOR_ATTACHMENT_BIT;
+		RID attachment = texture_create(format, TextureView());
+		ERR_FAIL_COND_V(attachment.is_null(), RID());
+		RID framebuffer = framebuffer_create({ attachment }, p_format_check);
+		if (framebuffer.is_null()) {
+			free_rid(attachment);
+			return RID();
+		}
+		framebuffer_owner.get_or_null(framebuffer)->owned_attachment = attachment;
+		return framebuffer;
+	}
 
 	Framebuffer framebuffer;
 	framebuffer.format_id = framebuffer_format_create_empty(p_samples);
@@ -7897,7 +7920,11 @@ void RenderingDevice::_free_internal(RID p_id) {
 			framebuffer->invalidated_callback(framebuffer->invalidated_callback_userdata);
 		}
 
+		RID owned_attachment = framebuffer->owned_attachment;
 		framebuffer_owner.free(p_id);
+		if (owned_attachment.is_valid()) {
+			free_rid(owned_attachment);
+		}
 	} else if (sampler_owner.owns(p_id)) {
 		RDD::SamplerID sampler_driver_id = *sampler_owner.get_or_null(p_id);
 		frames[frame].samplers_to_dispose_of.push_back(sampler_driver_id);

@@ -75,7 +75,8 @@ test('the browser requests the same optional features and all limits as the nati
     const { Engine } = harness({
         async requestAdapter() {
             return {
-                features: new Set(['indirect-first-instance', 'timestamp-query']),
+                features: new Set(['indirect-first-instance', 'timestamp-query', 'depth32float-stencil8']),
+                info: { vendor: 'intel', device: 'GPU test adapter' },
                 limits: { maxComputeWorkgroupSizeX: 256 },
                 async requestDevice(value) {
                     descriptor = value;
@@ -85,8 +86,9 @@ test('the browser requests the same optional features and all limits as the nati
         },
     });
     await new Engine({ renderingDriver: 'webgpu' }).init('godot');
-    assert.deepEqual([...descriptor.requiredFeatures], ['indirect-first-instance']);
+    assert.deepEqual([...descriptor.requiredFeatures].sort(), ['depth32float-stencil8', 'indirect-first-instance']);
     assert.equal(descriptor.requiredLimits.maxComputeWorkgroupSizeX, 256);
+    assert.equal(device.godotAdapterInfo.device, 'GPU test adapter');
 });
 
 for (const reason of [

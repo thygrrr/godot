@@ -43,6 +43,7 @@
 #include <cstring>
 #include <mutex>
 #include <set>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -273,24 +274,27 @@ char *tint_wrapper_spirv_to_wgsl(const uint32_t *p_spirv_words, size_t p_word_co
 		TINT_CHECK_RESULT_UNWRAP(output, tint::wgsl::writer::Generate(program, wgsl_options));
 		return webgpu_metadata::encode(metadata) + output.wgsl;
 	};
-	auto result = convert();
-	if (result != tint::Success) {
+	try {
+		auto result = convert();
+		if (result != tint::Success) {
+			throw std::runtime_error(result.Failure().reason);
+		}
+
+		const std::string &wgsl = result.Get();
+		char *out = (char *)malloc(wgsl.size() + 1);
+		if (!out) {
+			return nullptr;
+		}
+		memcpy(out, wgsl.c_str(), wgsl.size() + 1);
+		return out;
+	} catch (const std::exception &error) {
 		if (r_error) {
-			const std::string &reason = result.Failure().reason;
-			char *err = (char *)malloc(reason.size() + 1);
-			if (err) {
-				memcpy(err, reason.c_str(), reason.size() + 1);
+			const size_t size = strlen(error.what()) + 1;
+			*r_error = static_cast<char *>(malloc(size));
+			if (*r_error) {
+				memcpy(*r_error, error.what(), size);
 			}
-			*r_error = err;
 		}
 		return nullptr;
 	}
-
-	const std::string &wgsl = result.Get();
-	char *out = (char *)malloc(wgsl.size() + 1);
-	if (!out) {
-		return nullptr;
-	}
-	memcpy(out, wgsl.c_str(), wgsl.size() + 1);
-	return out;
 }

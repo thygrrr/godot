@@ -47,8 +47,8 @@ static constexpr uint32_t PUSH_CONSTANT_BINDING = 999;
 // Runs every pass below in the order the WebGPU driver needs before Tint.
 Vector<uint8_t> run_pipeline(const Vector<uint8_t> &p_bytes);
 
-// SPIRV-Tools passes: freeze specialization constants to their (already patched) default values, fold
-// OpSpecConstantOp/Composite, and inline calls taking images or samplers, which the later passes and Tint require.
+// SPIRV-Tools passes: preserve scalar specialization constants, fold constant expressions, and inline
+// opaque calls. Unsupported composite specialization operations fall back to patched default values.
 Vector<uint8_t> freeze_and_inline(const Vector<uint8_t> &p_bytes);
 
 // Rewrite OpCopyLogical (SPIR-V 1.4+) to the equivalent OpCopyObject.
@@ -81,7 +81,7 @@ Vector<uint8_t> fix_depth2_images(const Vector<uint8_t> &p_bytes);
 // Negate gl_Position.y before every vertex-shader return; Godot's SPIR-V targets Vulkan's flipped clip space.
 Vector<uint8_t> negate_position_y(const Vector<uint8_t> &p_bytes);
 
-// Strip Restrict and InputAttachmentIndex decorations, which Tint does not support.
+// Strip Restrict, Volatile and InputAttachmentIndex decorations, which Tint does not support.
 Vector<uint8_t> strip_restrict_decoration(const Vector<uint8_t> &p_bytes);
 
 // Remove OpMemoryBarrier, which Tint does not support; workgroup barriers come from OpControlBarrier.

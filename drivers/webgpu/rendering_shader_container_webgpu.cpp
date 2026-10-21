@@ -134,7 +134,7 @@ char *RenderingShaderContainerWebGPU::compile_spirv(const uint8_t *p_spv_ptr, in
 		if (cache_dir.is_empty()) {
 			cache_dir = "user://";
 		}
-		cache_dir = cache_dir.path_join("shader_cache/webgpu_wgsl_v3").path_join(GODOT_VERSION_HASH);
+		cache_dir = cache_dir.path_join("shader_cache/webgpu_wgsl_v4").path_join(GODOT_VERSION_HASH);
 		if (DirAccess::make_dir_recursive_absolute(cache_dir) == OK) {
 			cache_path = cache_dir.path_join(String::num_uint64(spv_hash, 16) + ".wgsl");
 		}

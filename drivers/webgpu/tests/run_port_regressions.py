@@ -26,6 +26,7 @@ common = [
     f"-I{root / 'thirdparty/spirv-tools/include'}",
     f"-I{root / 'thirdparty/spirv-headers-webgpu/include'}",
     "-std=c++20",
+    "-fwasm-exceptions",
     "-sSTACK_SIZE=5242880",
     "-sALLOW_MEMORY_GROWTH=1",
     "-sENVIRONMENT=node",
@@ -37,6 +38,7 @@ for name in (
     "tint_resource_usage",
     "tint_legacy_parse",
     "shader_portability",
+    "shader_edge_cases",
 ):
     sources = [str(root / f"drivers/webgpu/tests/{name}_test.cpp")]
     if name not in ("tint_legacy_parse", "shader_portability"):

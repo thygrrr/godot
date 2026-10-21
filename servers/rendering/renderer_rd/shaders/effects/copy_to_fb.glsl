@@ -83,6 +83,10 @@ layout(push_constant, std430) uniform Params {
 params;
 
 #ifndef MODE_SET_COLOR
+#ifdef MODE_DEPTH
+// Tint restores this resource's depth type, which GLSL sampler2D cannot express.
+#define source_color webgpu_depth_source
+#endif
 #ifdef USE_MULTIVIEW
 layout(location = 0) in vec3 uv_interp;
 #else

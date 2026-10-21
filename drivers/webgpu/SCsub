@@ -35,7 +35,6 @@ env_spirv_tools.Prepend(
 )
 
 spirv_tools_obj = []
-env_spirv_tools.add_source_files(spirv_tools_obj, spirv_tools_sources)
 
 # =============================================================================
 # Thirdparty: Tint (SPIR-V reader + WGSL writer from Google Dawn)
@@ -50,6 +49,26 @@ tint_sources = [tint_dir + f for f in tint_sources]
 
 env_tint = env_webgpu.Clone()
 env_tint.disable_warnings()
+
+# Recover Tint internal errors at the wrapper boundary, unwinding compiler-owned objects.
+for compiler_env in (env_tint, env_spirv_tools):
+    for flags in ("CCFLAGS", "CXXFLAGS"):
+        compiler_env[flags] = [
+            flag for flag in compiler_env[flags] if str(flag) not in ("-fno-exceptions", "-fignore-exceptions")
+        ]
+    if env.msvc:
+        compiler_env["CPPDEFINES"] = [
+            define
+            for define in compiler_env["CPPDEFINES"]
+            if not (isinstance(define, tuple) and define[0] == "_HAS_EXCEPTIONS")
+        ]
+        compiler_env.Append(CPPDEFINES=[("_HAS_EXCEPTIONS", 1)])
+        compiler_env.Append(CXXFLAGS=["/EHsc"])
+    else:
+        compiler_env.Append(CXXFLAGS=["-fwasm-exceptions" if env["platform"] == "web" else "-fexceptions"])
+if env["platform"] == "web":
+    env.Append(LINKFLAGS=["-fwasm-exceptions"])
+env_spirv_tools.add_source_files(spirv_tools_obj, spirv_tools_sources)
 
 # Tint requires C++20.
 env_tint["CXXFLAGS"] = [flag for flag in env_tint["CXXFLAGS"] if not str(flag).startswith(("/std:", "-std="))]

@@ -354,6 +354,7 @@ const Engine = (function () {
 			// Keep in sync with the native list in rendering_context_driver_webgpu_native.cpp.
 			// Without the compression features, compressed textures are decompressed to RGBA8 on the CPU.
 			const optionalFeatures = [
+				'depth32float-stencil8',
 				'float32-filterable',
 				'float32-blendable',
 				'texture-formats-tier1',
@@ -375,6 +376,7 @@ const Engine = (function () {
 				}
 			}
 			return adapter.requestDevice(desc).then(function (device) {
+				device['godotAdapterInfo'] = adapter.info || {};
 				// Monitor device loss (non-blocking — just log).
 				device.lost.then(function (info) {
 					const reason = info.reason || 'unknown';

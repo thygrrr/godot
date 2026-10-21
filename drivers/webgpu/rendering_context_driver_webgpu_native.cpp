@@ -118,6 +118,7 @@ Error RenderingContextDriverWebGPU::initialize_native() {
 	Vector<WGPUFeatureName> features;
 	// Keep in sync with requestWebGPUDevice in platform/web/js/engine/engine.js (the last feature is Dawn-only).
 	const WGPUFeatureName optional_features[] = {
+		WGPUFeatureName_Depth32FloatStencil8,
 		WGPUFeatureName_Float32Filterable,
 		WGPUFeatureName_Float32Blendable,
 		WGPUFeatureName_TextureFormatsTier1,

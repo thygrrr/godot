@@ -232,16 +232,16 @@ function buildComputeWithPushConstants() {
   ]);
 }
 
-// Compute shader with spec constants a (SpecId 0) and b (SpecId 1) that stores the last value built by
-// `values` into a storage buffer, so the WGSL shows the folded constant.
+// Compute shader with optional spec constants a (SpecId 0) and b (SpecId 1) that stores the last value built by
+// `values` into a storage buffer. Ordinary operands test folding; specializable operands retain IDs.
 // IDs: 3=int, 4=a, 5=b, 14=bool, 16=v2int; `values(id)` returns instructions defining ids 20, 21, ...
-function buildSpecOpStore({ signed = true, a = 10, b = 20, values }) {
+function buildSpecOpStore({ signed = true, a = 10, b = 20, values, specializable = false }) {
   const defs = values(20);
   const result = 20 + defs.length - 1;
   return buildSpirv(40, [
     ...COMPUTE_PREAMBLE(11),
-    ...encodeInst(Op.Decorate, 4, Deco.SpecId, 0),
-    ...encodeInst(Op.Decorate, 5, Deco.SpecId, 1),
+    ...(specializable ? encodeInst(Op.Decorate, 4, Deco.SpecId, 0) : []),
+    ...(specializable ? encodeInst(Op.Decorate, 5, Deco.SpecId, 1) : []),
     ...encodeInst(Op.Decorate, 6, Deco.Block),
     ...encodeInst(Op.MemberDecorate, 6, 0, Deco.Offset, 0),
     ...encodeInst(Op.Decorate, 9, Deco.DescriptorSet, 0),
@@ -251,8 +251,8 @@ function buildSpecOpStore({ signed = true, a = 10, b = 20, values }) {
     ...encodeInst(Op.TypeInt, 3, 32, signed ? 1 : 0),
     ...encodeInst(Op.TypeBool, 14),
     ...encodeInst(Op.TypeVector, 16, 3, 2),
-    ...encodeInst(Op.SpecConstant, 3, 4, a >>> 0),
-    ...encodeInst(Op.SpecConstant, 3, 5, b >>> 0),
+    ...encodeInst(specializable ? Op.SpecConstant : Op.Constant, 3, 4, a >>> 0),
+    ...encodeInst(specializable ? Op.SpecConstant : Op.Constant, 3, 5, b >>> 0),
     ...encodeInst(Op.TypeStruct, 6, 3),
     ...encodeInst(Op.TypePointer, 7, SC.StorageBuffer, 6),
     ...encodeInst(Op.TypePointer, 8, SC.StorageBuffer, 3),
@@ -313,26 +313,33 @@ const FIXTURES = readdirSync(FIXTURES_DIR).filter((f) => f.endsWith(".spv")).sor
 console.log("\n=== Test 1: specialization constants ===");
 
 {
-  // 1a. Spec constants in fixtures are frozen: no pipeline-overridable @id() constants remain.
-  // SPIRV-Tools leaves a float OpSelect unfolded; Tint emits it as an id-less override WebGPU evaluates.
-  for (const name of ["spec_constants.spv", "many_overrides.spv", "per_stage_overrides_vert.spv", "per_stage_overrides_frag.spv"]) {
-    assert(!fixtureWgsl(name).includes("@id("), `${name}: spec constants frozen`);
+  // 1a. Scalar IDs survive. Unsupported composite/select expressions use the frozen fallback.
+  for (const name of ["per_stage_overrides_frag.spv"]) {
+    assert(fixtureWgsl(name).includes("@id("), `${name}: scalar overrides retained`);
+  }
+  for (const name of ["spec_constants.spv", "many_overrides.spv", "per_stage_overrides_vert.spv"]) {
+    assert(!fixtureWgsl(name).includes("@id("), `${name}: unsupported composite/select expressions frozen`);
   }
   assert(fixtureWgsl("per_stage_overrides_vert.spv").includes("override v : f32 = select(1.0f, 2.0f, false);"),
     "per_stage_overrides_vert: VERTEX_FLAGS & 1 folded to false");
-  for (const name of ["spec_constants.spv", "many_overrides.spv"]) {
+  for (const name of ["many_overrides.spv"]) {
     assert(!fixtureWgsl(name).includes("override"), `${name}: spec constants folded`);
   }
 }
 
 {
-  // 1b. Chained spec constant operations: SPEC_A + SPEC_B folds to 30.
+  // 1b. Chained scalar expressions remain overridable without translating again.
   const wgsl = fixtureWgsl("chained_spec_ops.spv");
-  assert(wgsl.includes("a = 30u;"), "chained_spec_ops: SPEC_A + SPEC_B folded to 30u");
+  assert(wgsl.includes("@id(0)") && wgsl.includes("@id(1)") && wgsl.includes("@id(2)"),
+    "chained_spec_ops: all three scalar IDs retained");
+  assert(wgsl.includes("(SPEC_A + SPEC_B)"), "chained_spec_ops: derived expression retained");
+  const computed = constructedWgsl(buildSpecOpStore({ specializable: true, values: specOp(SpecOp.IAdd) }), "scalar override expression");
+  assert(computed.includes("@id(0)") && computed.includes("@id(1)"), "both expression operands remain overridable");
+  assert(/override \w+ : i32 = \(\w+ \+ \w+\);/.test(computed), "derived integer override remains an addition");
 }
 
 {
-  // 1c. OpSpecConstantOp results are folded with 32-bit two's-complement semantics.
+  // 1c. OpSpecConstantOp with ordinary constant operands folds with 32-bit two's-complement semantics.
   const cases = [
     ["IAdd", {}, specOp(SpecOp.IAdd), "30i"],
     ["ISub", {}, specOp(SpecOp.ISub), "-10i"],
@@ -372,6 +379,12 @@ console.log("\n=== Test 1: specialization constants ===");
     const wgsl = constructedWgsl(buildSpecOpStore({ ...options, values }), `OpSpecConstantOp ${label}`);
     assertEq(storedValue(wgsl), expected, `OpSpecConstantOp ${label} folds to ${expected}`);
   }
+  const composite = constructedWgsl(buildSpecOpStore({ specializable: true, values: (id) => [
+    encodeInst(Op.SpecConstantComposite, 16, id, 4, 5),
+    encodeInst(Op.SpecConstantOp, 3, id + 1, Op.CompositeExtract, id, 1),
+  ] }), "specialized composite fallback");
+  assertEq(storedValue(composite), "20i", "unsupported composite overrides use their patched defaults");
+  assert(!composite.includes("@id("), "composite fallback retains no external scalar IDs");
 }
 
 {

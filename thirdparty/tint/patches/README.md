@@ -28,6 +28,9 @@ uv run --no-project python drivers/webgpu/dependencies.py --verify
 | 0008 | parse_num.cc | Emscripten 3.x | Locale-independent floating-point parsing when libc++ deletes the `from_chars` overloads |
 | 0009 | parse_num.cc | macOS | Reuse locale-independent floating-point parsing below the macOS 26 availability of `from_chars` |
 | 0010 | inspector.h, inspector.cc | Resource reflection | Expose all module resource declarations, including unused bindings whose dimensions Godot retains in layouts |
+| 0011 | parser.cc | Point coordinates | Emulate PointCoord as a private vec2(0.5), including unused inputs and component access |
+| 0012 | lower.cc, texture.cc | Control flow and depth | Repair loop exits crossing switches; lower non-comparison depth reads to texel loads; restore Godot's marked depth-copy source type |
+| 0013 | ice.h, ice.cc | Error recovery | Throw internal compiler errors to the C wrapper; compiler sources are built with exception unwinding |
 
 ## Logical Groups
 
@@ -49,6 +52,11 @@ value first. This patch relaxes that validation. Could potentially be moved to
 overloads (Emscripten 3.x, macOS before 26). Always necessary when vendoring without Abseil.
 
 ## Upstream Source
+
+Patches 0011 and 0012 adapt the PointCoord, loop-exit and depth-sampling work in
+[V-Sekai-fire/entities-godot](https://github.com/V-Sekai-fire/entities-godot/tree/3a5f1a4baa38c246c5e7c7f3ef79ebe306c96281)
+to this pinned Tint revision. Depth sampling emulates linear-clamp reads at mip
+zero for implicit LOD/bias/gradients; explicit levels are retained.
 
 Tint is extracted from [Dawn](https://dawn.googlesource.com/dawn) at the exact
 revision in `drivers/webgpu/dependencies.json`. The patch stack reproduces the

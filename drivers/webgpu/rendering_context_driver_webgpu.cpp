@@ -38,6 +38,9 @@
 // Device is now created from C++ using the emdawnwebgpu port's Dawn API.
 #ifdef WEB_ENABLED
 #include <emscripten/emscripten.h>
+#include <emscripten/html5.h>
+#include <cstdlib>
+EM_JS_DEPS(webgpu_context, "$stringToNewUTF8");
 #endif
 
 RenderingContextDriverWebGPU::RenderingContextDriverWebGPU() {
@@ -100,8 +103,23 @@ Error RenderingContextDriverWebGPU::initialize() {
 	ERR_FAIL_COND_V_MSG(queue == nullptr, ERR_CANT_CREATE, "WebGPU: Failed to get device queue.");
 
 	// Populate device info.
-	device_info.name = "WebGPU Device";
-	device_info.vendor = Vendor::VENDOR_UNKNOWN;
+	char *adapter_name = (char *)EM_ASM_PTR({
+		var info = Module['preinitializedWebGPUDevice']['godotAdapterInfo'] || {};
+		return stringToNewUTF8([info.vendor, info.description || info.architecture || info.device].filter(Boolean).join(' ') || 'WebGPU Device');
+	});
+	device_info.name = String::utf8(adapter_name);
+	free(adapter_name);
+	device_info.vendor = EM_ASM_INT({
+		var vendor = (Module['preinitializedWebGPUDevice']['godotAdapterInfo'] || {}).vendor || '';
+		vendor = vendor.toLowerCase();
+		if (vendor.includes('nvidia')) return 0x10de;
+		if (vendor.includes('amd') || vendor.startsWith('ati')) return 0x1002;
+		if (vendor.includes('intel')) return 0x8086;
+		if (vendor.includes('apple')) return 0x106b;
+		if (vendor.includes('qualcomm')) return 0x5143;
+		if (vendor.includes('arm')) return 0x13b5;
+		return 0;
+	});
 	device_info.type = DEVICE_TYPE_INTEGRATED_GPU;
 
 	print_verbose("WebGPU: Device imported from JS successfully.");
@@ -158,6 +176,8 @@ RenderingContextDriver::SurfaceID RenderingContextDriverWebGPU::surface_create(c
 	SurfaceID id = next_surface_id++;
 	Surface &surface = surfaces[id];
 	surface.handle = wgpu_surface;
+	surface.canvas_selector = canvas_selector;
+	surface.format = EM_ASM_INT({ return navigator.gpu.getPreferredCanvasFormat() === 'rgba8unorm'; }) ? WGPUTextureFormat_RGBA8Unorm : WGPUTextureFormat_BGRA8Unorm;
 	surface.width = 0;
 	surface.height = 0;
 	surface.needs_resize = true;
@@ -169,6 +189,14 @@ RenderingContextDriver::SurfaceID RenderingContextDriverWebGPU::surface_create(c
 void RenderingContextDriverWebGPU::surface_set_size(SurfaceID p_surface, uint32_t p_width, uint32_t p_height) {
 	ERR_FAIL_COND(!surfaces.has(p_surface));
 	Surface &surface = surfaces[p_surface];
+#ifdef WEB_ENABLED
+	int canvas_width = 0;
+	int canvas_height = 0;
+	if (emscripten_get_canvas_element_size(surface.canvas_selector.utf8().get_data(), &canvas_width, &canvas_height) == EMSCRIPTEN_RESULT_SUCCESS) {
+		p_width = MAX(canvas_width, 0);
+		p_height = MAX(canvas_height, 0);
+	}
+#endif
 	if (surface.width != p_width || surface.height != p_height) {
 		surface.width = p_width;
 		surface.height = p_height;

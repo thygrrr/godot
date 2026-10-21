@@ -702,6 +702,7 @@ private:
 	HashMap<FramebufferFormatID, FramebufferFormat> framebuffer_formats;
 
 	struct Framebuffer {
+		RID owned_attachment;
 		FramebufferFormatID format_id;
 		uint32_t storage_mask = 0;
 		Vector<RID> texture_ids;
