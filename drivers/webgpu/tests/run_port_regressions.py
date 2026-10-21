@@ -36,10 +36,13 @@ for name in (
     "binding_array_literals",
     "tint_resource_usage",
     "tint_legacy_parse",
+    "shader_portability",
 ):
     sources = [str(root / f"drivers/webgpu/tests/{name}_test.cpp")]
-    if name != "tint_legacy_parse":
+    if name not in ("tint_legacy_parse", "shader_portability"):
         sources.append(str(driver / "spirv_preprocess.cpp"))
+        sources.append(str(driver / "tint_wrapper.cpp"))
+        sources.append(str(root / "thirdparty/tint/src/tint/lang/wgsl/inspector/inspector.cc"))
     target = output / f"{name}.js"
     subprocess.run(
         [sys.executable, str(compiler), *sources, str(archive), *common, "-o", str(target)],

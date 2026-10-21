@@ -28,6 +28,7 @@
 /* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.                 */
 /**************************************************************************/
 
+#include "shader_metadata_webgpu.h"
 #include "spirv-tools/libspirv.h"
 #include "spirv_preprocess.h"
 #include "tint_wrapper.h"
@@ -52,6 +53,8 @@ OpDecorate %sampler DescriptorSet 0
 OpDecorate %sampler Binding 1
 OpDecorate %unused DescriptorSet 0
 OpDecorate %unused Binding 2
+OpDecorate %unused_volume DescriptorSet 0
+OpDecorate %unused_volume Binding 3
 %void = OpTypeVoid
 %float = OpTypeFloat 32
 %v2 = OpTypeVector %float 2
@@ -60,11 +63,14 @@ OpDecorate %unused Binding 2
 %samp = OpTypeSampler
 %sampled = OpTypeSampledImage %img
 %pimg = OpTypePointer UniformConstant %img
+%volume = OpTypeImage %float 3D 0 0 0 1 Unknown
+%pvolume = OpTypePointer UniformConstant %volume
 %psamp = OpTypePointer UniformConstant %samp
 %pout = OpTypePointer Output %v4
 %image = OpVariable %pimg UniformConstant
 %sampler = OpVariable %psamp UniformConstant
 %unused = OpVariable %psamp UniformConstant
+%unused_volume = OpVariable %pvolume UniformConstant
 %color = OpVariable %pout Output
 %half = OpConstant %float 0.5
 %uv = OpConstantComposite %v2 %half %half
@@ -116,6 +122,15 @@ OpFunctionEnd
 	CHECK(std::strstr(wgsl, "//RESOURCE_USED:0,2\n"));
 	CHECK(!std::strstr(wgsl, "//RESOURCE_USED:0,4\n"));
 	CHECK(std::strstr(wgsl, "textureSample("));
+	webgpu_metadata::Shader metadata;
+	CHECK(webgpu_metadata::parse(wgsl, metadata));
+	CHECK(metadata.resources.size() == 4);
+	CHECK(metadata.resources[0].kind == webgpu_metadata::TEXTURE);
+	CHECK(metadata.resources[0].dimension == webgpu_metadata::D2);
+	CHECK(metadata.resources[1].kind == webgpu_metadata::SAMPLER);
+	CHECK(metadata.resources[0].used && metadata.resources[1].used);
+	CHECK(!metadata.resources[2].used && !metadata.resources[3].used);
+	CHECK(metadata.resources[3].dimension == webgpu_metadata::D3);
 	std::free(wgsl);
 	std::free(error);
 	spvBinaryDestroy(binary);

@@ -30,7 +30,7 @@
 
 #pragma once
 
-#ifdef WEBGPU_ENABLED
+#if defined(WEBGPU_ENABLED) || defined(WEBGPU_SHADER_BAKER_ENABLED)
 
 #include "drivers/webgpu/spirv_preprocess.h"
 #include "servers/rendering/rendering_shader_container.h"
@@ -41,7 +41,7 @@ class RenderingShaderContainerWebGPU : public RenderingShaderContainer {
 public:
 	// Format identifier for WebGPU shader containers.
 	static constexpr uint32_t FORMAT_WEBGPU = 0x57475055; // "WGPU"
-	static constexpr uint32_t FORMAT_VERSION = 2;
+	static constexpr uint32_t FORMAT_VERSION = 3;
 	static constexpr uint32_t NO_PUSH_CONSTANTS = UINT32_MAX;
 
 	struct HeaderData {
@@ -56,7 +56,7 @@ protected:
 	virtual uint32_t _format() const override { return FORMAT_WEBGPU; }
 	virtual uint32_t _format_version() const override { return FORMAT_VERSION; }
 
-	// Stores the raw SPIR-V per stage; the driver translates it to WGSL when creating shader modules.
+	// Stores compressed SPIR-V plus portable WGSL; adapter-specific rewrites remain in the driver.
 	virtual bool _set_code_from_spirv(const ReflectShader &p_shader) override;
 
 	// Serialization overrides for extra header data.
@@ -64,6 +64,10 @@ protected:
 	virtual uint32_t _to_bytes_header_extra_data(uint8_t *p_bytes) const override;
 
 public:
+	static char *compile_spirv(const uint8_t *p_bytes, int p_size);
+	static bool expand_bindings(RDC::ShaderReflection &r_reflection, spirv_preprocess::BindingMap &r_bindings);
+	bool get_stage_code(uint32_t p_index, Vector<uint8_t> &r_spirv, CharString &r_wgsl) const;
+
 	uint32_t get_push_constant_bind_group() const { return header_data.push_constant_bind_group; }
 	uint32_t get_push_constant_binding() const { return spirv_preprocess::PUSH_CONSTANT_BINDING; }
 	bool has_push_constants() const { return header_data.push_constant_bind_group != NO_PUSH_CONSTANTS; }

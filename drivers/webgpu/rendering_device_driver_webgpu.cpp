@@ -32,18 +32,13 @@
 
 #include "rendering_device_driver_webgpu.h"
 
-#include "core/config/engine.h"
 #include "core/config/project_settings.h"
-#include "core/io/dir_access.h"
-#include "core/io/file_access.h"
-#include "core/os/mutex.h"
 #include "core/os/os.h"
 #include "core/templates/hash_map.h"
-#include "core/templates/hashfuncs.h"
-#include "core/version.h"
 #include "drivers/webgpu/pixel_formats_webgpu.h"
 #include "drivers/webgpu/rendering_context_driver_webgpu.h"
 #include "drivers/webgpu/rendering_shader_container_webgpu.h"
+#include "drivers/webgpu/shader_metadata_webgpu.h"
 #include "drivers/webgpu/spirv_preprocess.h"
 #include "drivers/webgpu/tint_wrapper.h"
 
@@ -140,138 +135,6 @@ static bool parse_group_binding(const char *p, unsigned int &r_grp, unsigned int
 	r_grp = (unsigned int)grp;
 	r_bnd = (unsigned int)bnd;
 	return true;
-}
-
-// =============================================================================
-// SPIR-V → WGSL conversion (Tint + SPIR-V preprocessing)
-// =============================================================================
-//
-// emdawnwebgpu only accepts WGSL, so every shader stage must be converted from
-// SPIR-V. Tint (C++, linked directly into the engine WASM) handles the
-// conversion after spirv_preprocess::run_pipeline() (push constant rewriting,
-// sampler splitting, Y-flip, etc.).
-//
-// Cache lives for process lifetime — the SPIR-V → WGSL mapping is independent
-// of the WebGPU device, and a single process never creates more than ~1k
-// distinct shaders, so unbounded growth is fine in practice.
-// Uses a 64-bit key (two MurmurHash3 passes with different seeds) to avoid
-// birthday-paradox collisions that a 32-bit hash would risk at ~1k entries.
-static HashMap<uint64_t, String> _spv_to_wgsl_cache;
-static Mutex _spv_to_wgsl_cache_mutex;
-static uint32_t _spv_to_wgsl_cache_hits = 0;
-static uint32_t _spv_to_wgsl_cache_misses = 0;
-
-// Run SPIR-V preprocessing passes and translate to WGSL via Tint.
-// Returns a malloc'd null-terminated WGSL string, or nullptr on failure.
-static char *_translate_spirv_to_wgsl(const uint8_t *p_spv_ptr, int p_spv_size) {
-	if (p_spv_size < 20 || (p_spv_size % 4) != 0) {
-		return nullptr;
-	}
-
-	// Wrap raw bytes in a Vector for the preprocessing API.
-	Vector<uint8_t> spv;
-	spv.resize(p_spv_size);
-	memcpy(spv.ptrw(), p_spv_ptr, p_spv_size);
-
-	spv = spirv_preprocess::run_pipeline(spv);
-#ifdef WEB_ENABLED
-	EM_ASM({
-		if (globalThis.webgpuDump) {
-			globalThis.webgpuLastSpirv = Array.from(HEAPU8.subarray($0, $0 + $1));
-		} }, spv.ptr(), (int)spv.size());
-#endif
-
-	// Convert to uint32_t words for Tint.
-	int word_count = spv.size() / 4;
-	std::vector<uint32_t> spirv_words(word_count);
-	memcpy(spirv_words.data(), spv.ptr(), spv.size());
-
-	// Call Tint SPIR-V → WGSL via the wrapper (isolates C++20 from Godot's build).
-	char *error_msg = nullptr;
-	char *out = tint_wrapper_spirv_to_wgsl(spirv_words.data(), spirv_words.size(), &error_msg);
-	if (!out) {
-		if (error_msg) {
-			// Truncate the error message: Tint includes the full SPIR-V disassembly
-			// which floods the console. Keep first 1500 chars for diagnostics.
-			String err_str = String::utf8(error_msg);
-			// Replace newlines with pipes to prevent console splitting.
-			err_str = err_str.replace("\n", " | ");
-			if (err_str.length() > 1500) {
-				err_str = err_str.left(1500) + "... [truncated]";
-			}
-			ERR_PRINT(vformat("Tint SPIR-V→WGSL failed: %s", err_str));
-			free(error_msg);
-		} else {
-			ERR_PRINT("Tint SPIR-V→WGSL failed (unknown error)");
-		}
-		return nullptr;
-	}
-	return out;
-}
-
-// Returns a malloc'd null-terminated WGSL string (caller must free), or nullptr on
-// failure. Reuses translated shaders from memory or the persistent shader cache before invoking Tint.
-static char *_spv_to_wgsl_cached(const uint8_t *p_spv_ptr, int p_spv_size) {
-	MutexLock lock(_spv_to_wgsl_cache_mutex);
-	uint32_t hash_lo = hash_murmur3_buffer(p_spv_ptr, p_spv_size);
-	uint32_t hash_hi = hash_murmur3_buffer(p_spv_ptr, p_spv_size, 0x9E3779B9);
-	uint64_t spv_hash = ((uint64_t)hash_hi << 32) | hash_lo;
-
-	const String *cached = _spv_to_wgsl_cache.getptr(spv_hash);
-	String cache_path;
-	if (!cached && GLOBAL_GET("rendering/shader_compiler/shader_cache/enabled")) {
-		String cache_dir = Engine::get_singleton()->get_shader_cache_path();
-		if (cache_dir.is_empty()) {
-			cache_dir = "user://";
-		}
-		cache_dir = cache_dir.path_join("shader_cache/webgpu_wgsl_v2").path_join(GODOT_VERSION_HASH);
-		if (DirAccess::make_dir_recursive_absolute(cache_dir) == OK) {
-			cache_path = cache_dir.path_join(String::num_uint64(spv_hash, 16) + ".wgsl");
-		}
-	}
-	if (!cache_path.is_empty() && FileAccess::exists(cache_path)) {
-		String code = FileAccess::get_file_as_string(cache_path);
-		if (!code.is_empty()) {
-			_spv_to_wgsl_cache[spv_hash] = code;
-			cached = _spv_to_wgsl_cache.getptr(spv_hash);
-		}
-	}
-	if (cached) {
-		_spv_to_wgsl_cache_hits++;
-		CharString cs = cached->utf8();
-		size_t len = (size_t)cs.length() + 1;
-		char *out = (char *)malloc(len);
-		if (!out) {
-			return nullptr;
-		}
-		memcpy(out, cs.get_data(), len);
-		return out;
-	}
-
-	_spv_to_wgsl_cache_misses++;
-
-	char *wgsl_str = _translate_spirv_to_wgsl(p_spv_ptr, p_spv_size);
-
-	if (wgsl_str) {
-		_spv_to_wgsl_cache[spv_hash] = String(wgsl_str);
-		if (!cache_path.is_empty()) {
-			// Other host processes must never observe a partially written shader.
-			String temporary_path = cache_path + "." + itos(OS::get_singleton()->get_process_id()) + ".tmp";
-			Ref<FileAccess> file = FileAccess::open(temporary_path, FileAccess::WRITE);
-			if (file.is_valid()) {
-				file->store_string(String(wgsl_str));
-				file.unref();
-				DirAccess::rename_absolute(temporary_path, cache_path);
-			}
-		}
-	}
-
-	WEBGPU_DIAG({
-		if ($2 <= 5 || ($2 % 50) === 0) {
-			console.log('[SHADER] WGSL stats: cache_hits=' + $0 + ' tint_misses=' + $1);
-		} }, _spv_to_wgsl_cache_hits, _spv_to_wgsl_cache_misses);
-
-	return wgsl_str;
 }
 
 // =============================================================================
@@ -431,10 +294,7 @@ RenderingDeviceDriverWebGPU::~RenderingDeviceDriverWebGPU() {
 
 Error RenderingDeviceDriverWebGPU::initialize(uint32_t p_device_index, uint32_t p_frame_count) {
 	// Initialize Tint shader compiler (SPIR-V → WGSL).
-	{
-		MutexLock lock(_spv_to_wgsl_cache_mutex);
-		tint_wrapper_initialize();
-	}
+	tint_wrapper_initialize();
 
 	device = context_driver->get_device();
 	queue = context_driver->get_queue();
@@ -622,7 +482,8 @@ Error RenderingDeviceDriverWebGPU::initialize(uint32_t p_device_index, uint32_t 
 	MAIN_THREAD_EM_ASM({
 		var d = Module['preinitializedWebGPUDevice'];
 		if (d && !d._uncapturedPatched) {
-			d.addEventListener('uncapturederror', function(e) { console.error('[Godot-WebGPU] uncaptured error: ' + e.error.constructor.name + ' | ' + e.error.message); });
+			d.addEventListener(
+					'uncapturederror', function(e) { console.error('[Godot-WebGPU] uncaptured error: ' + e.error.constructor.name + ' | ' + e.error.message); });
 			d._uncapturedPatched = true;
 		}
 		if (d && d.lost && !d._lostPatched) {
@@ -654,7 +515,8 @@ Error RenderingDeviceDriverWebGPU::initialize(uint32_t p_device_index, uint32_t 
 
 		// Always-on uncaptured error logger.
 		if (!d._uncapturedPatched) {
-			d.addEventListener('uncapturederror', function(e) {
+			d.addEventListener(
+					'uncapturederror', function(e) {
 				console.error('[Godot] WebGPU uncaptured error: ' + e.error.constructor.name);
 				console.error(e.error.message); });
 			d._uncapturedPatched = true;
@@ -676,9 +538,10 @@ Error RenderingDeviceDriverWebGPU::initialize(uint32_t p_device_index, uint32_t 
 					}
 				});
 				// Parallel async path (authoritative — catches all validation errors).
-				origCreateAsync(desc).then(function(_p){
-												   // Success — no-op.
-										   },
+				origCreateAsync(desc).then(
+						function(_p){
+								// Success — no-op.
+						},
 						function(err) {
 					var msg = (err && err.message) ? err.message : String(err);
 					console.error('[JS-PCREATE-ASYNC-FAIL#' + myId + '] label="' + label + '" | ' + msg.substring(0, 2000)); });
@@ -3084,21 +2947,17 @@ static WGPUShaderStage _stages_to_wgpu_visibility(uint32_t p_stage_mask) {
 	return vis;
 }
 
-// Records the (group << 16 | binding) keys of every storage buffer a WGSL module declares.
-static void _collect_storage_buffer_bindings(const char *p_wgsl, HashSet<uint32_t> &r_keys) {
-	const char *p = p_wgsl;
-	while ((p = strstr(p, "@group(")) != nullptr) {
-		unsigned int grp = 0, bnd = 0;
-		if (parse_group_binding(p, grp, bnd)) {
-			for (const char *fwd = p; *fwd && *fwd != ';'; fwd++) {
-				if (strncmp(fwd, "var<storage", 11) == 0) {
-					r_keys.insert((grp << 16) | bnd);
-					break;
-				}
-			}
-		}
-		p++;
+static bool _collect_storage_buffer_bindings(const char *p_wgsl, HashSet<uint32_t> &r_keys) {
+	webgpu_metadata::Shader reflection_info;
+	if (!webgpu_metadata::parse(p_wgsl, reflection_info)) {
+		return false;
 	}
+	for (const auto &resource : reflection_info.resources) {
+		if (resource.kind == webgpu_metadata::STORAGE_BUFFER || resource.kind == webgpu_metadata::READ_ONLY_STORAGE_BUFFER) {
+			r_keys.insert((resource.group << 16) | resource.binding);
+		}
+	}
+	return true;
 }
 
 // Shared by shader_create_from_container and _create_module_with_spec_constants, so specialized
@@ -3506,28 +3365,9 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 	shader->push_constant_binding = wg_container->get_push_constant_binding();
 	shader->push_constant_size = shader_refl.push_constant_size;
 
-	// Reserve the same scalar bindings for both stages, including resources unused by one stage.
-	for (int set = 0; set < shader_refl.uniform_sets.size(); set++) {
-		Vector<RenderingDeviceCommons::ShaderUniform> expanded;
-		uint32_t next_binding = 0;
-		for (const auto &source : shader_refl.uniform_sets[set]) {
-			next_binding = MAX(next_binding, source.binding);
-			shader->binding_remaps[(uint64_t(set) << 32) | source.binding] = next_binding;
-			const uint32_t count = _is_handle_uniform(source.type) ? MAX(source.length, 1u) : 1;
-			for (uint32_t element = 0; element < count; element++) {
-				auto uniform = source;
-				uniform.binding = next_binding++;
-				if (_is_handle_uniform(source.type)) {
-					uniform.length = 1;
-				}
-				expanded.push_back(uniform);
-			}
-		}
-		if (next_binding * 2 >= spirv_preprocess::PUSH_CONSTANT_BINDING) {
-			memdelete(shader);
-			ERR_FAIL_V_MSG(ShaderID(), "WebGPU descriptor arrays exceed the binding range.");
-		}
-		shader_refl.uniform_sets.write[set] = expanded;
+	if (!RenderingShaderContainerWebGPU::expand_bindings(shader_refl, shader->binding_remaps)) {
+		memdelete(shader);
+		return ShaderID();
 	}
 
 	print_verbose(vformat("WebGPU: shader_create_from_container '%s' (%d stages, push_const_size=%d)", shader->name, (int)p_shader_container->shaders.size(), (int)shader_refl.push_constant_size));
@@ -3546,7 +3386,7 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 	// Tint emits: texture_storage_2d<format, write/read/read_write>. Used for IMAGE BGL entries.
 	HashMap<uint32_t, WGPUStorageTextureAccess> wgsl_storage_tex_access;
 
-	// Maps (set_index << 16 | binding) → storage texture format (from WGSL scan). Used for IMAGE BGL entries.
+	// Maps (set_index << 16 | binding) → storage texture format from Tint metadata. Used for IMAGE BGL entries.
 	HashMap<uint32_t, WGPUTextureFormat> wgsl_storage_tex_format;
 
 	// Maps (set_index << 16 | binding) → true if Tint output has var<uniform> (e.g. for texture buffers).
@@ -3596,35 +3436,17 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 	for (int i = 0; i < stage_shaders.size(); i++) {
 		const RenderingShaderContainer::Shader &s = stage_shaders[i];
 
-		// The code_compressed_bytes holds raw SPIR-V (no compression — code_decompressed_size == 0).
-		const PackedByteArray spv_bytes = spirv_preprocess::remap_bindings(s.code_compressed_bytes, shader->binding_remaps);
-		if (spv_bytes.is_empty()) {
-			error_text = "WebGPU: empty SPIR-V for shader stage.";
+		Vector<uint8_t> spv_bytes;
+		if (!wg_container->get_stage_code(i, spv_bytes, stage_wgsl[i])) {
+			error_text = "WebGPU: failed to load baked shader stage.";
 			break;
 		}
-		if (spv_bytes.size() % 4 != 0) {
-			error_text = "WebGPU: SPIR-V size must be a multiple of 4.";
-			break;
-		}
-
-		// Store raw SPIR-V for potential re-conversion with specialization constants.
 		shader->stage_spirv[(int)s.shader_stage] = spv_bytes;
-
-		// emdawnwebgpu does NOT support WGPUShaderSourceSPIRV — it's a thin wrapper
-		// around the browser's WebGPU API which only accepts WGSL.
-		// We convert SPIR-V → WGSL at runtime using Tint (C++, linked directly).
-		// Many shader stages share SPIR-V bytes; _spv_to_wgsl_cached looks up a
-		// process-lifetime cache before invoking Tint (see helper definition).
-		char *wgsl_str = _spv_to_wgsl_cached(spv_bytes.ptr(), (int)spv_bytes.size());
-
-		if (wgsl_str == nullptr) {
-			error_text = vformat("WebGPU: SPIR-V→WGSL conversion failed for stage %d.", (int)s.shader_stage);
-			break;
-		}
-		stage_wgsl[i] = CharString(wgsl_str);
-		free(wgsl_str);
 		if (s.shader_stage == SHADER_STAGE_VERTEX) {
-			_collect_storage_buffer_bindings(stage_wgsl[i].get_data(), shader->vertex_storage_buffers);
+			if (!_collect_storage_buffer_bindings(stage_wgsl[i].get_data(), shader->vertex_storage_buffers)) {
+				error_text = "WebGPU: invalid vertex resource metadata.";
+				break;
+			}
 		}
 	}
 
@@ -3659,362 +3481,73 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 
 		WGPUShaderModule mod = wgpuDeviceCreateShaderModule(device, &mod_desc);
 
-		// Scan WGSL for texture dimension declarations so the BGL uses the right viewDimension.
-		// Tint format: "@group(G) @binding(B) var NAME: texture_TYPE<...>;"
-		// Also detects sampler / sampler_comparison types.
-		{
-			const char *p = wgsl_str;
-			while ((p = strstr(p, "@group(")) != nullptr) {
-				unsigned int grp = 0, bnd = 0;
-				if (parse_group_binding(p, grp, bnd)) {
-					// Find the ':' that separates the variable name from the type.
-					// This avoids matching "sampler" in variable names like "shadow_sampler".
-					const char *colon = strchr(p, ':');
-					const char *semi = strchr(p, ';');
-					if (!semi) {
-						p++;
-						continue;
-					}
-					const char *type_start = colon && colon < semi ? colon + 1 : p;
-					const char *limit = semi; // scan up to the semicolon
-
-					const char *fwd = type_start;
-					const char *tp = nullptr;
-					const char *sp = nullptr; // sampler type position
-					while (fwd < limit && *fwd) {
-						if (!tp && strncmp(fwd, "texture_", 8) == 0) {
-							tp = fwd;
-							break;
-						}
-						if (!sp && strncmp(fwd, "sampler_comparison", 18) == 0) {
-							sp = fwd;
-							break;
-						}
-						if (!sp && strncmp(fwd, "sampler", 7) == 0 && fwd[7] != '_') {
-							sp = fwd;
-							break;
-						}
-						fwd++;
-					}
-					// Check for comparison sampler (sampler_comparison type).
-					if (sp && strncmp(sp, "sampler_comparison", 18) == 0) {
-						uint32_t key = ((uint32_t)grp << 16) | (uint32_t)bnd;
-						wgsl_is_comparison_sampler[key] = true;
-					}
-					if (tp) {
-						WGPUTextureViewDimension dim = WGPUTextureViewDimension_Undefined;
-						// Multisampled variants first (must precede plain texture_2d / texture_depth_2d).
-						if (strncmp(tp, "texture_depth_multisampled_2d", 29) == 0) {
-							dim = WGPUTextureViewDimension_2D;
-							uint32_t key = ((uint32_t)grp << 16) | (uint32_t)bnd;
-							wgsl_is_multisampled_texture[key] = true;
-						} else if (strncmp(tp, "texture_multisampled_2d", 23) == 0) {
-							dim = WGPUTextureViewDimension_2D;
-							uint32_t key = ((uint32_t)grp << 16) | (uint32_t)bnd;
-							wgsl_is_multisampled_texture[key] = true;
-						} else if (strncmp(tp, "texture_depth_2d_array", 22) == 0) {
-							dim = WGPUTextureViewDimension_2DArray;
-						} else if (strncmp(tp, "texture_depth_cube_array", 24) == 0) {
-							dim = WGPUTextureViewDimension_CubeArray;
-						} else if (strncmp(tp, "texture_depth_cube", 18) == 0) {
-							dim = WGPUTextureViewDimension_Cube;
-						} else if (strncmp(tp, "texture_depth_2d", 16) == 0) {
-							dim = WGPUTextureViewDimension_2D;
-						} else if (strncmp(tp, "texture_2d_array", 16) == 0) {
-							dim = WGPUTextureViewDimension_2DArray;
-						} else if (strncmp(tp, "texture_cube_array", 18) == 0) {
-							dim = WGPUTextureViewDimension_CubeArray;
-						} else if (strncmp(tp, "texture_cube", 12) == 0) {
-							dim = WGPUTextureViewDimension_Cube;
-						} else if (strncmp(tp, "texture_3d", 10) == 0) {
-							dim = WGPUTextureViewDimension_3D;
-						} else if (strncmp(tp, "texture_2d", 10) == 0) {
-							dim = WGPUTextureViewDimension_2D;
-						} else if (strncmp(tp, "texture_1d", 10) == 0) {
-							dim = WGPUTextureViewDimension_1D;
-						} else if (strncmp(tp, "texture_storage_2d_array", 24) == 0) {
-							dim = WGPUTextureViewDimension_2DArray;
-						} else if (strncmp(tp, "texture_storage_cube_array", 26) == 0) {
-							dim = WGPUTextureViewDimension_CubeArray;
-						} else if (strncmp(tp, "texture_storage_2d", 18) == 0) {
-							dim = WGPUTextureViewDimension_2D;
-						} else if (strncmp(tp, "texture_storage_3d", 18) == 0) {
-							dim = WGPUTextureViewDimension_3D;
-						}
-						if (dim != WGPUTextureViewDimension_Undefined) {
-							uint32_t key = ((uint32_t)grp << 16) | (uint32_t)bnd;
-							if (!wgsl_tex_dims.has(key)) {
-								wgsl_tex_dims[key] = dim;
-							} else if (wgsl_tex_dims[key] != dim) {
-								// Different stages have different types for the same binding — use the later stage value.
-								wgsl_tex_dims[key] = dim;
-							}
-						}
-						// Check if this is a depth texture (texture_depth_*).
-						if (tp && strncmp(tp, "texture_depth_", 14) == 0) {
-							uint32_t key = ((uint32_t)grp << 16) | (uint32_t)bnd;
-							wgsl_is_depth_texture[key] = true;
-						}
-						// Sampled integer textures: texture_2d<u32>, texture_multisampled_2d<i32>, ...
-						const char *lt = strchr(tp, '<');
-						if (strncmp(tp, "texture_storage_", 16) != 0 && lt && lt < limit) {
-							uint32_t key = ((uint32_t)grp << 16) | (uint32_t)bnd;
-							if (strncmp(lt + 1, "u32", 3) == 0) {
-								wgsl_tex_sample_type[key] = WGPUTextureSampleType_Uint;
-							} else if (strncmp(lt + 1, "i32", 3) == 0) {
-								wgsl_tex_sample_type[key] = WGPUTextureSampleType_Sint;
-							}
-						}
-					}
-					// Check for depth alias variable: Tint names it "*_depth_alias".
-					// The variable name is between "var " and ":".
-					{
-						const char *var_kw = strstr(p, "var ");
-						if (var_kw && var_kw < semi) {
-							const char *name_start = var_kw + 4;
-							// Skip any <...> (e.g., var<uniform>)
-							if (*name_start == '<') {
-								const char *gt = strchr(name_start, '>');
-								if (gt && gt < semi) {
-									name_start = gt + 1;
-									while (name_start < semi && *name_start == ' ') {
-										name_start++;
-									}
-								}
-							}
-							int name_len = 0;
-							const char *nc = name_start;
-							while (nc < semi && *nc != ':' && *nc != ' ') {
-								nc++;
-								name_len++;
-							}
-							if (name_len > 12) { // "_depth_alias" is 12 chars
-								const char *suffix = name_start + name_len - 12;
-								if (strncmp(suffix, "_depth_alias", 12) == 0) {
-									uint32_t alias_key = ((uint32_t)grp << 16) | (uint32_t)bnd;
-									uint32_t depth_bnd = bnd > 0 ? bnd - 1 : 0;
-									wgsl_depth_alias_bindings[alias_key] = depth_bnd;
-								}
-							}
-						}
-					}
-				}
-				p++;
+		webgpu_metadata::Shader reflection_info;
+		if (!webgpu_metadata::parse(wgsl_str, reflection_info)) {
+			if (mod) {
+				wgpuShaderModuleRelease(mod);
 			}
+			error_text = "WebGPU: invalid shader resource metadata.";
+			break;
 		}
-
-		// Parse reachable resources from Tint's resolved call graph. Keep support
-		// for older shader caches that only recorded storage-buffer usage.
-		{
-			WGPUShaderStage current_wgpu_stage = WGPUShaderStage_None;
-			if (s.shader_stage == RDD::SHADER_STAGE_VERTEX) {
-				current_wgpu_stage = WGPUShaderStage_Vertex;
-			} else if (s.shader_stage == RDD::SHADER_STAGE_FRAGMENT) {
-				current_wgpu_stage = WGPUShaderStage_Fragment;
-			} else if (s.shader_stage == RDD::SHADER_STAGE_COMPUTE) {
-				current_wgpu_stage = WGPUShaderStage_Compute;
-			}
-
-			const char *p = wgsl_str;
-			if (strncmp(p, "//RESOURCE_USAGE\n", 17) == 0) {
-				has_resource_usage = true;
-				p += 17;
-			}
-			while (strncmp(p, "//SSBO_USED:", 12) == 0 || strncmp(p, "//RESOURCE_USED:", 16) == 0) {
-				bool resource = strncmp(p, "//RESOURCE_USED:", 16) == 0;
-				p += resource ? 16 : 12;
-				uint32_t group = 0, binding = 0;
-				while (*p >= '0' && *p <= '9') {
-					group = group * 10 + (*p - '0');
-					p++;
-				}
-				if (*p == ',') {
-					p++;
-				}
-				while (*p >= '0' && *p <= '9') {
-					binding = binding * 10 + (*p - '0');
-					p++;
-				}
-				while (*p == '\n' || *p == '\r') {
-					p++;
-				}
-
-				uint32_t key = (group << 16) | binding;
-				if (resource) {
-					wgsl_resource_stages[key] |= (uint32_t)current_wgpu_stage;
-				}
-				if (wgsl_buffer_stages.has(key)) {
-					wgsl_buffer_stages[key] |= (uint32_t)current_wgpu_stage;
-				} else {
-					wgsl_buffer_stages[key] = (uint32_t)current_wgpu_stage;
-				}
-			}
+		detected_override_declarations |= reflection_info.has_overrides;
+		for (uint32_t id : reflection_info.overrides) {
+			shader->stage_override_ids[s.shader_stage].insert(id);
 		}
-
-		// Scan WGSL for storage buffer access modes and uniform bindings.
-		// Tint actual output formats:
-		//   - Read-write: "var<storage, read_write>"  (space after comma)
-		//   - Read-only:  "var<storage>"              (NO access modifier — Tint omits "read" for LOAD-only)
-		// A binding is read-only only if every stage declares it read-only.
-		{
-			auto mark_ssbo = [&wgsl_ssbo_readonly](uint32_t p_key, bool p_readonly) {
-				bool *existing = wgsl_ssbo_readonly.getptr(p_key);
-				if (existing) {
-					*existing = *existing && p_readonly;
-				} else {
-					wgsl_ssbo_readonly.insert(p_key, p_readonly);
-				}
-			};
-			const char *p = wgsl_str;
-			while ((p = strstr(p, "@group(")) != nullptr) {
-				unsigned int grp = 0, bnd = 0;
-				if (parse_group_binding(p, grp, bnd)) {
-					const char *fwd = p;
-					const char *limit = fwd + 256;
-					while (fwd < limit && *fwd && *fwd != ';') {
-						if (strncmp(fwd, "var<storage, read_write>", 24) == 0 ||
-								strncmp(fwd, "var<storage,read_write>", 23) == 0) {
-							mark_ssbo(((uint32_t)grp << 16) | (uint32_t)bnd, false);
-							break;
-						} else if (strncmp(fwd, "var<storage, read>", 18) == 0 ||
-								strncmp(fwd, "var<storage,read>", 17) == 0) {
-							mark_ssbo(((uint32_t)grp << 16) | (uint32_t)bnd, true);
-							break;
-						} else if (strncmp(fwd, "var<storage>", 12) == 0) {
-							mark_ssbo(((uint32_t)grp << 16) | (uint32_t)bnd, true);
-							break;
-						} else if (strncmp(fwd, "var<uniform", 11) == 0) {
-							uint32_t key = ((uint32_t)grp << 16) | (uint32_t)bnd;
-							wgsl_is_uniform[key] = true;
-							break;
-						}
-						fwd++;
-					}
-				}
-				p++;
+		has_resource_usage = true;
+		const uint32_t stage = s.shader_stage == SHADER_STAGE_VERTEX ? WGPUShaderStage_Vertex : (s.shader_stage == SHADER_STAGE_FRAGMENT ? WGPUShaderStage_Fragment : WGPUShaderStage_Compute);
+		static const WGPUTextureViewDimension dimensions[] = {
+			WGPUTextureViewDimension_Undefined, WGPUTextureViewDimension_1D, WGPUTextureViewDimension_2D,
+			WGPUTextureViewDimension_2DArray, WGPUTextureViewDimension_3D, WGPUTextureViewDimension_Cube, WGPUTextureViewDimension_CubeArray
+		};
+		for (const auto &resource : reflection_info.resources) {
+			const uint32_t key = (resource.group << 16) | resource.binding;
+			if (resource.used) {
+				wgsl_resource_stages[key] |= stage;
 			}
-		}
-
-		// Scan WGSL for storage texture access mode and format.
-		// Tint format: "@group(G) @binding(B) var name: texture_storage_*<format, access>;"
-		{
-			const char *p = wgsl_str;
-			while ((p = strstr(p, "@group(")) != nullptr) {
-				unsigned int grp = 0, bnd = 0;
-				if (parse_group_binding(p, grp, bnd)) {
-					const char *fwd = p;
-					const char *limit = fwd + 300;
-					while (fwd < limit && *fwd && *fwd != ';') {
-						if (strncmp(fwd, "texture_storage_", 16) == 0) {
-							const char *lt = strchr(fwd, '<');
-							if (lt && lt < limit) {
-								// Extract format (between < and ,)
-								const char *comma = strchr(lt + 1, ',');
-								if (comma && comma < limit) {
-									uint32_t key = ((uint32_t)grp << 16) | (uint32_t)bnd;
-									// Parse format name
-									const char *fmt = lt + 1;
-									WGPUTextureFormat tf = wgpu_storage_format_from_wgsl(fmt);
-									wgsl_storage_tex_format[key] = tf;
-									// Parse access mode (after comma, skip space)
-									const char *acc = comma + 1;
-									while (*acc == ' ') {
-										acc++;
-									}
-									WGPUStorageTextureAccess access = WGPUStorageTextureAccess_Undefined;
-									if (strncmp(acc, "read_write>", 11) == 0) {
-										access = WGPUStorageTextureAccess_ReadWrite;
-									} else if (strncmp(acc, "write>", 6) == 0) {
-										access = WGPUStorageTextureAccess_WriteOnly;
-									} else if (strncmp(acc, "read>", 5) == 0) {
-										access = WGPUStorageTextureAccess_ReadOnly;
-									}
-									if (access != WGPUStorageTextureAccess_Undefined) {
-										wgsl_storage_tex_access[key] = access;
-									}
-								}
-							}
-							break;
-						}
-						fwd++;
-					}
+			if (resource.dimension != webgpu_metadata::NONE) {
+				wgsl_tex_dims[key] = dimensions[resource.dimension];
+				if (resource.sample_type != webgpu_metadata::FLOAT) {
+					wgsl_tex_sample_type[key] = resource.sample_type == webgpu_metadata::UINT ? WGPUTextureSampleType_Uint : WGPUTextureSampleType_Sint;
 				}
-				p++;
 			}
-		}
-
-		// Extract per-stage override constant IDs from WGSL (@id(N) override ...).
-		// These are present when Tint preserved specialization constants as overrides.
-		// Only include overrides whose variable is actually referenced in the shader
-		// body (beyond the declaration line). Safari's WebGPU WGSL→MSL compiler
-		// crashes when pipeline constants are passed for unreferenced overrides.
-		{
-			const char *scan = wgsl_str;
-			while ((scan = strstr(scan, "@id(")) != nullptr) {
-				scan += 4; // skip "@id("
-				uint32_t oid = 0;
-				bool has_digits = false;
-				while (*scan >= '0' && *scan <= '9') {
-					oid = oid * 10 + (*scan - '0');
-					scan++;
-					has_digits = true;
-				}
-				if (has_digits && *scan == ')') {
-					detected_override_declarations = true;
-					// Extract variable name: skip ") override " then read name up to ":".
-					const char *p = scan + 1; // skip ')'
-					while (*p == ' ' || *p == '\t' || *p == '\n') {
-						p++;
+			if (resource.depth_alias != UINT32_MAX) {
+				wgsl_depth_alias_bindings[key] = resource.depth_alias;
+			}
+			switch (resource.kind) {
+				case webgpu_metadata::UNIFORM_BUFFER:
+					wgsl_is_uniform[key] = true;
+					break;
+				case webgpu_metadata::STORAGE_BUFFER:
+				case webgpu_metadata::READ_ONLY_STORAGE_BUFFER: {
+					const bool readonly = resource.kind == webgpu_metadata::READ_ONLY_STORAGE_BUFFER || s.shader_stage == SHADER_STAGE_VERTEX ||
+							(s.shader_stage == SHADER_STAGE_FRAGMENT && shader->vertex_storage_buffers.has(key));
+					bool *previous = wgsl_ssbo_readonly.getptr(key);
+					wgsl_ssbo_readonly[key] = previous ? (*previous && readonly) : readonly;
+					if (resource.used) {
+						wgsl_buffer_stages[key] |= stage;
 					}
-					if (strncmp(p, "override", 8) == 0) {
-						p += 8;
-						while (*p == ' ' || *p == '\t') {
-							p++;
-						}
-						const char *name_start = p;
-						while (*p != ':' && *p != '\0' && *p != ' ' && *p != '\n') {
-							p++;
-						}
-						int name_len = (int)(p - name_start);
-						if (name_len > 0 && name_len < 256) {
-							// Copy the variable name to a null-terminated buffer for strstr.
-							char name_buf[256];
-							memcpy(name_buf, name_start, name_len);
-							name_buf[name_len] = '\0';
-							// Check if this variable name is referenced beyond its declaration.
-							// Search from after the declaration line (past the ';').
-							const char *decl_end = p;
-							while (*decl_end && *decl_end != '\n') {
-								decl_end++;
-							}
-							bool found_usage = false;
-							const char *search = decl_end;
-							while ((search = strstr(search, name_buf)) != nullptr) {
-								// Verify it's a whole-word match (not a substring of another identifier).
-								if (search + name_len <= wgsl_str + strlen(wgsl_str)) {
-									char before = (search > wgsl_str) ? *(search - 1) : ' ';
-									char after = *(search + name_len);
-									bool boundary_before = !(before >= 'a' && before <= 'z') && !(before >= 'A' && before <= 'Z') && !(before >= '0' && before <= '9') && before != '_';
-									bool boundary_after = !(after >= 'a' && after <= 'z') && !(after >= 'A' && after <= 'Z') && !(after >= '0' && after <= '9') && after != '_';
-									if (boundary_before && boundary_after) {
-										found_usage = true;
-										break;
-									}
-								}
-								search++;
-							}
-							if (found_usage) {
-								shader->stage_override_ids[s.shader_stage].insert(oid);
-							}
-						} else {
-							// Fallback: couldn't parse name, include the override to be safe.
-							shader->stage_override_ids[s.shader_stage].insert(oid);
-						}
-					} else {
-						// Not followed by "override" keyword — include to be safe.
-						shader->stage_override_ids[s.shader_stage].insert(oid);
-					}
-				}
+				} break;
+				case webgpu_metadata::COMPARISON_SAMPLER:
+					wgsl_is_comparison_sampler[key] = true;
+					break;
+				case webgpu_metadata::DEPTH_MULTISAMPLED_TEXTURE:
+					wgsl_is_multisampled_texture[key] = true;
+					[[fallthrough]];
+				case webgpu_metadata::DEPTH_TEXTURE:
+					wgsl_is_depth_texture[key] = true;
+					break;
+				case webgpu_metadata::MULTISAMPLED_TEXTURE:
+					wgsl_is_multisampled_texture[key] = true;
+					break;
+				case webgpu_metadata::WRITE_ONLY_STORAGE_TEXTURE:
+				case webgpu_metadata::READ_ONLY_STORAGE_TEXTURE:
+				case webgpu_metadata::READ_WRITE_STORAGE_TEXTURE: {
+					const std::string format = resource.format + ",";
+					wgsl_storage_tex_format[key] = wgpu_storage_format_from_wgsl(format.c_str());
+					wgsl_storage_tex_access[key] = resource.kind == webgpu_metadata::WRITE_ONLY_STORAGE_TEXTURE ? WGPUStorageTextureAccess_WriteOnly : (resource.kind == webgpu_metadata::READ_ONLY_STORAGE_TEXTURE ? WGPUStorageTextureAccess_ReadOnly : WGPUStorageTextureAccess_ReadWrite);
+				} break;
+				default:
+					break;
 			}
 		}
 
@@ -5180,6 +4713,11 @@ WGPUBindGroup RenderingDeviceDriverWebGPU::_get_compatible_bind_group(WGUniformS
 				if (target_dim != WGPUTextureViewDimension_Undefined &&
 						p_us->bound_textures.has(entry.binding)) {
 					WGTexture *tex = p_us->bound_textures[entry.binding];
+					// A previous variant may have replaced the default view with another dimension.
+					if (tex && tex->view_dimension == target_dim &&
+							entry.textureView != fallback_float_texture_view && entry.textureView != fallback_cube_texture_view && entry.textureView != fallback_ms_texture_view) {
+						entry.textureView = tex->default_view;
+					}
 					if (tex && tex->view_dimension != target_dim && tex->view_source) {
 						// Use slice base offsets so slice views don't
 						// silently remap to mip 0 / layer 0 of the parent.
@@ -7300,8 +6838,8 @@ WGPUShaderModule RenderingDeviceDriverWebGPU::_create_module_with_spec_constants
 		const WGShader *p_shader) {
 	PackedByteArray patched = _patch_spirv_spec_constants(p_spirv, p_constants);
 
-	// Cached SPIR-V → WGSL via Tint (see _spv_to_wgsl_cached above).
-	char *wgsl_str = _spv_to_wgsl_cached(patched.ptr(), (int)patched.size());
+	// Reuse the container compiler and its shader cache for specialized modules.
+	char *wgsl_str = RenderingShaderContainerWebGPU::compile_spirv(patched.ptr(), (int)patched.size());
 
 	if (!wgsl_str) {
 		ERR_PRINT("WebGPU: SPIR-V→WGSL conversion failed for specialized shader module.");

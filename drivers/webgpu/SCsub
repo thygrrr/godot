@@ -7,6 +7,8 @@ import native_loader
 import sources
 
 env_webgpu = env.Clone()
+baker_only = not env["webgpu"]
+target_sources = env.editor_sources if baker_only else env.drivers_sources
 
 # =============================================================================
 # Thirdparty: SPIRV-Tools (needed by Tint SPIR-V reader)
@@ -110,11 +112,15 @@ env_webgpu.Prepend(
 
 # Exclude tint_wrapper.cpp from the driver glob — it's compiled above in
 # the Tint C++20 environment instead.
-webgpu_sources = Glob("#drivers/webgpu/*.cpp")
+webgpu_sources = (
+    [File("#drivers/webgpu/spirv_preprocess.cpp"), File("#drivers/webgpu/rendering_shader_container_webgpu.cpp")]
+    if baker_only
+    else Glob("#drivers/webgpu/*.cpp")
+)
 webgpu_sources = [f for f in webgpu_sources if "tint_wrapper" not in str(f)]
-env_webgpu.add_source_files(env.drivers_sources, webgpu_sources)
+env_webgpu.add_source_files(target_sources, webgpu_sources)
 
-if env["platform"] != "web":
+if not baker_only and env["platform"] != "web":
     # Keep optional Dawn runtime requirements out of existing renderer paths.
     dawn_loader = env.CommandNoCache(
         "#drivers/webgpu/native/dawn_loader.gen.h",
@@ -128,5 +134,5 @@ if env["platform"] != "web":
         env.Command("#bin/" + env.File(dawn_runtime).name, dawn_runtime, Copy("$TARGET", "$SOURCE"))
 
 # Add thirdparty objects to the driver.
-env.drivers_sources += spirv_tools_obj
-env.drivers_sources += tint_obj
+target_sources += spirv_tools_obj
+target_sources += tint_obj

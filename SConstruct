@@ -201,6 +201,9 @@ opts.Add(BoolVariable("d3d12", "Enable the Direct3D 12 rendering driver on suppo
 opts.Add(BoolVariable("metal", "Enable the Metal rendering driver on supported platforms (Apple arm64 only)", False))
 opts.Add(BoolVariable("webgpu", "Enable the WebGPU rendering driver on supported platforms", False))
 opts.Add(("webgpu_native_path", "Installed native Dawn C-API boundary SDK", ""))
+opts.Add(
+    BoolVariable("webgpu_shader_baker", "Bake portable WebGPU shaders in desktop editors without a Dawn SDK", False)
+)
 opts.Add(BoolVariable("use_volk", "Use the volk library to load the Vulkan loader dynamically", True))
 opts.Add(BoolVariable("accesskit", "Enable the AccessKit driver for screen reader support", True))
 opts.Add(BoolVariable("angle", "Enable the ANGLE rendering driver for OpenGL ES 3.0 on supported platforms", True))
@@ -702,8 +705,13 @@ if env["scu_build"]:
 
 # Must happen after the flags' definition, as configure is when most flags
 # are actually handled to change compile options, etc.
-if env["webgpu"]:
-    if "webgpu" not in env.get("supported", []):
+env["webgpu_shader_baker"] = bool(
+    env.editor_build and env["platform"] != "web" and (env["webgpu_shader_baker"] or env["webgpu"])
+)
+if env["webgpu_shader_baker"]:
+    env.Append(CPPDEFINES=["WEBGPU_SHADER_BAKER_ENABLED"])
+if env["webgpu"] or env["webgpu_shader_baker"]:
+    if env["webgpu"] and "webgpu" not in env.get("supported", []):
         print_error("Target platform '{}' does not support the WebGPU rendering driver".format(env["platform"]))
         Exit(255)
     _helper_module("webgpu_dependencies", "drivers/webgpu/dependencies.py")

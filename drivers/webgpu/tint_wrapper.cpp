@@ -30,6 +30,7 @@
 
 #include "tint_wrapper.h"
 
+#include "shader_metadata_webgpu.h"
 #include "src/tint/api/tint.h"
 #include "src/tint/lang/core/ir/module.h"
 #include "src/tint/lang/spirv/reader/reader.h"
@@ -40,14 +41,193 @@
 
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
+#include <set>
 #include <string>
 #include <vector>
 
+static const char *_storage_format(tint::inspector::ResourceBinding::TexelFormat p_format) {
+	using I = tint::inspector::ResourceBinding;
+	switch (p_format) {
+		case I::TexelFormat::kR8Snorm:
+			return "r8snorm";
+		case I::TexelFormat::kR8Uint:
+			return "r8uint";
+		case I::TexelFormat::kR8Sint:
+			return "r8sint";
+		case I::TexelFormat::kRg8Unorm:
+			return "rg8unorm";
+		case I::TexelFormat::kRg8Snorm:
+			return "rg8snorm";
+		case I::TexelFormat::kRg8Uint:
+			return "rg8uint";
+		case I::TexelFormat::kRg8Sint:
+			return "rg8sint";
+		case I::TexelFormat::kR16Unorm:
+			return "r16unorm";
+		case I::TexelFormat::kR16Snorm:
+			return "r16snorm";
+		case I::TexelFormat::kR16Uint:
+			return "r16uint";
+		case I::TexelFormat::kR16Sint:
+			return "r16sint";
+		case I::TexelFormat::kR16Float:
+			return "r16float";
+		case I::TexelFormat::kRg16Unorm:
+			return "rg16unorm";
+		case I::TexelFormat::kRg16Snorm:
+			return "rg16snorm";
+		case I::TexelFormat::kRg16Uint:
+			return "rg16uint";
+		case I::TexelFormat::kRg16Sint:
+			return "rg16sint";
+		case I::TexelFormat::kRg16Float:
+			return "rg16float";
+		case I::TexelFormat::kBgra8Unorm:
+			return "bgra8unorm";
+		case I::TexelFormat::kRgba8Unorm:
+			return "rgba8unorm";
+		case I::TexelFormat::kRgba8Snorm:
+			return "rgba8snorm";
+		case I::TexelFormat::kRgba8Uint:
+			return "rgba8uint";
+		case I::TexelFormat::kRgba8Sint:
+			return "rgba8sint";
+		case I::TexelFormat::kRgba16Unorm:
+			return "rgba16unorm";
+		case I::TexelFormat::kRgba16Snorm:
+			return "rgba16snorm";
+		case I::TexelFormat::kRgba16Uint:
+			return "rgba16uint";
+		case I::TexelFormat::kRgba16Sint:
+			return "rgba16sint";
+		case I::TexelFormat::kRgba16Float:
+			return "rgba16float";
+		case I::TexelFormat::kR32Uint:
+			return "r32uint";
+		case I::TexelFormat::kR32Sint:
+			return "r32sint";
+		case I::TexelFormat::kR32Float:
+			return "r32float";
+		case I::TexelFormat::kRg32Uint:
+			return "rg32uint";
+		case I::TexelFormat::kRg32Sint:
+			return "rg32sint";
+		case I::TexelFormat::kRg32Float:
+			return "rg32float";
+		case I::TexelFormat::kRgba32Uint:
+			return "rgba32uint";
+		case I::TexelFormat::kRgba32Sint:
+			return "rgba32sint";
+		case I::TexelFormat::kRgba32Float:
+			return "rgba32float";
+		case I::TexelFormat::kR8Unorm:
+			return "r8unorm";
+		case I::TexelFormat::kRgb10A2Uint:
+			return "rgb10a2uint";
+		case I::TexelFormat::kRgb10A2Unorm:
+			return "rgb10a2unorm";
+		case I::TexelFormat::kRg11B10Ufloat:
+			return "rg11b10ufloat";
+		default:
+			return "";
+	}
+}
+
+static webgpu_metadata::Resource _resource(const tint::inspector::ResourceBinding &p_binding) {
+	using I = tint::inspector::ResourceBinding;
+	webgpu_metadata::Resource r;
+	r.group = p_binding.bind_group;
+	r.binding = p_binding.binding;
+	switch (p_binding.resource_type) {
+		case I::ResourceType::kUniformBuffer:
+			r.kind = webgpu_metadata::UNIFORM_BUFFER;
+			break;
+		case I::ResourceType::kStorageBuffer:
+			r.kind = webgpu_metadata::STORAGE_BUFFER;
+			break;
+		case I::ResourceType::kReadOnlyStorageBuffer:
+			r.kind = webgpu_metadata::READ_ONLY_STORAGE_BUFFER;
+			break;
+		case I::ResourceType::kSampler:
+			r.kind = webgpu_metadata::SAMPLER;
+			break;
+		case I::ResourceType::kSampledTexture:
+			r.kind = webgpu_metadata::TEXTURE;
+			break;
+		case I::ResourceType::kMultisampledTexture:
+			r.kind = webgpu_metadata::MULTISAMPLED_TEXTURE;
+			break;
+		case I::ResourceType::kDepthTexture:
+			r.kind = webgpu_metadata::DEPTH_TEXTURE;
+			break;
+		case I::ResourceType::kDepthMultisampledTexture:
+			r.kind = webgpu_metadata::DEPTH_MULTISAMPLED_TEXTURE;
+			break;
+		case I::ResourceType::kWriteOnlyStorageTexture:
+			r.kind = webgpu_metadata::WRITE_ONLY_STORAGE_TEXTURE;
+			break;
+		case I::ResourceType::kReadOnlyStorageTexture:
+			r.kind = webgpu_metadata::READ_ONLY_STORAGE_TEXTURE;
+			break;
+		case I::ResourceType::kReadWriteStorageTexture:
+			r.kind = webgpu_metadata::READ_WRITE_STORAGE_TEXTURE;
+			break;
+		case I::ResourceType::kInputAttachment:
+			r.kind = webgpu_metadata::TEXTURE;
+			break;
+		default:
+			r.kind = webgpu_metadata::KIND_COUNT;
+			break;
+	}
+	if (r.kind == webgpu_metadata::SAMPLER && p_binding.sampler_type == I::SamplerType::kComparison) {
+		r.kind = webgpu_metadata::COMPARISON_SAMPLER;
+	}
+	if (r.kind >= webgpu_metadata::TEXTURE && r.kind < webgpu_metadata::KIND_COUNT) {
+		switch (p_binding.dim) {
+			case I::TextureDimension::k1d:
+				r.dimension = webgpu_metadata::D1;
+				break;
+			case I::TextureDimension::k2d:
+				r.dimension = webgpu_metadata::D2;
+				break;
+			case I::TextureDimension::k2dArray:
+				r.dimension = webgpu_metadata::D2_ARRAY;
+				break;
+			case I::TextureDimension::k3d:
+				r.dimension = webgpu_metadata::D3;
+				break;
+			case I::TextureDimension::kCube:
+				r.dimension = webgpu_metadata::CUBE;
+				break;
+			case I::TextureDimension::kCubeArray:
+				r.dimension = webgpu_metadata::CUBE_ARRAY;
+				break;
+			case I::TextureDimension::kNone:
+				r.dimension = webgpu_metadata::NONE;
+				break;
+		}
+		if (r.kind != webgpu_metadata::DEPTH_TEXTURE && r.kind != webgpu_metadata::DEPTH_MULTISAMPLED_TEXTURE) {
+			r.sample_type = p_binding.sampled_kind == I::SampledKind::kUInt ? webgpu_metadata::UINT : (p_binding.sampled_kind == I::SampledKind::kSInt ? webgpu_metadata::SINT : webgpu_metadata::FLOAT);
+		}
+		if (r.kind >= webgpu_metadata::WRITE_ONLY_STORAGE_TEXTURE) {
+			r.format = _storage_format(p_binding.image_format);
+		}
+		const std::string &name = p_binding.variable_name;
+		if (name.size() >= 12 && name.compare(name.size() - 12, 12, "_depth_alias") == 0 && r.binding > 0) {
+			r.depth_alias = r.binding - 1;
+		}
+	}
+	return r;
+}
+
 void tint_wrapper_initialize() {
-	tint::Initialize();
+	static std::once_flag init;
+	std::call_once(init, [] { tint::Initialize(); });
 }
 
 char *tint_wrapper_spirv_to_wgsl(const uint32_t *p_spirv_words, size_t p_word_count, char **r_error) {
+	tint_wrapper_initialize();
 	// Opaque calls were inlined by spirv_preprocess::freeze_and_inline().
 	std::vector<uint32_t> words(p_spirv_words, p_spirv_words + p_word_count);
 
@@ -66,17 +246,32 @@ char *tint_wrapper_spirv_to_wgsl(const uint32_t *p_spirv_words, size_t p_word_co
 		TINT_CHECK_RESULT_UNWRAP(ir, tint::spirv::reader::ReadIR(words));
 		TINT_CHECK_RESULT_UNWRAP(program, tint::wgsl::writer::ProgramFromIR(ir, wgsl_options));
 		tint::inspector::Inspector inspector(program);
-		std::string metadata = "//RESOURCE_USAGE\n";
+		webgpu_metadata::Shader metadata;
+		metadata.has_overrides = !inspector.Overrides().empty();
+		std::set<uint64_t> used_bindings;
 		for (const auto &entry : inspector.GetEntryPoints()) {
 			for (const auto &binding : inspector.GetResourceBindings(entry.name)) {
-				metadata += "//RESOURCE_USED:" + std::to_string(binding.bind_group) + "," + std::to_string(binding.binding) + "\n";
+				used_bindings.insert((uint64_t(binding.bind_group) << 32) | binding.binding);
 			}
+			for (const auto &constant : entry.overrides) {
+				if (constant.is_id_specified) {
+					metadata.overrides.push_back(constant.id.value);
+				}
+			}
+		}
+		for (const auto &binding : inspector.GetModuleResourceBindings()) {
+			auto resource = _resource(binding);
+			if (resource.kind == webgpu_metadata::KIND_COUNT) {
+				return tint::Failure{ "WebGPU: unsupported reflected resource type" };
+			}
+			resource.used = used_bindings.count((uint64_t(resource.group) << 32) | resource.binding) != 0;
+			metadata.resources.push_back(resource);
 		}
 		if (inspector.has_error()) {
 			return tint::Failure{ inspector.error() };
 		}
 		TINT_CHECK_RESULT_UNWRAP(output, tint::wgsl::writer::Generate(program, wgsl_options));
-		return metadata + output.wgsl;
+		return webgpu_metadata::encode(metadata) + output.wgsl;
 	};
 	auto result = convert();
 	if (result != tint::Success) {

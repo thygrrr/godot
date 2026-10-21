@@ -53,6 +53,30 @@ capabilities. Browser readback is asynchronous; native readback waits for GPU
 completion. Native HWND, Xlib/Wayland and normal/embedded CAMetalLayer surfaces
 use the same driver-selection mechanism as the other backends.
 
+## Portable shaders and baking
+
+WebGPU shader containers carry compressed WGSL, typed Tint inspector metadata,
+and SPIR-V for runtime specialization. Loading a current container avoids the
+SPIR-V-to-WGSL conversion; adapter-specific format and storage-access rewrites
+still run on the selected device. Older SPIR-V-only containers remain readable.
+
+Desktop editors built with `webgpu=yes` include the WebGPU shader baker. To add
+only the baker to an editor using another renderer, build with
+`webgpu=no webgpu_shader_baker=yes`; no native Dawn SDK is needed. Enable
+`shader_baker/enabled` in the web export preset and select WebGPU in the project's
+web rendering-driver setting. Shader baking requires an editor running a
+RenderingDevice renderer, such as Vulkan, Metal or WebGPU. Run the editor with
+`--rendering-method mobile` to bake the renderer used by WebGPU exports. Runtime-generated
+shaders and variants absent from the export continue to compile normally.
+The WebGPU baker skips multiview and input-attachment variants enabled by the host editor.
+
+The varying-location compaction and adapter-aware lightmap budget are adapted
+from [V-Sekai-fire/entities-godot at 3a5f1a4](https://github.com/V-Sekai-fire/entities-godot/tree/3a5f1a4baa38c246c5e7c7f3ef79ebe306c96281).
+That branch also informed the WGSL container and structured metadata design.
+Our existing compiler pipeline, native support and push-constant paging remain
+in use. Compaction preserves vertex-input and color-output locations and keeps
+matrix and array varyings aligned across stages.
+
 ## Verification
 
 [Port checks](tests/README.md) cover real compiler transformations,

@@ -30,7 +30,9 @@ uv run python drivers/webgpu/tests/run_port_regressions.py --emscripten <emsdk>/
 ```
 
 These cover storage access and read-only inference, resource IDs colliding with
-literal operands, resource reflection and old-libc++ float parsing.
+literal operands, typed resource reflection, varying compaction, malformed
+metadata and old-libc++ float parsing. The metadata checks compile the current
+Tint wrapper against the archive's compiler dependencies.
 `native_smoke/` checks material color, ambient and directional light by readback.
 Its `binding_arrays.gd` checks dynamic indexing of four differently colored textures
 through the actual shader, layout and uniform-set paths:
@@ -40,6 +42,13 @@ through the actual shader, layout and uniform-set paths:
 ```
 
 See [the driver notes](../README.md) for build and renderer selection.
+
+The outer `tests/webgpu-smoke` test reloads a baked shader container and checks
+specialization constants and push constants by compute readback. Native and
+browser rendering checks also cover two user varyings and a textured lightmapped
+material with a shadow-mask atlas. The browser `limited-bindings` query constrains
+sampled textures and inter-stage variables to 16 so these paths exercise the
+adapter budget rather than the development GPU's higher limits.
 
 ## Optional upstream diagnostics and demos
 

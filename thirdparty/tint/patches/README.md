@@ -27,6 +27,7 @@ uv run --no-project python drivers/webgpu/dependencies.py --verify
 | 0007 | validator.cc | UBO layout | Extend `kAllowStructMemberSizeMismatch` to the struct TOTAL-size check (spec-constant-sized arrays leave `Size()` at its unfolded value) |
 | 0008 | parse_num.cc | Emscripten 3.x | Locale-independent floating-point parsing when libc++ deletes the `from_chars` overloads |
 | 0009 | parse_num.cc | macOS | Reuse locale-independent floating-point parsing below the macOS 26 availability of `from_chars` |
+| 0010 | inspector.h, inspector.cc | Resource reflection | Expose all module resource declarations, including unused bindings whose dimensions Godot retains in layouts |
 
 ## Logical Groups
 

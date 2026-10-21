@@ -181,6 +181,10 @@
 #include "servers/rendering/rendering_device.h"
 #include "servers/rendering/rendering_server.h"
 
+#ifdef WEBGPU_SHADER_BAKER_ENABLED
+#include "editor/shader/shader_baker/shader_baker_export_plugin_platform_webgpu.h"
+#endif
+
 #ifdef VULKAN_ENABLED
 #include "editor/shader/shader_baker/shader_baker_export_plugin_platform_vulkan.h"
 #endif
@@ -9505,6 +9509,12 @@ EditorNode::EditorNode() {
 
 	Ref<ShaderBakerExportPlugin> shader_baker_export_plugin;
 	shader_baker_export_plugin.instantiate();
+
+#ifdef WEBGPU_SHADER_BAKER_ENABLED
+	Ref<ShaderBakerExportPluginPlatformWebGPU> shader_baker_export_plugin_platform_webgpu;
+	shader_baker_export_plugin_platform_webgpu.instantiate();
+	shader_baker_export_plugin->add_platform(shader_baker_export_plugin_platform_webgpu);
+#endif
 
 #ifdef VULKAN_ENABLED
 	Ref<ShaderBakerExportPluginPlatformVulkan> shader_baker_export_plugin_platform_vulkan;

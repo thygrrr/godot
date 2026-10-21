@@ -3770,6 +3770,11 @@ RenderForwardMobile::RenderForwardMobile() {
 	{
 		//lightmaps
 		scene_state.max_lightmaps = MAX_LIGHTMAPS;
+		if (RD::get_singleton()->get_device_api_name() == "WebGPU") {
+			// Leave bindings for material textures, shadows and reflections on small adapters.
+			const uint32_t textures = RD::get_singleton()->limit_get(RD::LIMIT_MAX_TEXTURES_PER_SHADER_STAGE);
+			scene_state.max_lightmaps = CLAMP(textures > 8 ? (textures - 8) / 4 : 1u, 1u, (uint32_t)MAX_LIGHTMAPS);
+		}
 		defines += "\n#define MAX_LIGHTMAP_TEXTURES " + itos(scene_state.max_lightmaps) + "\n";
 		defines += "\n#define MAX_LIGHTMAPS " + itos(scene_state.max_lightmaps) + "\n";
 
