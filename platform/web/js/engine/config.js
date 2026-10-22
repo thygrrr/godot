@@ -132,6 +132,8 @@ const InternalConfig = function (initConfig) { // eslint-disable-line no-unused-
 		 * The rendering driver to use. Set by Godot export based on project settings.
 		 *
 		 * ``'webgpu'`` will automatically request a WebGPU device before engine init.
+		 * If the browser cannot provide a device, startup falls back to WebGL 2.0
+		 * with the Compatibility renderer. Builds without WebGPU support still reject it.
 		 *
 		 * ``'opengl3'`` (or empty) uses WebGL 2.0.
 		 *

@@ -8,21 +8,33 @@ const engineSource = readFileSync(new URL('../../../platform/web/js/engine/engin
 
 function harness(gpu, unavailableReason = '') {
     const modules = [];
+    const calls = [];
+    const warnings = [];
+    class HTMLCanvasElement {}
+    const canvas = new HTMLCanvasElement();
     const context = vm.createContext({
-        Response, console, window: {}, navigator: { gpu },
+        Response, console: { ...console, warn: (...args) => warnings.push(args) },
+        window: {}, navigator: { gpu, language: 'en-US' },
+        HTMLCanvasElement, document: { getElementsByTagName: () => [canvas] },
         requestAnimationFrame() {},
         Features: {},
         Preloader: class {
+            preloadedFiles = [];
             loadPromise() { return Promise.resolve(new Response(new Uint8Array())); }
+            preload() { return Promise.resolve(); }
             setProgressFunc() {}
         },
         Godot(moduleConfig) {
             modules.push(moduleConfig);
-            return Promise.resolve({ initFS: () => Promise.resolve() });
+            return Promise.resolve({
+                initFS: () => Promise.resolve(),
+                initConfig() {},
+                callMain(args) { calls.push([...args]); },
+            });
         },
     });
     vm.runInContext(configSource + '\n' + engineSource.replace('___GODOT_WEBGPU_UNAVAILABLE_REASON___', JSON.stringify(unavailableReason)), context);
-    return { Engine: context.window.Engine, modules };
+    return { Engine: context.window.Engine, modules, calls, warnings };
 }
 
 test('existing WebGL init works without navigator.gpu', async () => {
@@ -35,7 +47,7 @@ test('existing WebGL init works without navigator.gpu', async () => {
 test('direct init waits for the WebGPU device and requests adapter storage limits', async () => {
     let requestCount = 0;
     const device = { lost: new Promise(() => {}), addEventListener() {} };
-    const { Engine, modules } = harness({
+    const { Engine, modules, calls, warnings } = harness({
         async requestAdapter() {
             return {
                 features: new Set(),
@@ -54,6 +66,10 @@ test('direct init waits for the WebGPU device and requests adapter storage limit
     assert.equal(requestCount, 1);
     assert.equal(modules.length, 1);
     assert.equal(modules[0].preinitializedWebGPUDevice, device);
+    const args = ['--rendering-driver', 'webgpu', '--rendering-method', 'mobile'];
+    await engine.start({ args });
+    assert.deepEqual(calls, [args]);
+    assert.equal(warnings.length, 0);
 });
 
 test('a caller-supplied GPUDevice is passed through without requesting another', async () => {
@@ -63,10 +79,63 @@ test('a caller-supplied GPUDevice is passed through without requesting another',
     assert.equal(modules[0].preinitializedWebGPUDevice, device);
 });
 
-test('unsupported WebGPU rejects before instantiating the .NET runtime', async () => {
-    const { Engine, modules } = harness(undefined);
-    await assert.rejects(new Engine({ renderingDriver: 'webgpu' }).init('godot'), /WebGPU is not supported/);
-    assert.equal(modules.length, 0);
+for (const [name, gpu] of [
+    ['no navigator.gpu', undefined],
+    ['no adapter', { async requestAdapter() { return null; } }],
+    ['adapter request rejected', { async requestAdapter() { throw new Error('Adapter denied'); } }],
+    ['device request rejected', { async requestAdapter() {
+        return { features: new Set(), limits: {}, async requestDevice() { throw new Error('Device denied'); } };
+    } }],
+]) {
+    test(name + ' starts WebGL Compatibility with the same runtime and pack', async () => {
+        const { Engine, modules, calls, warnings } = harness(gpu);
+        const args = ['--verbose', '--rendering-driver', 'webgpu', '--rendering-method', 'mobile'];
+        await new Engine({ executable: 'godot', renderingDriver: 'webgpu', args }).startGame();
+        assert.equal(modules.length, 1);
+        assert.equal('preinitializedWebGPUDevice' in modules[0], false);
+        assert.deepEqual(calls, [[
+            '--rendering-driver', 'opengl3', '--rendering-method', 'gl_compatibility',
+            '--main-pack', 'godot.pck', '--verbose',
+        ]]);
+        assert.equal(warnings.length, 1);
+        assert.match(warnings[0][0], /falling back to WebGL 2 Compatibility/);
+        assert.deepEqual(args, ['--verbose', '--rendering-driver', 'webgpu', '--rendering-method', 'mobile']);
+    });
+}
+
+for (const separator of ['--', '++']) {
+    test('fallback survives separate init and start overrides, preserving user arguments after ' + separator, async () => {
+        const { Engine, calls } = harness(undefined);
+        const engine = new Engine({ renderingDriver: 'webgpu' });
+        await engine.init('godot');
+        await engine.start({ args: [
+            '--main-pack', 'custom.pck', '--rendering-method', 'mobile', '--rendering-driver', 'webgpu',
+            '--rendering-driver', 'webgpu', separator, '--rendering-driver', 'user-value', '--rendering-method', 'user-value',
+        ] });
+        assert.deepEqual(calls, [[
+            '--rendering-driver', 'opengl3', '--rendering-method', 'gl_compatibility', '--main-pack', 'custom.pck',
+            separator, '--rendering-driver', 'user-value', '--rendering-method', 'user-value',
+        ]]);
+    });
+
+    test('user arguments after ' + separator + ' do not select WebGPU', async () => {
+        const { Engine, calls, warnings } = harness(undefined);
+        const args = [separator, '--rendering-driver', 'webgpu'];
+        const engine = new Engine({ renderingDriver: 'opengl3', args });
+        await engine.init('godot');
+        await engine.start();
+        assert.deepEqual(calls, [args]);
+        assert.equal(warnings.length, 0);
+    });
+}
+
+test('native startup errors remain visible instead of triggering device fallback', async () => {
+    const { Engine, warnings } = harness(undefined);
+    const engine = new Engine({ renderingDriver: 'webgpu', preinitializedWebGPUDevice: {} });
+    await engine.init('godot');
+    engine.rtenv.callMain = () => { throw new Error('Native startup failed'); };
+    await assert.rejects(engine.start(), /Native startup failed/);
+    assert.equal(warnings.length, 0);
 });
 
 test('the browser requests the same optional features and all limits as the native backend', async () => {
