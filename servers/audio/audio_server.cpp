@@ -224,6 +224,15 @@ int AudioDriverManager::get_driver_count() {
 	return driver_count;
 }
 
+void AudioDriverManager::reset() {
+	// 2dog: discard OS-owned drivers before an engine restart, retaining only the dummy driver.
+	drivers[0] = &AudioDriverManager::dummy_driver;
+	for (int i = 1; i < MAX_DRIVERS; i++) {
+		drivers[i] = nullptr;
+	}
+	driver_count = 1;
+}
+
 void AudioDriverManager::initialize(int p_driver) {
 	GLOBAL_DEF_RST("audio/driver/enable_input", false);
 	GLOBAL_DEF_RST(PropertyInfo(Variant::INT, "audio/driver/mix_rate", PROPERTY_HINT_RANGE, "11025,192000,1,or_greater,suffix:Hz"), DEFAULT_MIX_RATE);
@@ -1654,6 +1663,13 @@ void AudioServer::finish() {
 	for (int i = 0; i < AudioDriverManager::get_driver_count(); i++) {
 		AudioDriverManager::get_driver(i)->finish();
 	}
+
+	// 2dog: after drivers stop, drain deferred playback deletion and both graveyard generations.
+	for (AudioStreamPlaybackListNode *playback : playback_list) {
+		_delete_stream_playback_list_node(playback);
+	}
+	_cleanup_lists();
+	_cleanup_lists();
 
 	for (int i = 0; i < buses.size(); i++) {
 		memdelete(buses[i]);

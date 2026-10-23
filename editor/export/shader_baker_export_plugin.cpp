@@ -409,6 +409,19 @@ void ShaderBakerExportPlugin::_customize_shader_version(ShaderRD *p_shader, RID 
 		work_item.cache_path = group_items[group].cache_path;
 		work_item.shader_name = p_shader->get_name();
 		work_item.stage_sources = p_shader->version_build_variant_stage_sources(p_version, i);
+		// The host editor can enable multiview and input-attachment variants WebGPU cannot run.
+		if (shader_container_driver == "webgpu") {
+			bool supported = true;
+			for (const String &source : work_item.stage_sources) {
+				if (source.contains("\n#define USE_MULTIVIEW\n") || source.contains("\n#define SUBPASS\n")) {
+					supported = false;
+					break;
+				}
+			}
+			if (!supported) {
+				continue;
+			}
+		}
 		work_item.dynamic_buffers = p_shader->get_dynamic_buffers();
 		work_item.variant = i;
 
@@ -425,7 +438,7 @@ void ShaderBakerExportPlugin::_customize_shader_version(ShaderRD *p_shader, RID 
 void ShaderBakerExportPlugin::_process_work_item(WorkItem p_work_item) {
 	if (!tasks_cancelled) {
 		// Only process the item if the tasks haven't been cancelled by the user yet.
-		Vector<RD::ShaderStageSPIRVData> spirv_data = ShaderRD::compile_stages(p_work_item.stage_sources, p_work_item.dynamic_buffers);
+		Vector<RD::ShaderStageSPIRVData> spirv_data = ShaderRD::compile_stages(p_work_item.stage_sources, p_work_item.dynamic_buffers, shader_container_format);
 		if (unlikely(spirv_data.is_empty())) {
 			ERR_PRINT("Unable to retrieve SPIR-V data for shader.");
 		} else {
