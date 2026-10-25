@@ -843,6 +843,11 @@ uint32_t RenderSceneBuffersRD::get_depth_usage_bits(bool p_resolve, bool p_msaa,
 }
 
 RD::DataFormat RenderSceneBuffersRD::get_velocity_format() {
+	if (RD::get_singleton()->get_device_api_name() == "WebGPU") {
+		// RGBA16F is both renderable and storage-capable in core WebGPU,
+		// and matches the copy kernels used for temporal history.
+		return RD::DATA_FORMAT_R16G16B16A16_SFLOAT;
+	}
 	return RD::DATA_FORMAT_R16G16_SFLOAT;
 }
 
