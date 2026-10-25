@@ -66,6 +66,7 @@ enum Dimension : uint32_t { NONE,
 enum SampleType : uint32_t { FLOAT,
 	UINT,
 	SINT,
+	UNFILTERABLE_FLOAT, // A float texture no sampler reads.
 	SAMPLE_TYPE_COUNT };
 
 struct Resource {
@@ -117,7 +118,7 @@ inline bool parse(const char *p_text, Shader &r_shader) {
 			return false;
 		}
 	}
-	constexpr const char *PREFIX = "//WEBGPU_METADATA:3,";
+	constexpr const char *PREFIX = "//WEBGPU_METADATA:4,";
 	if (std::strncmp(p_text, PREFIX, std::strlen(PREFIX)) != 0) {
 		return false;
 	}
@@ -173,7 +174,7 @@ inline std::string encode(const Shader &p_shader) {
 			result += "//RESOURCE_USED:" + std::to_string(r.group) + "," + std::to_string(r.binding) + "\n";
 		}
 	}
-	result += "//WEBGPU_METADATA:3," + std::to_string(p_shader.has_overrides) + "\n";
+	result += "//WEBGPU_METADATA:4," + std::to_string(p_shader.has_overrides) + "\n";
 	for (const Resource &r : p_shader.resources) {
 		result += "//BINDING:" + std::to_string(r.group) + "," + std::to_string(r.binding) + "," +
 				std::to_string(r.kind) + "," + std::to_string(r.dimension) + "," + std::to_string(r.sample_type) + "," +

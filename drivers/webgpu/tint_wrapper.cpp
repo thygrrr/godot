@@ -250,9 +250,13 @@ char *tint_wrapper_spirv_to_wgsl(const uint32_t *p_spirv_words, size_t p_word_co
 		webgpu_metadata::Shader metadata;
 		metadata.has_overrides = !inspector.Overrides().empty();
 		std::set<uint64_t> used_bindings;
+		std::set<uint64_t> sampled_textures;
 		for (const auto &entry : inspector.GetEntryPoints()) {
 			for (const auto &binding : inspector.GetResourceBindings(entry.name)) {
 				used_bindings.insert((uint64_t(binding.bind_group) << 32) | binding.binding);
+			}
+			for (const auto &use : inspector.GetSamplerTextureUses(entry.name)) {
+				sampled_textures.insert((uint64_t(use.texture_binding_point.group) << 32) | use.texture_binding_point.binding);
 			}
 			for (const auto &constant : entry.overrides) {
 				if (constant.is_id_specified) {
@@ -265,7 +269,12 @@ char *tint_wrapper_spirv_to_wgsl(const uint32_t *p_spirv_words, size_t p_word_co
 			if (resource.kind == webgpu_metadata::KIND_COUNT) {
 				return tint::Failure{ "WebGPU: unsupported reflected resource type" };
 			}
-			resource.used = used_bindings.count((uint64_t(resource.group) << 32) | resource.binding) != 0;
+			const uint64_t key = (uint64_t(resource.group) << 32) | resource.binding;
+			resource.used = used_bindings.count(key) != 0;
+			// A float texture that is only loaded binds as unfilterable, which also admits depth textures.
+			if (resource.kind == webgpu_metadata::TEXTURE && resource.sample_type == webgpu_metadata::FLOAT && resource.used && !sampled_textures.count(key)) {
+				resource.sample_type = webgpu_metadata::UNFILTERABLE_FLOAT;
+			}
 			metadata.resources.push_back(resource);
 		}
 		if (inspector.has_error()) {

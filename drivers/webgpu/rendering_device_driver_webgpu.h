@@ -161,6 +161,12 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 	WGPUSampler dummy_filtering_sampler = nullptr;
 	WGPUSampler dummy_comparison_sampler = nullptr;
 
+	// Bindings no stage reads get layout entries guessed from Godot's uniform types, which the bound resource need
+	// not match. WebGPU validates them anyway, so they bind 1x1 dummies matching the guess, keyed by layout shape.
+	HashMap<uint64_t, Pair<WGPUTexture, WGPUTextureView>> unused_binding_views;
+	WGPUTextureView _unused_binding_view(const WGPUBindGroupLayoutEntry &p_layout);
+	void _fit_unused_bindings(LocalVector<WGPUBindGroupEntry> &r_entries, const WGShader *p_shader, uint32_t p_set_idx);
+
 	// --- BGL Rebinding Helper ---
 	WGPUBindGroup _get_compatible_bind_group(WGUniformSet *p_us, WGShader *p_target_shader, uint32_t p_set_idx);
 

@@ -41,7 +41,7 @@ class RenderingShaderContainerWebGPU : public RenderingShaderContainer {
 public:
 	// Format identifier for WebGPU shader containers.
 	static constexpr uint32_t FORMAT_WEBGPU = 0x57475055; // "WGPU"
-	static constexpr uint32_t FORMAT_VERSION = 3;
+	static constexpr uint32_t FORMAT_VERSION = 4; // Matches the WGSL metadata version.
 	static constexpr uint32_t NO_PUSH_CONSTANTS = UINT32_MAX;
 
 	struct HeaderData {
