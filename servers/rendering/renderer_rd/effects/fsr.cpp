@@ -44,8 +44,7 @@ FSR::FSR() {
 	fsr_shader.initialize(fsr_upscale_modes);
 
 	if (RD::get_singleton()->has_feature(RD::SUPPORTS_HALF_FLOAT)) {
-		shader_variant = FSR_SHADER_VARIANT_NORMAL;
-		fsr_shader.set_variant_enabled(FSR_SHADER_VARIANT_FALLBACK, false);
+		shader_variant = FSR_SHADER_VARIANT_NORMAL; // Keeps the fallback, so shader bakes cover FP16-less devices.
 	} else {
 		shader_variant = FSR_SHADER_VARIANT_FALLBACK;
 		fsr_shader.set_variant_enabled(FSR_SHADER_VARIANT_NORMAL, false);
