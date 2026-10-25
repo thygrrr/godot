@@ -33,6 +33,7 @@
 #include "core/config/engine.h"
 #include "core/config/project_settings.h"
 #include "core/io/dir_access.h"
+#include "core/os/os.h"
 #include "core/string/string_builder.h"
 #include "core/version.h"
 #include "editor/editor_node.h"
@@ -102,6 +103,14 @@ bool ShaderBakerExportPlugin::_begin_customize_resources(const Ref<EditorExportP
 
 	if (Engine::get_singleton()->is_generate_spirv_debug_info_enabled()) {
 		WARN_PRINT("Shader baker can't generate a compatible shader when run with --generate-spirv-debug-info. Restart the editor without this argument if you want to bake shaders.");
+		return false;
+	}
+
+	// Only the editor's own renderer has shaders to bake.
+	// shortcut: a Forward+ export that downgrades to Mobile compiles Mobile shaders at runtime, bake both if that matters.
+	const String export_method = get_export_preset()->get_project_setting("rendering/renderer/rendering_method");
+	if (shader_container_driver == "webgpu" && export_method != OS::get_singleton()->get_current_rendering_method()) {
+		WARN_PRINT(vformat("Shader baker disabled: the export uses the \"%s\" renderer, but the editor runs \"%s\". Restart the editor with `--rendering-method %s` to bake shaders.", export_method, OS::get_singleton()->get_current_rendering_method(), export_method));
 		return false;
 	}
 
@@ -411,6 +420,11 @@ void ShaderBakerExportPlugin::_customize_shader_version(ShaderRD *p_shader, RID 
 		work_item.stage_sources = p_shader->version_build_variant_stage_sources(p_version, i);
 		// The host editor can enable multiview and input-attachment variants WebGPU cannot run.
 		if (shader_container_driver == "webgpu") {
+			// Sources name the host driver, but RENDER_DRIVER_WEBGPU paths must be baked.
+			const String host_define = "\n#define RENDER_DRIVER_" + OS::get_singleton()->get_current_rendering_driver_name().to_upper() + "\n";
+			for (String &source : work_item.stage_sources) {
+				source = source.replace(host_define, "\n#define RENDER_DRIVER_WEBGPU\n");
+			}
 			bool supported = true;
 			for (const String &source : work_item.stage_sources) {
 				if (source.contains("\n#define USE_MULTIVIEW\n") || source.contains("\n#define SUBPASS\n")) {
