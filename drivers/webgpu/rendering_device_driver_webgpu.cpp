@@ -7831,6 +7831,14 @@ uint64_t RenderingDeviceDriverWebGPU::limit_get(Limit p_limit) {
 			return device_limits.maxUniformBufferBindingSize;
 		case LIMIT_MAX_TEXTURES_PER_SHADER_STAGE:
 			return device_limits.maxSampledTexturesPerShaderStage;
+		case LIMIT_MAX_SAMPLERS_PER_SHADER_STAGE:
+			return device_limits.maxSamplersPerShaderStage;
+		case LIMIT_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE:
+			return device_limits.maxStorageBuffersPerShaderStage;
+		case LIMIT_MAX_STORAGE_IMAGES_PER_SHADER_STAGE:
+			return device_limits.maxStorageTexturesPerShaderStage;
+		case LIMIT_MAX_UNIFORM_BUFFERS_PER_SHADER_STAGE:
+			return device_limits.maxUniformBuffersPerShaderStage;
 		case LIMIT_MAX_TEXTURE_ARRAY_LAYERS:
 			return device_limits.maxTextureArrayLayers;
 		case LIMIT_MAX_TEXTURE_SIZE_1D:
