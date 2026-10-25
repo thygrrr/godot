@@ -141,7 +141,14 @@ int libgodot_export_pack(const char *p_project_path, const char *p_preset, const
 	OS_Windows export_os(GetModuleHandle(nullptr));
 
 	Vector<char *> argv;
-	argv.push_back(const_cast<char *>("--headless"));
+	// 2dog: an explicit rendering driver asks for a renderer, which the shader baker needs.
+	bool headless = true;
+	for (int i = 0; i < p_extra_argc; i++) {
+		headless = headless && String(p_extra_argv[i]) != "--rendering-driver";
+	}
+	if (headless) {
+		argv.push_back(const_cast<char *>("--headless"));
+	}
 	argv.push_back(const_cast<char *>("--export-pack"));
 	argv.push_back(const_cast<char *>(p_preset));
 	argv.push_back(const_cast<char *>(p_output_path));
@@ -154,7 +161,7 @@ int libgodot_export_pack(const char *p_project_path, const char *p_preset, const
 	argv.push_back(const_cast<char *>("++"));
 	argv.push_back(const_cast<char *>("--2dog-host-pack"));
 
-	// 2dog: run the headless editor lifecycle in-process.
+	// 2dog: run the editor lifecycle in-process.
 	Error err = Main::setup("libgodot", argv.size(), argv.ptrw());
 	if (err != OK) {
 		return (err == ERR_HELP) ? EXIT_SUCCESS : EXIT_FAILURE;

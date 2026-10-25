@@ -97,7 +97,8 @@ LIBGODOT_API int libgodot_import_project(const char *p_project_path, int p_extra
  *
  * Runs the editor pack export lifecycle. The project must already be
  * imported. Requires an editor build; template builds return -1. Do not call
- * while an instance exists.
+ * while an instance exists. Runs headless unless p_extra_argv passes
+ * --rendering-driver, as the shader baker needs a renderer.
  *
  * @param p_project_path Path to the directory containing project.godot.
  * @param p_preset       Name of the export preset (from export_presets.cfg).
