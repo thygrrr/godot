@@ -64,6 +64,8 @@ protected:
 	virtual uint32_t _to_bytes_header_extra_data(uint8_t *p_bytes) const override;
 
 public:
+	bool bake_skips_unsupported = false; // Set for the shader baker, which bakes the host editor's variants.
+
 	static char *compile_spirv(const uint8_t *p_bytes, int p_size);
 	static bool expand_bindings(RDC::ShaderReflection &r_reflection, spirv_preprocess::BindingMap &r_bindings);
 	bool get_stage_code(uint32_t p_index, Vector<uint8_t> &r_spirv, CharString &r_wgsl) const;
@@ -84,8 +86,12 @@ class RenderingShaderContainerFormatWebGPU : public RenderingShaderContainerForm
 	GDSOFTCLASS(RenderingShaderContainerFormatWebGPU, RenderingShaderContainerFormat);
 
 public:
+	bool bake_skips_unsupported = false;
+
 	virtual Ref<RenderingShaderContainer> create_container() const override {
-		return Ref<RenderingShaderContainerWebGPU>(memnew(RenderingShaderContainerWebGPU));
+		Ref<RenderingShaderContainerWebGPU> container = memnew(RenderingShaderContainerWebGPU);
+		container->bake_skips_unsupported = bake_skips_unsupported;
+		return container;
 	}
 
 	virtual ShaderLanguageVersion get_shader_language_version() const override {

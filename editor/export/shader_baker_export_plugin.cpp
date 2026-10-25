@@ -463,7 +463,10 @@ void ShaderBakerExportPlugin::_process_work_item(WorkItem p_work_item) {
 			// Compile shader binary from SPIR-V.
 			bool code_compiled = shader_container->set_code_from_spirv(p_work_item.shader_name, spirv_data);
 			if (unlikely(!code_compiled)) {
-				ERR_PRINT("Failed to compile code to native for SPIR-V.");
+				// WebGPU skips variants for the host's device quietly and reports real failures itself.
+				if (shader_container_driver != "webgpu") {
+					ERR_PRINT("Failed to compile code to native for SPIR-V.");
+				}
 			} else {
 				PackedByteArray shader_bytes = shader_container->to_bytes();
 				{

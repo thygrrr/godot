@@ -78,6 +78,10 @@ Vector<uint8_t> convert_push_constants_to_storage_buffers(const Vector<uint8_t> 
 // Set OpTypeImage depth=2 (unknown) to depth=1, which WGSL can express as a depth texture.
 Vector<uint8_t> fix_depth2_images(const Vector<uint8_t> &p_bytes);
 
+// Names a feature WGSL cannot express (16-bit types, image atomics, formatless storage images), or nullptr.
+// Variants using one exist for other devices; Tint would fail on them, some with internal errors.
+const char *unsupported_feature(const Vector<uint8_t> &p_bytes);
+
 // Negate gl_Position.y before every vertex-shader return; Godot's SPIR-V targets Vulkan's flipped clip space.
 Vector<uint8_t> negate_position_y(const Vector<uint8_t> &p_bytes);
 

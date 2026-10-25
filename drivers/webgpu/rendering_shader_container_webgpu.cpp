@@ -226,8 +226,16 @@ bool RenderingShaderContainerWebGPU::_set_code_from_spirv(const ReflectShader &p
 		spirv.resize(stages[i].size() * 4);
 		memcpy(spirv.ptrw(), stages[i].data(), spirv.size());
 		spirv = spirv_preprocess::remap_bindings(spirv, bindings);
+		if (const char *feature = spirv_preprocess::unsupported_feature(spirv)) {
+			// A baking editor enables variants for its own device; WebGPU never selects these.
+			if (bake_skips_unsupported) {
+				print_verbose(vformat("WebGPU: not baking a %s variant, which uses %s.", String::utf8(shader_name.get_data()), feature));
+				return false;
+			}
+			ERR_FAIL_V_MSG(false, vformat("WebGPU: shader '%s' uses %s, which WebGPU does not support.", String::utf8(shader_name.get_data()), feature));
+		}
 		char *wgsl = compile_spirv(spirv.ptr(), spirv.size());
-		ERR_FAIL_NULL_V_MSG(wgsl, false, "WebGPU: failed to bake portable WGSL.");
+		ERR_FAIL_NULL_V_MSG(wgsl, false, vformat("WebGPU: failed to translate stage %d of shader '%s' to WGSL.", (int)p_shader.shader_stages[i].shader_stage, String::utf8(shader_name.get_data())));
 		const size_t wgsl_size = strlen(wgsl) + 1;
 		PackedByteArray payload;
 		payload.resize(sizeof(uint32_t) + spirv.size() + wgsl_size);

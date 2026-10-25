@@ -703,6 +703,35 @@ Vector<uint8_t> convert_push_constants_to_storage_buffers(const Vector<uint8_t> 
 	return out;
 }
 
+const char *unsupported_feature(const Vector<uint8_t> &p_bytes) {
+	ERR_FAIL_COND_V_MSG(!is_well_formed(p_bytes), nullptr, MALFORMED_SPIRV);
+	for (const Inst inst : SpirvView(p_bytes)) {
+		if (inst.op() == spv::OpImageTexelPointer) {
+			return "image atomics";
+		}
+		// A declared storage image without a format fails even if this variant never accesses it.
+		if (inst.op() == spv::OpTypeImage && inst.count() >= 9 && inst[7] == 2 && inst[8] == spv::ImageFormatUnknown && inst[3] != spv::DimSubpassData) {
+			return "storage images without a format";
+		}
+		if (inst.op() != spv::OpCapability) {
+			continue;
+		}
+		switch (inst[1]) {
+			case spv::CapabilityFloat16:
+			case spv::CapabilityInt16:
+			case spv::CapabilityInt8:
+			case spv::CapabilityStorageBuffer16BitAccess:
+			case spv::CapabilityUniformAndStorageBuffer16BitAccess:
+			case spv::CapabilityStoragePushConstant16:
+			case spv::CapabilityStorageInputOutput16:
+				return "8- or 16-bit types";
+			default:
+				break;
+		}
+	}
+	return nullptr;
+}
+
 Vector<uint8_t> fix_depth2_images(const Vector<uint8_t> &p_bytes) {
 	ERR_FAIL_COND_V_MSG(!is_well_formed(p_bytes), p_bytes, MALFORMED_SPIRV);
 	Vector<uint8_t> out = p_bytes; // Copied on the first write.

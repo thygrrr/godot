@@ -33,7 +33,9 @@
 #include "drivers/webgpu/rendering_shader_container_webgpu.h"
 
 RenderingShaderContainerFormat *ShaderBakerExportPluginPlatformWebGPU::create_shader_container_format(const Ref<EditorExportPlatform> &p_platform, const Ref<EditorExportPreset> &p_preset) {
-	return memnew(RenderingShaderContainerFormatWebGPU);
+	RenderingShaderContainerFormatWebGPU *format = memnew(RenderingShaderContainerFormatWebGPU);
+	format->bake_skips_unsupported = true;
+	return format;
 }
 
 bool ShaderBakerExportPluginPlatformWebGPU::matches_driver(const String &p_driver) {
