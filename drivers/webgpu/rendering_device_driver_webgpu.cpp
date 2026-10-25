@@ -5465,6 +5465,9 @@ void RenderingDeviceDriverWebGPU::command_copy_texture_to_buffer(CommandBufferID
 void RenderingDeviceDriverWebGPU::pipeline_free(PipelineID p_pipeline) {
 	WGPipelineWrapper *pw = (WGPipelineWrapper *)(p_pipeline.id);
 	ERR_FAIL_NULL(pw);
+	if (pw->deferred) {
+		memdelete(pw->deferred);
+	}
 	if (pw->type == WGPipelineWrapper::RENDER && pw->render_handle) {
 		wgpuRenderPipelineRelease(pw->render_handle);
 		if (pw->render_handle_u16) {
@@ -6548,6 +6551,10 @@ void RenderingDeviceDriverWebGPU::command_bind_render_pipeline(CommandBufferID p
 	if (cmd->render_state.current_pipeline == pw) {
 		return; // Pipeline already bound, skip redundant call.
 	}
+	if (pw->deferred) {
+		_create_deferred_pipeline(pw);
+	}
+	ERR_FAIL_NULL(pw->render_handle);
 
 	wgpuRenderPassEncoderSetPipeline(cmd->render_encoder, pw->render_handle);
 	wgpuRenderPassEncoderSetStencilReference(cmd->render_encoder, pw->stencil_reference);
@@ -7027,6 +7034,69 @@ WGPUShaderModule RenderingDeviceDriverWebGPU::_create_module_with_spec_constants
 }
 
 RDD::PipelineID RenderingDeviceDriverWebGPU::render_pipeline_create(
+		ShaderID p_shader,
+		VertexFormatID p_vertex_format,
+		RenderPrimitive p_render_primitive,
+		PipelineRasterizationState p_rasterization_state,
+		PipelineMultisampleState p_multisample_state,
+		PipelineDepthStencilState p_depth_stencil_state,
+		PipelineColorBlendState p_blend_state,
+		VectorView<int32_t> p_color_attachments,
+		BitField<PipelineDynamicStateFlags> p_dynamic_state,
+		RenderPassID p_render_pass,
+		uint32_t p_render_subpass,
+		VectorView<PipelineSpecializationConstant> p_specialization_constants) {
+#ifdef WEB_ENABLED
+	// Chrome compiles pipelines one by one on its GPU thread and presents no frames meanwhile, and Godot creates many
+	// pipelines it never binds, which stalled Forward+ startup for half a minute. Create each on first bind instead.
+	WGShader *shader = (WGShader *)(p_shader.id);
+	ERR_FAIL_COND_V(!shader, PipelineID());
+	ERR_FAIL_COND_V(!p_render_pass.id, PipelineID());
+	WGPipelineWrapper *pw = memnew(WGPipelineWrapper);
+	pw->type = WGPipelineWrapper::RENDER;
+	pw->shader = shader;
+	WGDeferredPipeline *d = memnew(WGDeferredPipeline);
+	d->vertex_format = p_vertex_format;
+	d->render_primitive = p_render_primitive;
+	d->rasterization_state = p_rasterization_state;
+	d->multisample_state = p_multisample_state;
+	d->depth_stencil_state = p_depth_stencil_state;
+	d->blend_state = p_blend_state;
+	for (uint32_t i = 0; i < p_color_attachments.size(); i++) {
+		d->color_attachments.push_back(p_color_attachments[i]);
+	}
+	d->dynamic_state = p_dynamic_state;
+	d->render_pass = p_render_pass;
+	d->render_subpass = p_render_subpass;
+	for (uint32_t i = 0; i < p_specialization_constants.size(); i++) {
+		d->specialization_constants.push_back(p_specialization_constants[i]);
+	}
+	pw->deferred = d;
+	return PipelineID(pw);
+#else
+	return _render_pipeline_create_now(p_shader, p_vertex_format, p_render_primitive, p_rasterization_state, p_multisample_state,
+			p_depth_stencil_state, p_blend_state, p_color_attachments, p_dynamic_state, p_render_pass, p_render_subpass, p_specialization_constants);
+#endif
+}
+
+void RenderingDeviceDriverWebGPU::_create_deferred_pipeline(WGPipelineWrapper *p_pw) {
+	WGDeferredPipeline *d = p_pw->deferred;
+	p_pw->deferred = nullptr;
+	ShaderID shader(p_pw->shader);
+	PipelineID built = p_pw->type == WGPipelineWrapper::COMPUTE
+			? _compute_pipeline_create_now(shader, d->specialization_constants)
+			: _render_pipeline_create_now(shader, d->vertex_format, d->render_primitive, d->rasterization_state, d->multisample_state,
+					  d->depth_stencil_state, d->blend_state, d->color_attachments, d->dynamic_state, d->render_pass, d->render_subpass,
+					  d->specialization_constants);
+	memdelete(d);
+	if (built.id) {
+		WGPipelineWrapper *b = (WGPipelineWrapper *)(built.id);
+		*p_pw = *b;
+		memdelete(b);
+	}
+}
+
+RDD::PipelineID RenderingDeviceDriverWebGPU::_render_pipeline_create_now(
 		ShaderID p_shader,
 		VertexFormatID p_vertex_format,
 		RenderPrimitive p_render_primitive,
@@ -7546,6 +7616,10 @@ void RenderingDeviceDriverWebGPU::command_bind_compute_pipeline(CommandBufferID 
 	WGPipelineWrapper *pw = (WGPipelineWrapper *)(p_pipeline.id);
 	ERR_FAIL_NULL(cmd);
 	ERR_FAIL_NULL(pw);
+	if (pw->deferred) {
+		_create_deferred_pipeline(pw);
+	}
+	ERR_FAIL_NULL(pw->compute_handle);
 
 	// Ensure we're in a compute pass (end any active render pass).
 	if (cmd->active_encoder == WGCommandBuffer::RENDER) {
@@ -7661,6 +7735,24 @@ void RenderingDeviceDriverWebGPU::command_compute_dispatch_indirect(CommandBuffe
 }
 
 RDD::PipelineID RenderingDeviceDriverWebGPU::compute_pipeline_create(ShaderID p_shader, VectorView<PipelineSpecializationConstant> p_specialization_constants) {
+#ifdef WEB_ENABLED
+	// Created on first bind, see render_pipeline_create.
+	WGShader *shader = (WGShader *)(p_shader.id);
+	ERR_FAIL_COND_V(!shader, PipelineID());
+	WGPipelineWrapper *pw = memnew(WGPipelineWrapper);
+	pw->type = WGPipelineWrapper::COMPUTE;
+	pw->shader = shader;
+	pw->deferred = memnew(WGDeferredPipeline);
+	for (uint32_t i = 0; i < p_specialization_constants.size(); i++) {
+		pw->deferred->specialization_constants.push_back(p_specialization_constants[i]);
+	}
+	return PipelineID(pw);
+#else
+	return _compute_pipeline_create_now(p_shader, p_specialization_constants);
+#endif
+}
+
+RDD::PipelineID RenderingDeviceDriverWebGPU::_compute_pipeline_create_now(ShaderID p_shader, VectorView<PipelineSpecializationConstant> p_specialization_constants) {
 	WGShader *shader = (WGShader *)(p_shader.id);
 	ERR_FAIL_COND_V(!shader, PipelineID());
 	WGPUShaderModule compute_module = _stage_module(shader, SHADER_STAGE_COMPUTE);
@@ -7711,6 +7803,8 @@ RDD::PipelineID RenderingDeviceDriverWebGPU::compute_pipeline_create(ShaderID p_
 	desc.layout = shader->pipeline_layout;
 	desc.compute.module = compute_module;
 	desc.compute.entryPoint = { "main", WGPU_STRLEN };
+	CharString label = shader->name.utf8();
+	desc.label = { label.get_data(), WGPU_STRLEN };
 	if (use_override_path && !compute_constants.is_empty()) {
 		desc.compute.constantCount = compute_constants.size();
 		desc.compute.constants = compute_constants.ptr();
@@ -7944,11 +8038,17 @@ uint64_t RenderingDeviceDriverWebGPU::get_resource_native_handle(DriverResource 
 			return buf ? (uint64_t)buf->handle : 0;
 		}
 		case DRIVER_RESOURCE_COMPUTE_PIPELINE: {
-			const WGPipelineWrapper *pw = (const WGPipelineWrapper *)p_driver_id.id;
+			WGPipelineWrapper *pw = (WGPipelineWrapper *)p_driver_id.id;
+			if (pw && pw->deferred) {
+				_create_deferred_pipeline(pw);
+			}
 			return (pw && pw->type == WGPipelineWrapper::COMPUTE) ? (uint64_t)pw->compute_handle : 0;
 		}
 		case DRIVER_RESOURCE_RENDER_PIPELINE: {
-			const WGPipelineWrapper *pw = (const WGPipelineWrapper *)p_driver_id.id;
+			WGPipelineWrapper *pw = (WGPipelineWrapper *)p_driver_id.id;
+			if (pw && pw->deferred) {
+				_create_deferred_pipeline(pw);
+			}
 			return (pw && pw->type == WGPipelineWrapper::RENDER) ? (uint64_t)pw->render_handle : 0;
 		}
 		default:

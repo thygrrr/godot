@@ -213,6 +213,9 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 	Mutex stage_module_mutex;
 	WGPUShaderModule _stage_module(WGShader *p_shader, ShaderStage p_stage);
 	WGPUShaderModule _create_module_with_spec_constants(const PackedByteArray &p_spirv, VectorView<PipelineSpecializationConstant> p_constants, ShaderStage p_stage, const WGShader *p_shader);
+	PipelineID _render_pipeline_create_now(ShaderID p_shader, VertexFormatID p_vertex_format, RenderPrimitive p_render_primitive, PipelineRasterizationState p_rasterization_state, PipelineMultisampleState p_multisample_state, PipelineDepthStencilState p_depth_stencil_state, PipelineColorBlendState p_blend_state, VectorView<int32_t> p_color_attachments, BitField<PipelineDynamicStateFlags> p_dynamic_state, RenderPassID p_render_pass, uint32_t p_render_subpass, VectorView<PipelineSpecializationConstant> p_specialization_constants);
+	PipelineID _compute_pipeline_create_now(ShaderID p_shader, VectorView<PipelineSpecializationConstant> p_specialization_constants);
+	void _create_deferred_pipeline(WGPipelineWrapper *p_pw);
 
 	// Bindings rewritten by _postprocess_wgsl that the bind group layouts must mirror.
 	struct WGSLRewrites {

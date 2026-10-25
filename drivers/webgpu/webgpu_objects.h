@@ -259,8 +259,24 @@ struct WGPipelineWrapper {
 	// Uint32 variants and select the correct one at draw time.
 	WGPURenderPipeline render_handle_u16 = nullptr;
 	bool is_strip = false;
+	// Creation arguments of a pipeline that is created on first bind (web only).
+	struct WGDeferredPipeline *deferred = nullptr;
 
 	WGPipelineWrapper() : render_handle(nullptr) {}
+};
+
+struct WGDeferredPipeline {
+	RDD::VertexFormatID vertex_format;
+	RDD::RenderPrimitive render_primitive = RDD::RENDER_PRIMITIVE_TRIANGLES;
+	RDD::PipelineRasterizationState rasterization_state;
+	RDD::PipelineMultisampleState multisample_state;
+	RDD::PipelineDepthStencilState depth_stencil_state;
+	RDD::PipelineColorBlendState blend_state;
+	LocalVector<int32_t> color_attachments;
+	BitField<RDD::PipelineDynamicStateFlags> dynamic_state;
+	RDD::RenderPassID render_pass;
+	uint32_t render_subpass = 0;
+	LocalVector<RDD::PipelineSpecializationConstant> specialization_constants;
 };
 
 // =============================================================================
