@@ -1391,10 +1391,8 @@ RDD::TextureID RenderingDeviceDriverWebGPU::texture_create(const TextureFormat &
 	// Upgrade to 32-bit equivalents when storage binding is needed.
 	if (tex->usage & WGPUTextureUsage_StorageBinding) {
 		tex->format = _promote_storage_format(tex->format);
-		// Read-only storage becomes a sampled texture without the WGSL language feature.
-		if (!has_rw_storage_textures) {
-			tex->usage |= WGPUTextureUsage_TextureBinding;
-		}
+		// Read-only storage is bound as a sampled texture; see _postprocess_wgsl().
+		tex->usage |= WGPUTextureUsage_TextureBinding;
 	}
 
 	// When float32-filterable is not supported (e.g. Adreno GPU), float32
@@ -2296,8 +2294,9 @@ RDD::SamplerID RenderingDeviceDriverWebGPU::sampler_create(const SamplerState &p
 	desc.addressModeU = map_address(p_state.repeat_u);
 	desc.addressModeV = map_address(p_state.repeat_v);
 	desc.addressModeW = map_address(p_state.repeat_w);
-	desc.lodMinClamp = p_state.min_lod;
-	desc.lodMaxClamp = p_state.max_lod;
+	// WebGPU rejects negative LOD clamps, which Godot's samplers use to mean "unclamped".
+	desc.lodMinClamp = MAX(0.0f, p_state.min_lod);
+	desc.lodMaxClamp = MAX(desc.lodMinClamp, p_state.max_lod);
 
 	if (p_state.enable_compare) {
 		desc.compare = map_compare(p_state.compare_op);
@@ -3098,10 +3097,9 @@ CharString RenderingDeviceDriverWebGPU::_postprocess_wgsl(const char *p_wgsl, Sh
 		storage = comma + 1;
 	}
 
-	// When readonly-and-readwrite-storage-textures is not available, convert
-	// read-only storage textures to sampled textures. Firefox/wgpu rejects
-	// texture_storage_*<fmt, read> without the feature.
-	if (!has_rw_storage_textures && (strstr(cs.get_data(), ", read>") || strstr(cs.get_data(), ",read>"))) {
+	// Convert read-only storage textures to sampled textures. They then count against the sampled-texture budget, not
+	// the 8 storage textures per stage (SDFGI reads 12), and Firefox/wgpu needs no readonly-and-readwrite feature.
+	if (strstr(cs.get_data(), ", read>") || strstr(cs.get_data(), ",read>")) {
 		struct ReadOnlyInfo {
 			uint32_t grp, bnd;
 			String var_name, dim_type, fmt;
@@ -3252,6 +3250,12 @@ CharString RenderingDeviceDriverWebGPU::_postprocess_wgsl(const char *p_wgsl, Sh
 					String search = "textureLoad(" + info.var_name;
 					int64_t pos = 0;
 					while ((pos = ws.find(search, pos)) != -1) {
+						// Skip other variables sharing the prefix, such as v_1 for v.
+						const char32_t next = pos + search.length() < ws.length() ? ws[pos + search.length()] : U' ';
+						if (is_ascii_identifier_char(next)) {
+							pos += search.length();
+							continue;
+						}
 						int64_t paren_start = pos + String("textureLoad").length();
 						int depth = 0;
 						int64_t insert_mip = -1;
@@ -3648,6 +3652,21 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 					case RDD::UNIFORM_TYPE_SAMPLER_WITH_TEXTURE: {
 						// Combined sampler+texture split by our SPIR-V preprocessor:
 						// Sampler at binding*2+0, texture at binding*2+1 in the modified SPIR-V → matches Tint WGSL output.
+						const uint32_t ms_key = ((uint32_t)set << 16) | (u.binding * 2);
+						if (wgsl_tex_dims.has(ms_key)) {
+							// Multisampled textures can't be sampled, so the preprocessor keeps only the texture, at binding*2.
+							WGPUBindGroupLayoutEntry &entry = entries[e_idx++];
+							entry = {};
+							entry.binding = u.binding * 2;
+							entry.visibility = vis;
+							const bool is_depth = wgsl_is_depth_texture.has(ms_key) && wgsl_is_depth_texture[ms_key];
+							const WGPUTextureSampleType *wgsl_type = wgsl_tex_sample_type.getptr(ms_key);
+							entry.texture.sampleType = _bgl_texture_sample_type(is_depth, true, wgsl_type ? *wgsl_type : WGPUTextureSampleType_Float);
+							entry.texture.viewDimension = wgsl_tex_dims[ms_key];
+							entry.texture.multisampled = true;
+							bge.layout_entry = entry;
+							break;
+						}
 						WGPUBindGroupLayoutEntry &samp_entry = entries[e_idx++];
 						samp_entry = {};
 						samp_entry.binding = u.binding * 2 + 0;
@@ -3866,6 +3885,7 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 						break;
 				}
 			}
+			entries.resize(e_idx); // Multisampled combined samplers use one entry, not two.
 
 			// Add BGL entries for depth alias variables.
 			// Tint splits mixed-usage depth textures: original→Depth at binding B,
@@ -3965,7 +3985,8 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 					for (int u_idx2 = 0; u_idx2 < pc_uniforms.size(); u_idx2++) {
 						const RenderingDeviceCommons::ShaderUniform &pu = pc_uniforms[u_idx2];
 						WGPUShaderStage pvis = _stages_to_wgpu_visibility((uint32_t)pu.stages);
-						if (pu.type == RDD::UNIFORM_TYPE_SAMPLER_WITH_TEXTURE) {
+						// A multisampled combined sampler has only its texture entry, copied below.
+						if (pu.type == RDD::UNIFORM_TYPE_SAMPLER_WITH_TEXTURE && !wgsl_tex_dims.has(((uint32_t)i << 16) | (pu.binding * 2))) {
 							WGPUBindGroupLayoutEntry se = {}, te = {};
 							se.binding = pu.binding * 2 + 0;
 							se.visibility = pvis;
@@ -4288,6 +4309,11 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 							} else {
 								entry.textureView = fallback_float_texture_view;
 							}
+						} else if (tex->dimension == WGPUTextureDimension_3D && expected_dim != WGPUTextureViewDimension_3D &&
+								expected_dim != WGPUTextureViewDimension_Undefined && fallback_float_texture_view != nullptr) {
+							// 3D textures have only 3D views. A layout expecting another dimension came from an
+							// unused binding (such as an absent VoxelGI instance), so its contents are never read.
+							entry.textureView = fallback_float_texture_view;
 						} else if (expected_dim != WGPUTextureViewDimension_Undefined &&
 								(expected_dim != tex->view_dimension || (expected_sample == WGPUTextureSampleType_Depth && has_stencil_wgpu(tex->format)))) {
 							// Fix dimension mismatch: if the layout expects a different dimension
@@ -4335,6 +4361,25 @@ RDD::UniformSetID RenderingDeviceDriverWebGPU::uniform_set_create(VectorView<Bou
 				WGPUTextureViewDimension swt_expected_dim = WGPUTextureViewDimension_Undefined;
 				WGPUTextureSampleType swt_expected_sample = WGPUTextureSampleType_Float;
 				bool swt_expected_ms = false;
+				bool texture_only = false; // A multisampled texture without its sampler, at binding*2.
+				if (p_set_index < (uint32_t)shader->bind_group_infos.size()) {
+					for (const auto &bge : shader->bind_group_infos[p_set_index].entries) {
+						if (bge.layout_entry.binding == uniform.binding * 2 && bge.layout_entry.texture.sampleType != WGPUTextureSampleType_BindingNotUsed) {
+							texture_only = true;
+							break;
+						}
+					}
+				}
+				if (texture_only) {
+					WGTexture *tex = uniform.ids.size() > 1 ? (WGTexture *)(uniform.ids[1].id) : nullptr;
+					if (tex && tex->default_view) {
+						WGPUBindGroupEntry te = {};
+						te.binding = uniform.binding * 2;
+						te.textureView = tex->sample_count > 1 || fallback_ms_texture_view == nullptr ? tex->default_view : fallback_ms_texture_view;
+						entries.push_back(te);
+					}
+					break;
+				}
 				if (p_set_index < (uint32_t)shader->bind_group_infos.size()) {
 					uint32_t tex_binding = uniform.binding * 2 + 1;
 					for (const auto &bge : shader->bind_group_infos[p_set_index].entries) {
@@ -4717,13 +4762,15 @@ WGPUBindGroup RenderingDeviceDriverWebGPU::_get_compatible_bind_group(WGUniformS
 				if (target_dim != WGPUTextureViewDimension_Undefined &&
 						p_us->bound_textures.has(entry.binding)) {
 					WGTexture *tex = p_us->bound_textures[entry.binding];
-					// A previous variant may have replaced the default view with another dimension.
-					if (tex && tex->view_dimension == target_dim &&
+					if (tex && tex->dimension == WGPUTextureDimension_3D) {
+						// 3D textures have only 3D views; another dimension means an unused binding, see uniform_set_create().
+						entry.textureView = target_dim == WGPUTextureViewDimension_3D || fallback_float_texture_view == nullptr ? tex->default_view : fallback_float_texture_view;
+					} else if (tex && tex->view_dimension == target_dim && // A previous variant may have replaced the default view.
 							((target_tex_sample == WGPUTextureSampleType_Depth && is_depth_format_wgpu(tex->format)) ||
 									(entry.textureView != fallback_float_texture_view && entry.textureView != fallback_cube_texture_view && entry.textureView != fallback_ms_texture_view))) {
 						entry.textureView = tex->default_view;
 					}
-					if (tex && tex->view_source && (tex->view_dimension != target_dim || (target_tex_sample == WGPUTextureSampleType_Depth && has_stencil_wgpu(tex->format)))) {
+					if (tex && tex->dimension != WGPUTextureDimension_3D && tex->view_source && (tex->view_dimension != target_dim || (target_tex_sample == WGPUTextureSampleType_Depth && has_stencil_wgpu(tex->format)))) {
 						// Use slice base offsets so slice views don't
 						// silently remap to mip 0 / layer 0 of the parent.
 						WGPUTextureViewDescriptor vd = {};
@@ -7260,6 +7307,8 @@ RDD::PipelineID RenderingDeviceDriverWebGPU::render_pipeline_create(
 		color_targets[i].format = fmt;
 
 		if (p_color_attachments[i] == ATTACHMENT_UNUSED) {
+			// A null target: a format would require an attachment there even with all writes disabled.
+			color_targets[i].format = WGPUTextureFormat_Undefined;
 			color_targets[i].writeMask = WGPUColorWriteMask_None;
 			continue;
 		}
