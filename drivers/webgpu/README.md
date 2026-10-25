@@ -5,8 +5,11 @@ This opt-in backend ports `dwalter/godotwebgpu` at
 It supports browser WebGPU and optional native Dawn on Windows, Linux and macOS.
 Existing rendering defaults and other backends remain available.
 
-This experimental backend supports the Mobile renderer. Forward+, Android,
-double-precision and multithreaded browser runtimes reject WebGPU explicitly.
+This experimental backend supports the Forward+ and Mobile renderers. Forward+
+falls back to Mobile with one warning on adapters with fewer than 48 sampled
+textures or 13 storage buffers per stage, or without `texture-formats-tier2`
+read/write storage. Android, double-precision and multithreaded browser runtimes
+reject WebGPU explicitly.
 Headless resource imports and exports remain supported for WebGPU projects.
 Read/write storage textures require adapter-native format support; unsupported
 formats and overlapping writable storage-buffer bindings fail explicitly.
@@ -41,8 +44,8 @@ isolates Dawn's compiler symbols from Godot's patched Tint.
 
 ## Runtime selection
 
-Select `--rendering-driver webgpu --rendering-method mobile`.
-Use the OpenGL driver when selecting `gl_compatibility`.
+Select `--rendering-driver webgpu`, which defaults to Forward+, and optionally
+`--rendering-method mobile`. Use the OpenGL driver when selecting `gl_compatibility`.
 
 A custom browser shell must set `renderingDriver: 'webgpu'` before Engine
 initialization. The final emcc link must use the prepared Dawn port and its
@@ -69,7 +72,7 @@ only the baker to an editor using another renderer, build with
 `shader_baker/enabled` in the web export preset and select WebGPU in the project's
 web rendering-driver setting. Shader baking requires an editor running a
 RenderingDevice renderer, such as Vulkan, Metal or WebGPU. Run the editor with
-`--rendering-method mobile` to bake the renderer used by WebGPU exports. Runtime-generated
+the web export's `rendering_method.web` to bake the renderer used by WebGPU exports. Runtime-generated
 shaders and variants absent from the export continue to compile normally.
 The WebGPU baker skips multiview and input-attachment variants enabled by the host editor.
 

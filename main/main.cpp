@@ -2869,8 +2869,6 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 				rendering_method = "dummy";
 			} else if (rendering_driver == "opengl3" || rendering_driver == "opengl3_angle" || rendering_driver == "opengl3_es") {
 				rendering_method = "gl_compatibility";
-			} else if (rendering_driver == "webgpu") {
-				rendering_method = "mobile";
 			} else {
 				rendering_method = "forward_plus";
 			}
@@ -2931,7 +2929,7 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 	default_renderer = renderer_hints.get_slicec(',', 0);
 	GLOBAL_DEF_RST_BASIC(PropertyInfo(Variant::STRING, "rendering/renderer/rendering_method", PROPERTY_HINT_ENUM, renderer_hints), default_renderer);
 	GLOBAL_DEF_RST_BASIC("rendering/renderer/rendering_method.mobile", default_renderer_mobile);
-	GLOBAL_DEF_RST_BASIC(PropertyInfo(Variant::STRING, "rendering/renderer/rendering_method.web", PROPERTY_HINT_ENUM, "mobile,gl_compatibility"), "gl_compatibility"); // Mobile uses WebGPU.
+	GLOBAL_DEF_RST_BASIC(PropertyInfo(Variant::STRING, "rendering/renderer/rendering_method.web", PROPERTY_HINT_ENUM, "forward_plus,mobile,gl_compatibility"), "gl_compatibility"); // Forward+ and Mobile use WebGPU.
 
 	// Default to ProjectSettings default if nothing set on the command line.
 	if (rendering_method.is_empty()) {
@@ -2953,14 +2951,6 @@ Error Main::setup(const char *execpath, int argc, char *argv[], bool p_second_ph
 
 	if (display_driver != NULL_DISPLAY_DRIVER && rendering_driver.to_lower() == "webgpu" && webgpu_unavailable_reason()) {
 		OS::get_singleton()->printerr("%s\n", webgpu_unavailable_reason());
-		goto error;
-	}
-
-	// Forward+ uses shader features which the current WebGPU/Tint integration
-	// cannot translate. Headless imports/exports use the dummy renderer and must
-	// still work with these project settings; reject only an actual GPU startup.
-	if (display_driver != NULL_DISPLAY_DRIVER && rendering_driver.to_lower() == "webgpu" && rendering_method == "forward_plus") {
-		OS::get_singleton()->printerr("WebGPU currently supports only the Mobile rendering method. Use --rendering-method mobile or select Mobile in the project settings.\n");
 		goto error;
 	}
 

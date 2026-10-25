@@ -203,7 +203,8 @@ void EditorExportPlatformWeb::_fix_html(Vector<uint8_t> &p_html, const Ref<Edito
 	config["ensureCrossOriginIsolationHeaders"] = (bool)p_preset->get("progressive_web_app/ensure_cross_origin_isolation_headers");
 
 	// Pass the rendering driver so the HTML shell can pre-initialize WebGPU if needed.
-	const bool webgpu = p_webgpu && String(get_project_setting(p_preset, "rendering/renderer/rendering_method.web")) == "mobile";
+	const String rendering_method = get_project_setting(p_preset, "rendering/renderer/rendering_method.web");
+	const bool webgpu = p_webgpu && (rendering_method == "forward_plus" || rendering_method == "mobile");
 	config["renderingDriver"] = webgpu ? "webgpu" : "opengl3";
 
 	config["godotPoolSize"] = p_preset->get("threads/godot_pool_size");
@@ -532,12 +533,8 @@ bool EditorExportPlatformWeb::has_valid_project_configuration(const Ref<EditorEx
 		}
 	}
 
-	// WebGPU on this branch supports only the Mobile renderer.
 	const String rendering_method = get_project_setting(p_preset, "rendering/renderer/rendering_method.web");
-	if (rendering_method == "forward_plus") {
-		valid = false;
-		err += TTR("The Forward+ renderer is not supported on the Web. Use Mobile (WebGPU) or Compatibility.") + "\n";
-	} else if (rendering_method == "mobile") {
+	if (rendering_method == "forward_plus" || rendering_method == "mobile") {
 		err += TTR("WebGPU rendering is experimental. Ensure your target browsers support WebGPU.") + "\n";
 	}
 
@@ -592,8 +589,9 @@ Error EditorExportPlatformWeb::export_project(const Ref<EditorExportPreset> &p_p
 		// Message is supplied by the subroutine method.
 		return error;
 	}
-	if (!webgpu && String(get_project_setting(p_preset, "rendering/renderer/rendering_method.web")) == "mobile") {
-		add_message(EXPORT_MESSAGE_WARNING, TTR("Export"), TTR("The Mobile renderer requires a Web export template built with WebGPU support (webgpu=yes)."));
+	const String rendering_method = get_project_setting(p_preset, "rendering/renderer/rendering_method.web");
+	if (!webgpu && (rendering_method == "forward_plus" || rendering_method == "mobile")) {
+		add_message(EXPORT_MESSAGE_WARNING, TTR("Export"), TTR("The Forward+ and Mobile renderers require a Web export template built with WebGPU support (webgpu=yes)."));
 	}
 
 	ExportNotifier notifier(*this, p_preset, p_debug, p_path, p_flags, p_notify);

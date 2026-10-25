@@ -59,8 +59,8 @@ requirements. Build the boundary with
 `-DCMAKE_OSX_DEPLOYMENT_TARGET=13.0` on macOS. App bundles
 and 2dog platform packages still need their normal staging/signing integration.
 
-Select `--rendering-driver webgpu --rendering-method mobile`, or choose `webgpu`
-in `rendering/rendering_device/driver` with the Mobile renderer. Native backend
+Select `--rendering-driver webgpu` (Forward+ unless `--rendering-method mobile` is
+given), or choose `webgpu` in `rendering/rendering_device/driver`. Native backend
 selection is controlled by `rendering/rendering_device/webgpu/native_backend`:
 `auto` (default), `d3d12`, `vulkan`, `metal`, or `d3d11`. Availability depends on
 the Dawn build and host. Windows `--gpu-luid` is passed to Dawn's D3D adapter
@@ -79,8 +79,8 @@ and L8/LA8 texture round trips using existing GodotSharp bindings, with WebGPU,
 Vulkan Mobile, Vulkan Forward+, and OpenGL Compatibility. Linux X11 and Wayland
 are exercised with `drivers/webgpu/tests/native_smoke`; the WSL host uses llvmpipe Vulkan
 software rendering. macOS integration is implemented but has not been built or
-run locally. Forward+ on WebGPU, native GPU interop, export packaging, release
-builds, and the wider renderer feature set remain outside these smoke checks.
+run locally. Native GPU interop, export packaging, release builds, and the wider
+renderer feature set remain outside these smoke checks.
 
 Run the dependency configuration checks with:
 
