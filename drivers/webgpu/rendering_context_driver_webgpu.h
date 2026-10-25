@@ -43,6 +43,7 @@ class RenderingContextDriverWebGPU : public RenderingContextDriver {
 	WGPUQueue queue = nullptr;
 
 	Device device_info; // Single device description.
+	String dawn_cache_dir; // Native Dawn's compiled shader and pipeline cache, empty when disabled.
 	Error initialize_native();
 	SurfaceID surface_create_native(const void *p_platform_data);
 

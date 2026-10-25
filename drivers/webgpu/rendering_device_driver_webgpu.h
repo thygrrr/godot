@@ -209,6 +209,9 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 	WGPURenderPipeline _get_clear_pipeline(const ClearPipelineKey &p_key);
 	void _render_clear(WGCommandBuffer *p_cmd_buf, VectorView<AttachmentClear> p_clears, VectorView<Rect2i> p_rects);
 	void _copy_buffer_to_texture(WGCommandBuffer *p_cmd_buf, WGBuffer *p_src, WGTexture *p_dst, const BufferTextureCopyRegion &p_region, uint32_t p_depth_or_layers);
+	// Native Dawn parses and validates WGSL on module creation, which dominates loading many shader variants.
+	Mutex stage_module_mutex;
+	WGPUShaderModule _stage_module(WGShader *p_shader, ShaderStage p_stage);
 	WGPUShaderModule _create_module_with_spec_constants(const PackedByteArray &p_spirv, VectorView<PipelineSpecializationConstant> p_constants, ShaderStage p_stage, const WGShader *p_shader);
 
 	// Bindings rewritten by _postprocess_wgsl that the bind group layouts must mirror.

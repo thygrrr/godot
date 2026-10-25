@@ -3485,25 +3485,8 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 			wgsl_storage_tex_format[kv.key] = kv.value;
 		}
 
-		WGPUShaderSourceWGSL wgsl_source = {};
-		wgsl_source.chain.sType = WGPUSType_ShaderSourceWGSL;
-		wgsl_source.code = WGPUStringView{ wgsl_str, WGPU_STRLEN };
-
-		WGPUShaderModuleDescriptor mod_desc = {};
-		mod_desc.nextInChain = (WGPUChainedStruct *)&wgsl_source;
-
-		// Label the module so Dawn error messages (and JS-side patch logs) identify it.
-		String _mod_label = "mod:" + shader->name + ":stg" + itos((int)s.shader_stage);
-		CharString _mod_label_cs = _mod_label.utf8();
-		mod_desc.label = { _mod_label_cs.get_data(), WGPU_STRLEN };
-
-		WGPUShaderModule mod = wgpuDeviceCreateShaderModule(device, &mod_desc);
-
 		webgpu_metadata::Shader reflection_info;
 		if (!webgpu_metadata::parse(wgsl_str, reflection_info)) {
-			if (mod) {
-				wgpuShaderModuleRelease(mod);
-			}
 			error_text = "WebGPU: invalid shader resource metadata.";
 			break;
 		}
@@ -3581,13 +3564,8 @@ RDD::ShaderID RenderingDeviceDriverWebGPU::shader_create_from_container(const Re
 			}
 		}
 
-		if (mod == nullptr) {
-			error_text = vformat("WebGPU: wgpuDeviceCreateShaderModule failed for stage %d.", (int)s.shader_stage);
-			break;
-		}
-
 		if (s.shader_stage < 6) {
-			shader->stage_modules[s.shader_stage] = mod;
+			shader->stage_wgsl[s.shader_stage] = wgsl_cs;
 		}
 	}
 
@@ -6990,6 +6968,25 @@ static PackedByteArray _patch_spirv_spec_constants(const PackedByteArray &p_spir
 	return out;
 }
 
+WGPUShaderModule RenderingDeviceDriverWebGPU::_stage_module(WGShader *p_shader, ShaderStage p_stage) {
+	MutexLock lock(stage_module_mutex);
+	WGPUShaderModule &module = p_shader->stage_modules[p_stage];
+	if (module == nullptr && p_shader->stage_wgsl[p_stage].length() > 0) {
+		WGPUShaderSourceWGSL wgsl_source = {};
+		wgsl_source.chain.sType = WGPUSType_ShaderSourceWGSL;
+		wgsl_source.code = WGPUStringView{ p_shader->stage_wgsl[p_stage].get_data(), WGPU_STRLEN };
+		WGPUShaderModuleDescriptor desc = {};
+		desc.nextInChain = (WGPUChainedStruct *)&wgsl_source;
+		// Label the module so Dawn error messages (and JS-side patch logs) identify it.
+		const CharString label = ("mod:" + p_shader->name + ":stg" + itos((int)p_stage)).utf8();
+		desc.label = { label.get_data(), WGPU_STRLEN };
+		module = wgpuDeviceCreateShaderModule(device, &desc);
+		ERR_FAIL_NULL_V_MSG(module, nullptr, vformat("WebGPU: wgpuDeviceCreateShaderModule failed for stage %d.", (int)p_stage));
+		p_shader->stage_wgsl[p_stage] = CharString();
+	}
+	return module;
+}
+
 // Creates a WGPUShaderModule from SPIR-V with specialization constants applied.
 // Returns nullptr on failure.
 WGPUShaderModule RenderingDeviceDriverWebGPU::_create_module_with_spec_constants(
@@ -7055,8 +7052,8 @@ RDD::PipelineID RenderingDeviceDriverWebGPU::render_pipeline_create(
 	// (spirv_to_wgsl_with_overrides), we can pass specialization values as
 	// pipeline constants instead of creating specialized shader modules.
 	// This eliminates all runtime SPIR-V patching and Tint conversion.
-	WGPUShaderModule vertex_module = shader->stage_modules[SHADER_STAGE_VERTEX];
-	WGPUShaderModule fragment_module = shader->stage_modules[SHADER_STAGE_FRAGMENT];
+	WGPUShaderModule vertex_module = _stage_module(shader, SHADER_STAGE_VERTEX);
+	WGPUShaderModule fragment_module = _stage_module(shader, SHADER_STAGE_FRAGMENT);
 	WGPUShaderModule specialized_vertex = nullptr;
 	WGPUShaderModule specialized_fragment = nullptr;
 
@@ -7666,11 +7663,11 @@ void RenderingDeviceDriverWebGPU::command_compute_dispatch_indirect(CommandBuffe
 RDD::PipelineID RenderingDeviceDriverWebGPU::compute_pipeline_create(ShaderID p_shader, VectorView<PipelineSpecializationConstant> p_specialization_constants) {
 	WGShader *shader = (WGShader *)(p_shader.id);
 	ERR_FAIL_COND_V(!shader, PipelineID());
-	ERR_FAIL_COND_V_MSG(!shader->stage_modules[SHADER_STAGE_COMPUTE], PipelineID(),
+	WGPUShaderModule compute_module = _stage_module(shader, SHADER_STAGE_COMPUTE);
+	ERR_FAIL_COND_V_MSG(!compute_module, PipelineID(),
 			"WebGPU: compute_pipeline_create called with a shader that has no compute stage.");
 
 	// Specialization constants: override path or legacy module-patching path.
-	WGPUShaderModule compute_module = shader->stage_modules[SHADER_STAGE_COMPUTE];
 	WGPUShaderModule specialized_compute = nullptr;
 	LocalVector<WGPUConstantEntry> compute_constants;
 	LocalVector<CharString> compute_key_storage;

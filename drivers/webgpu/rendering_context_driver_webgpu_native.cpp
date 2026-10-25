@@ -32,7 +32,11 @@
 
 #include "core/config/engine.h"
 #include "core/config/project_settings.h"
+#include "core/crypto/crypto_core.h"
+#include "core/io/dir_access.h"
+#include "core/io/file_access.h"
 #include "core/os/os.h"
+#include "core/os/thread.h"
 #include "drivers/webgpu/native/dawn_boundary.h"
 #include "drivers/webgpu/native/dawn_loader.gen.h"
 #include "drivers/webgpu/rendering_context_driver_webgpu.h"
@@ -40,6 +44,38 @@
 namespace {
 String webgpu_message(WGPUStringView p_message) {
 	return p_message.data ? String::utf8(p_message.data, p_message.length == WGPU_STRLEN ? -1 : int(p_message.length)) : String();
+}
+
+String dawn_cache_path(const String &p_dir, const uint8_t *p_key, size_t p_key_size) {
+	unsigned char hash[32];
+	CryptoCore::sha256(p_key, p_key_size, hash);
+	return p_dir.path_join(String::hex_encode_buffer(hash, 32));
+}
+
+// Dawn asks for an entry's size with a null value first, then loads it with exactly that size.
+size_t dawn_cache_load(size_t p_key_size, const uint8_t *p_key, size_t p_value_size, uint8_t *p_value, void *p_dir, void *) {
+	Ref<FileAccess> file = FileAccess::open(dawn_cache_path(*static_cast<const String *>(p_dir), p_key, p_key_size), FileAccess::READ);
+	if (file.is_null()) {
+		return 0;
+	}
+	const size_t size = file->get_length();
+	if (p_value == nullptr) {
+		return size;
+	}
+	return size == p_value_size ? file->get_buffer(p_value, size) : 0;
+}
+
+void dawn_cache_store(size_t p_key_size, const uint8_t *p_key, size_t p_value_size, const uint8_t *p_value, void *p_dir, void *) {
+	const String path = dawn_cache_path(*static_cast<const String *>(p_dir), p_key, p_key_size);
+	// Store beside the entry, then rename, so a concurrent load never sees a partial entry.
+	const String temp_path = path + "." + itos(Thread::get_caller_id()) + ".tmp";
+	{
+		Ref<FileAccess> file = FileAccess::open(temp_path, FileAccess::WRITE);
+		if (file.is_null() || !file->store_buffer(p_value, p_value_size)) {
+			return;
+		}
+	}
+	DirAccess::create(DirAccess::ACCESS_FILESYSTEM)->rename(temp_path, path);
 }
 } // namespace
 
@@ -150,6 +186,19 @@ Error RenderingContextDriverWebGPU::initialize_native() {
 			ERR_PRINT("WebGPU device lost: " + webgpu_message(p_message));
 		}
 	};
+	// Like Vulkan's pipeline cache: Dawn otherwise recompiles every backend shader and pipeline on each run.
+	WGPUDawnCacheDeviceDescriptor cache_desc = WGPU_DAWN_CACHE_DEVICE_DESCRIPTOR_INIT;
+	if (GLOBAL_GET("rendering/rendering_device/pipeline_cache/enable")) {
+		dawn_cache_dir = ProjectSettings::get_singleton()->globalize_path("user://webgpu/dawn_cache_" + backend);
+		if (DirAccess::make_dir_recursive_absolute(dawn_cache_dir) == OK) {
+			cache_desc.isolationKey = { "godot", WGPU_STRLEN };
+			cache_desc.dawnLoadCacheDataCallbackInfo.callback = dawn_cache_load;
+			cache_desc.dawnLoadCacheDataCallbackInfo.userdata1 = &dawn_cache_dir;
+			cache_desc.dawnStoreCacheDataCallbackInfo.callback = dawn_cache_store;
+			cache_desc.dawnStoreCacheDataCallbackInfo.userdata1 = &dawn_cache_dir;
+			device_desc.nextInChain = &cache_desc.chain;
+		}
+	}
 	struct DeviceResult {
 		WGPUDevice handle = nullptr;
 		String error;

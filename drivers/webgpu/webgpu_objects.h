@@ -141,6 +141,8 @@ struct WGVertexFormat {
 struct WGShader {
 	// Per-stage shader modules. Indexed by RDD::ShaderStage enum value.
 	WGPUShaderModule stage_modules[6] = {}; // SHADER_STAGE_MAX = 6 (vertex/frag/tess×2/compute/max)
+	// WGSL whose module is created by the first pipeline using it; most variants never get one.
+	CharString stage_wgsl[6];
 	// Never reused, unlike the WGShader address or its layout handles; keys WGUniformSet::rebind_cache.
 	uint64_t uid = 0;
 
