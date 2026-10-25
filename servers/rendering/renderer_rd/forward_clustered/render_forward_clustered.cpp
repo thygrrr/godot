@@ -5054,6 +5054,10 @@ void RenderForwardClustered::enable_features(BitField<FeatureBits> p_feature_bit
 	if (p_feature_bits.has_flag(FEATURE_VRS_BIT)) {
 		gi.enable_vrs_shader_group();
 	}
+
+	if (p_feature_bits.has_flag(FEATURE_NO_IMAGE_ATOMICS_BIT)) {
+		RendererRD::Fog::get_singleton()->enable_no_atomics_shader_groups();
+	}
 }
 
 String RenderForwardClustered::get_name() const {

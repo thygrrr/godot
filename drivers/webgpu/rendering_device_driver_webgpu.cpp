@@ -3352,7 +3352,7 @@ CharString RenderingDeviceDriverWebGPU::_postprocess_wgsl(const char *p_wgsl, Sh
 				}
 			}
 			WEBGPU_DIAG({ console.log('[READ-CONVERT] Converted ' + $0 + ' read-only storage texture(s) to sampled'); }, (int)ro_infos.size());
-			print_verbose("WebGPU read_storage→sampled WGSL:\n" + ws);
+			print_verbose(vformat("WebGPU: bound %d read-only storage texture(s) as sampled.", (int)ro_infos.size()));
 
 			cs = ws.utf8();
 		}

@@ -108,8 +108,6 @@ bool ShaderBakerExportPlugin::_begin_customize_resources(const Ref<EditorExportP
 
 	// Only the editor's own renderer has shaders to bake.
 	// shortcut: a Forward+ export that downgrades to Mobile compiles Mobile shaders at runtime, bake both if that matters.
-	// shortcut: effects whose variants follow the editor's device (volumetric fog without image atomics, SDFGI debug
-	// probes) compile at runtime on WebGPU; enable their WebGPU groups for the bake if their first use stutters.
 	const String export_method = get_export_preset()->get_project_setting("rendering/renderer/rendering_method");
 	if (shader_container_driver == "webgpu" && export_method != OS::get_singleton()->get_current_rendering_method()) {
 		WARN_PRINT(vformat("Shader baker disabled: the export uses the \"%s\" renderer, but the editor runs \"%s\". Restart the editor with `--rendering-method %s` to bake shaders.", export_method, OS::get_singleton()->get_current_rendering_method(), export_method));
@@ -148,6 +146,10 @@ bool ShaderBakerExportPlugin::_begin_customize_resources(const Ref<EditorExportP
 	// Both FP16 and FP32 variants should be included.
 	renderer_features.set_flag(RenderingShaderLibrary::FEATURE_FP16_BIT);
 	renderer_features.set_flag(RenderingShaderLibrary::FEATURE_FP32_BIT);
+
+	if (shader_container_driver == "webgpu") {
+		renderer_features.set_flag(RenderingShaderLibrary::FEATURE_NO_IMAGE_ATOMICS_BIT);
+	}
 
 	RendererSceneRenderRD::get_singleton()->enable_features(renderer_features);
 

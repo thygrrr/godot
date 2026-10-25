@@ -3816,7 +3816,11 @@ void GI::init(SkyRD *p_sky) {
 
 		sdfgi_shader.debug_probes.initialize(versions, defines);
 
-		// TODO disable multiview versions if turned off
+		// Devices without multiview never use these versions, and shader bakes for them don't contain them.
+		if (!RD::get_singleton()->has_feature(RD::SUPPORTS_MULTIVIEW)) {
+			sdfgi_shader.debug_probes.set_variant_enabled(SDFGIShader::PROBE_DEBUG_PROBES_MULTIVIEW, false);
+			sdfgi_shader.debug_probes.set_variant_enabled(SDFGIShader::PROBE_DEBUG_VISIBILITY_MULTIVIEW, false);
+		}
 
 		sdfgi_shader.debug_probes_shader = sdfgi_shader.debug_probes.version_create();
 
@@ -3828,8 +3832,9 @@ void GI::init(SkyRD *p_sky) {
 			ds.enable_depth_write = true;
 			ds.depth_compare_operator = RD::COMPARE_OP_GREATER_OR_EQUAL;
 			for (int i = 0; i < SDFGIShader::PROBE_DEBUG_MAX; i++) {
-				// TODO check if version is enabled
-
+				if (!sdfgi_shader.debug_probes.is_variant_enabled(i)) {
+					continue;
+				}
 				RID debug_probes_shader_version = sdfgi_shader.debug_probes.version_get_shader(sdfgi_shader.debug_probes_shader, i);
 				sdfgi_shader.debug_probes_pipeline[i].setup(debug_probes_shader_version, RD::RENDER_PRIMITIVE_TRIANGLE_STRIPS, rs, RD::PipelineMultisampleState(), ds, RD::PipelineColorBlendState::create_disabled(), 0);
 			}
