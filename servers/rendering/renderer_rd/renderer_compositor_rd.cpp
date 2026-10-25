@@ -372,16 +372,16 @@ RendererCompositorRD::RendererCompositorRD() {
 
 	String rendering_method = OS::get_singleton()->get_current_rendering_method();
 	if (rendering_method == "forward_plus") {
-		String unsupported;
+		String missing;
 		if (RD::get_singleton()->limit_get(RD::LIMIT_MAX_TEXTURES_PER_SHADER_STAGE) < 48) {
-			unsupported = "less than 48 textures per stage";
+			missing = "48 textures per stage";
 		} else if (RD::get_singleton()->limit_get(RD::LIMIT_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE) < 13) {
-			unsupported = "less than 13 storage buffers per stage"; // The clustered scene shader's buffers and push constants.
+			missing = "13 storage buffers per stage"; // The clustered scene shader's buffers and push constants.
 		} else if (RD::get_singleton()->get_driver_workarounds().limited_read_write_storage) {
-			unsupported = "no read-write storage for the RGBA8, RGBA16 and RGBA32 formats"; // SDFGI, VoxelGI, SSIL and DOF need them.
+			missing = "read-write storage for RGBA8, RGBA16 and RGBA32 formats"; // SDFGI, VoxelGI, SSIL and DOF need them.
 		}
-		if (!unsupported.is_empty()) {
-			WARN_PRINT_ONCE(vformat("Platform supports %s, which is less than required by the Clustered renderer. Defaulting to Mobile renderer.", unsupported));
+		if (!missing.is_empty()) {
+			WARN_PRINT(vformat("The Clustered renderer requires %s, which this platform lacks. Defaulting to Mobile renderer.", missing));
 			rendering_method = "mobile";
 			OS::get_singleton()->set_current_rendering_method(rendering_method, OS::get_singleton()->get_current_rendering_method_source());
 		}
