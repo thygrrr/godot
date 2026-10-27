@@ -8201,6 +8201,9 @@ RDD::DriverWorkarounds RenderingDeviceDriverWebGPU::get_driver_workarounds() con
 	workarounds.merge_shadow_passes = true;
 	workarounds.batch_instance_draws = true;
 	workarounds.skeleton_atlas = true;
+	// Safari exposes 44 sampled textures per stage and Chrome on Metal 10 storage buffers; the full clustered scene
+	// shader needs 48 and 11. Bakes must match, so the policy follows the driver rather than the adapter.
+	workarounds.compact_scene_bindings = true;
 	return workarounds;
 }
 

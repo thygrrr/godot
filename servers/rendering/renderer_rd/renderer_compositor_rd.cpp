@@ -373,10 +373,16 @@ RendererCompositorRD::RendererCompositorRD() {
 	String rendering_method = OS::get_singleton()->get_current_rendering_method();
 	if (rendering_method == "forward_plus") {
 		String missing;
-		if (RD::get_singleton()->limit_get(RD::LIMIT_MAX_TEXTURES_PER_SHADER_STAGE) < 48) {
-			missing = "48 textures per stage";
-		} else if (RD::get_singleton()->limit_get(RD::LIMIT_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE) < 13) {
-			missing = "13 storage buffers per stage"; // The clustered scene shader's buffers and push constants.
+		// The clustered scene shader's fragment stage samples 47 textures with 8 lightmaps and 8 VoxelGIs, 33 with the
+		// compact bindings of RenderForwardClustered, plus the material's textures. Its storage buffers and the WebGPU
+		// push constant buffer take 11 slots, 10 with the lightmaps in a uniform buffer.
+		const bool compact_bindings = RD::get_singleton()->get_driver_workarounds().compact_scene_bindings;
+		const uint64_t textures_needed = compact_bindings ? 40 : 48;
+		const uint64_t storage_buffers_needed = compact_bindings ? 10 : 13;
+		if (RD::get_singleton()->limit_get(RD::LIMIT_MAX_TEXTURES_PER_SHADER_STAGE) < textures_needed) {
+			missing = vformat("%d textures per stage", textures_needed);
+		} else if (RD::get_singleton()->limit_get(RD::LIMIT_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE) < storage_buffers_needed) {
+			missing = vformat("%d storage buffers per stage", storage_buffers_needed);
 		} else if (RD::get_singleton()->get_driver_workarounds().limited_read_write_storage) {
 			missing = "read-write storage for RGBA8, RGBA16 and RGBA32 formats"; // SDFGI, VoxelGI, SSIL and DOF need them.
 		}

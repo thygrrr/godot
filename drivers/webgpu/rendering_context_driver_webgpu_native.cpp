@@ -151,6 +151,12 @@ Error RenderingContextDriverWebGPU::initialize_native() {
 
 	WGPULimits limits = WGPU_LIMITS_INIT;
 	ERR_FAIL_COND_V(wgpuAdapterGetLimits(adapter, &limits) != WGPUStatus_Success, ERR_CANT_CREATE);
+	// Test hook mirroring the browser smoke's ?limited-bindings: cap the sampled textures per stage to rehearse
+	// another browser's adapter, such as Safari's 44.
+	const String sampled_texture_limit = OS::get_singleton()->get_environment("GODOT_WEBGPU_SAMPLED_TEXTURE_LIMIT");
+	if (sampled_texture_limit.is_valid_int()) {
+		limits.maxSampledTexturesPerShaderStage = MIN(limits.maxSampledTexturesPerShaderStage, (uint32_t)sampled_texture_limit.to_int());
+	}
 	Vector<WGPUFeatureName> features;
 	// Keep in sync with requestWebGPUDevice in platform/web/js/engine/engine.js (the last feature is Dawn-only).
 	const WGPUFeatureName optional_features[] = {

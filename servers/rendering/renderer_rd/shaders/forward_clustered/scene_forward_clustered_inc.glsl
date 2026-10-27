@@ -2,7 +2,9 @@
 #define M_TAU 6.28318530718
 #define ROUGHNESS_MAX_LOD 5
 
+#ifndef MAX_VOXEL_GI_INSTANCES
 #define MAX_VOXEL_GI_INSTANCES 8
+#endif
 #define MAX_VIEWS 2
 
 #ifndef RENDER_DRIVER_WEBGPU
@@ -236,10 +238,18 @@ struct Lightmap {
 	uint flags;
 };
 
+#ifdef RENDER_DRIVER_WEBGPU
+// A uniform buffer keeps the fragment stage within the 10 storage buffers Chrome exposes on Metal.
+layout(set = 0, binding = 8, std140) uniform Lightmaps {
+	Lightmap data[MAX_LIGHTMAPS];
+}
+lightmaps;
+#else
 layout(set = 0, binding = 8, std140) restrict readonly buffer Lightmaps {
 	Lightmap data[];
 }
 lightmaps;
+#endif
 
 struct LightmapCapture {
 	vec4 sh[9];

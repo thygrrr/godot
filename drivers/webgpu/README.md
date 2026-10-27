@@ -6,9 +6,11 @@ It supports browser WebGPU and optional native Dawn on Windows, Linux and macOS.
 Existing rendering defaults and other backends remain available.
 
 This experimental backend supports the Forward+ and Mobile renderers. Forward+
-falls back to Mobile with one warning on adapters with fewer than 48 sampled
-textures or 13 storage buffers per stage, or without `texture-formats-tier2`
-read/write storage. Android, double-precision and multithreaded browser runtimes
+binds a compact scene on WebGPU (4 lightmaps, 2 VoxelGIs, lightmap data in a
+uniform buffer) so it fits Safari's 44 sampled textures and Chrome on Metal's 10
+storage buffers per stage. It falls back to Mobile with one warning on adapters
+with fewer than 40 sampled textures or 10 storage buffers per stage, or without
+`texture-formats-tier2` read/write storage. Android, double-precision and multithreaded browser runtimes
 reject WebGPU explicitly.
 Headless resource imports and exports remain supported for WebGPU projects.
 Read/write storage textures require adapter-native format support; unsupported

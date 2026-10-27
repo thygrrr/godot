@@ -404,6 +404,7 @@ private:
 		bool lightmap_has_sh[MAX_LIGHTMAPS];
 		uint32_t lightmaps_used = 0;
 		uint32_t max_lightmaps;
+		bool lightmap_uniform_buffer = false;
 		RID lightmap_buffer;
 
 		MultiUmaBuffer<1u> instance_buffer[RENDER_LIST_MAX] = { MultiUmaBuffer<1u>("RENDER_LIST_OPAQUE"), MultiUmaBuffer<1u>("RENDER_LIST_MOTION"), MultiUmaBuffer<1u>("RENDER_LIST_ALPHA"), MultiUmaBuffer<1u>("RENDER_LIST_SECONDARY") };
@@ -415,6 +416,7 @@ private:
 
 		RID voxelgi_ids[MAX_VOXEL_GI_INSTANCESS];
 		uint32_t voxelgis_used = 0;
+		uint32_t max_voxel_gi_instances = MAX_VOXEL_GI_INSTANCESS;
 
 		bool used_screen_texture = false;
 		bool used_normal_texture = false;

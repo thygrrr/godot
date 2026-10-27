@@ -1204,7 +1204,7 @@ void RenderForwardClustered::_fill_render_list(RenderListType p_render_list, con
 }
 
 void RenderForwardClustered::_setup_voxelgis(const PagedArray<RID> &p_voxelgis) {
-	scene_state.voxelgis_used = MIN(p_voxelgis.size(), uint32_t(MAX_VOXEL_GI_INSTANCESS));
+	scene_state.voxelgis_used = MIN(p_voxelgis.size(), scene_state.max_voxel_gi_instances);
 	for (uint32_t i = 0; i < scene_state.voxelgis_used; i++) {
 		scene_state.voxelgi_ids[i] = p_voxelgis[i];
 	}
@@ -3244,7 +3244,7 @@ void RenderForwardClustered::_update_render_base_uniform_set() {
 		{
 			RD::Uniform u;
 			u.binding = 8;
-			u.uniform_type = RD::UNIFORM_TYPE_STORAGE_BUFFER;
+			u.uniform_type = scene_state.lightmap_uniform_buffer ? RD::UNIFORM_TYPE_UNIFORM_BUFFER : RD::UNIFORM_TYPE_STORAGE_BUFFER;
 			u.append_id(scene_state.lightmap_buffer);
 			uniforms.push_back(u);
 		}
@@ -3516,7 +3516,7 @@ RID RenderForwardClustered::_setup_render_pass_uniform_set(RenderListType p_rend
 		u.binding = 8;
 		u.uniform_type = RD::UNIFORM_TYPE_TEXTURE;
 		RID default_tex = texture_storage->texture_rd_get_default(RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_3D_WHITE);
-		for (int i = 0; i < MAX_VOXEL_GI_INSTANCESS; i++) {
+		for (int i = 0; i < (int)scene_state.max_voxel_gi_instances; i++) {
 			if (p_render_data && i < (int)p_render_data->voxel_gi_instances->size()) {
 				RID tex = gi.voxel_gi_instance_get_texture((*p_render_data->voxel_gi_instances)[i]);
 				if (!tex.is_valid()) {
@@ -3859,7 +3859,7 @@ RID RenderForwardClustered::_setup_sdfgi_render_pass_uniform_set(RID p_albedo_te
 		u.uniform_type = RD::UNIFORM_TYPE_TEXTURE;
 
 		RID default_tex = texture_storage->texture_rd_get_default(RendererRD::TextureStorage::DEFAULT_RD_TEXTURE_3D_WHITE);
-		for (int i = 0; i < MAX_VOXEL_GI_INSTANCESS; i++) {
+		for (int i = 0; i < (int)scene_state.max_voxel_gi_instances; i++) {
 			u.append_id(default_tex);
 		}
 
@@ -5131,13 +5131,27 @@ RenderForwardClustered::RenderForwardClustered() {
 			defines += "\n#define SPECULAR_OCCLUSION_DISABLED\n";
 		}
 
+		// Compact bindings keep the scene shader within browser WebGPU limits: Safari exposes 44 sampled textures per
+		// stage and Chrome on Metal 10 storage buffers. Halving the lightmap textures and binding two VoxelGIs frees 14
+		// sampled textures; a lightmap uniform buffer frees one storage buffer. Mobile keeps its own limits.
+		const bool compact_bindings = RD::get_singleton()->get_driver_workarounds().compact_scene_bindings;
 		{
 			//lightmaps
-			scene_state.max_lightmaps = MAX_LIGHTMAPS;
+			scene_state.max_lightmaps = compact_bindings ? MAX_LIGHTMAPS / 2 : MAX_LIGHTMAPS;
 			defines += "\n#define MAX_LIGHTMAP_TEXTURES " + itos(scene_state.max_lightmaps) + "\n";
 			defines += "\n#define MAX_LIGHTMAPS " + itos(scene_state.max_lightmaps) + "\n";
 
-			scene_state.lightmap_buffer = RD::get_singleton()->storage_buffer_create(sizeof(LightmapData) * scene_state.max_lightmaps);
+			scene_state.lightmap_uniform_buffer = compact_bindings;
+			if (scene_state.lightmap_uniform_buffer) {
+				scene_state.lightmap_buffer = RD::get_singleton()->uniform_buffer_create(sizeof(LightmapData) * scene_state.max_lightmaps);
+			} else {
+				scene_state.lightmap_buffer = RD::get_singleton()->storage_buffer_create(sizeof(LightmapData) * scene_state.max_lightmaps);
+			}
+		}
+		{
+			//voxel gi
+			scene_state.max_voxel_gi_instances = compact_bindings ? MAX_VOXEL_GI_INSTANCESS_PER_INSTANCE : MAX_VOXEL_GI_INSTANCESS;
+			defines += "\n#define MAX_VOXEL_GI_INSTANCES " + itos(scene_state.max_voxel_gi_instances) + "\n";
 		}
 		{
 			//captures

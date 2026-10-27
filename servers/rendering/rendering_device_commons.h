@@ -1078,6 +1078,7 @@ public:
 		bool merge_shadow_passes = false; // Draw shadow passes sharing a framebuffer in one render pass.
 		bool batch_instance_draws = false; // Instance same-mesh draws, pass the instance index via the first instance.
 		bool skeleton_atlas = false; // One bone buffer for all skeletons, uploaded with buffer_update_direct().
+		bool compact_scene_bindings = false; // Fewer Forward+ scene bindings: 4 lightmaps, 2 VoxelGIs and a lightmap uniform buffer.
 	};
 
 	////////////////////////////////////////////
