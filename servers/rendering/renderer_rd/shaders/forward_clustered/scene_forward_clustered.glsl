@@ -2331,9 +2331,9 @@ void fragment_shader(in SceneData scene_data) {
 				const vec3 uvw = vec3(scaled_uv, float(slice));
 
 				if (sc_use_lightmap_bicubic_filter()) {
-					shadowmask = textureArray_bicubic(lightmap_textures[MAX_LIGHTMAP_TEXTURES + ofs], uvw, lightmaps.data[ofs].light_texture_size).x;
+					shadowmask = textureArray_bicubic(lightmap_textures[LIGHTMAP_TEXTURE_SLOTS + ofs], uvw, lightmaps.data[ofs].light_texture_size).x;
 				} else {
-					shadowmask = textureLod(sampler2DArray(lightmap_textures[MAX_LIGHTMAP_TEXTURES + ofs], SAMPLER_LINEAR_CLAMP), uvw, 0.0).x;
+					shadowmask = textureLod(sampler2DArray(lightmap_textures[LIGHTMAP_TEXTURE_SLOTS + ofs], SAMPLER_LINEAR_CLAMP), uvw, 0.0).x;
 				}
 			}
 		}

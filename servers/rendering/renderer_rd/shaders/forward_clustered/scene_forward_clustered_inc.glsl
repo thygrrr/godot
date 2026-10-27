@@ -2,10 +2,18 @@
 #define M_TAU 6.28318530718
 #define ROUGHNESS_MAX_LOD 5
 
-#ifndef MAX_VOXEL_GI_INSTANCES
 #define MAX_VOXEL_GI_INSTANCES 8
-#endif
 #define MAX_VIEWS 2
+
+#ifdef RENDER_DRIVER_WEBGPU
+// Compact scene bindings for browser limits (Safari exposes 44 sampled textures per stage): the renderer binds half
+// the lightmaps and two VoxelGIs. The counts stay out of the general defines so shader bakes from any host match.
+#define LIGHTMAP_TEXTURE_SLOTS (MAX_LIGHTMAP_TEXTURES / 2)
+#define VOXEL_GI_TEXTURE_SLOTS 2
+#else
+#define LIGHTMAP_TEXTURE_SLOTS MAX_LIGHTMAP_TEXTURES
+#define VOXEL_GI_TEXTURE_SLOTS MAX_VOXEL_GI_INSTANCES
+#endif
 
 #ifndef RENDER_DRIVER_WEBGPU
 #extension GL_KHR_shader_subgroup_ballot : enable
@@ -399,9 +407,9 @@ layout(set = 1, binding = 5) uniform texture2D shadow_atlas;
 
 layout(set = 1, binding = 6) uniform texture2D directional_shadow_atlas;
 
-layout(set = 1, binding = 7) uniform texture2DArray lightmap_textures[MAX_LIGHTMAP_TEXTURES * 2];
+layout(set = 1, binding = 7) uniform texture2DArray lightmap_textures[LIGHTMAP_TEXTURE_SLOTS * 2];
 
-layout(set = 1, binding = 8) uniform texture3D voxel_gi_textures[MAX_VOXEL_GI_INSTANCES];
+layout(set = 1, binding = 8) uniform texture3D voxel_gi_textures[VOXEL_GI_TEXTURE_SLOTS];
 
 layout(set = 1, binding = 9, std430) buffer restrict readonly ClusterBuffer {
 	uint data[];

@@ -5133,26 +5133,23 @@ RenderForwardClustered::RenderForwardClustered() {
 
 		// Compact bindings keep the scene shader within browser WebGPU limits: Safari exposes 44 sampled textures per
 		// stage and Chrome on Metal 10 storage buffers. Halving the lightmap textures and binding two VoxelGIs frees 14
-		// sampled textures; a lightmap uniform buffer frees one storage buffer. Mobile keeps its own limits.
+		// sampled textures; a lightmap uniform buffer frees one storage buffer. The shader derives the slot counts from
+		// RENDER_DRIVER_WEBGPU, so the general defines stay identical and a bake from any host editor matches.
 		const bool compact_bindings = RD::get_singleton()->get_driver_workarounds().compact_scene_bindings;
 		{
 			//lightmaps
 			scene_state.max_lightmaps = compact_bindings ? MAX_LIGHTMAPS / 2 : MAX_LIGHTMAPS;
-			defines += "\n#define MAX_LIGHTMAP_TEXTURES " + itos(scene_state.max_lightmaps) + "\n";
-			defines += "\n#define MAX_LIGHTMAPS " + itos(scene_state.max_lightmaps) + "\n";
+			defines += "\n#define MAX_LIGHTMAP_TEXTURES " + itos(MAX_LIGHTMAPS) + "\n";
+			defines += "\n#define MAX_LIGHTMAPS " + itos(MAX_LIGHTMAPS) + "\n";
 
 			scene_state.lightmap_uniform_buffer = compact_bindings;
 			if (scene_state.lightmap_uniform_buffer) {
-				scene_state.lightmap_buffer = RD::get_singleton()->uniform_buffer_create(sizeof(LightmapData) * scene_state.max_lightmaps);
+				scene_state.lightmap_buffer = RD::get_singleton()->uniform_buffer_create(sizeof(LightmapData) * MAX_LIGHTMAPS);
 			} else {
-				scene_state.lightmap_buffer = RD::get_singleton()->storage_buffer_create(sizeof(LightmapData) * scene_state.max_lightmaps);
+				scene_state.lightmap_buffer = RD::get_singleton()->storage_buffer_create(sizeof(LightmapData) * MAX_LIGHTMAPS);
 			}
 		}
-		{
-			//voxel gi
-			scene_state.max_voxel_gi_instances = compact_bindings ? MAX_VOXEL_GI_INSTANCESS_PER_INSTANCE : MAX_VOXEL_GI_INSTANCESS;
-			defines += "\n#define MAX_VOXEL_GI_INSTANCES " + itos(scene_state.max_voxel_gi_instances) + "\n";
-		}
+		scene_state.max_voxel_gi_instances = compact_bindings ? MAX_VOXEL_GI_INSTANCESS_PER_INSTANCE : MAX_VOXEL_GI_INSTANCESS;
 		{
 			//captures
 			scene_state.max_lightmap_captures = 2048;
