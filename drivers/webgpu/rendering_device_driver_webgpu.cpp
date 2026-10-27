@@ -8197,6 +8197,8 @@ RDD::DriverWorkarounds RenderingDeviceDriverWebGPU::get_driver_workarounds() con
 	workarounds.no_texture_swizzle = true;
 	workarounds.no_storage_render_targets = true; // Dawn rejects sRGB view formats on storage textures.
 	workarounds.limited_read_write_storage = !has_rw_storage_textures || !has_texture_formats_tier2;
+	// Without texture-formats-tier1, R8 storage textures are promoted to R32, which supports read-write access.
+	workarounds.limited_read_write_storage_8bit = !has_rw_storage_textures || (has_texture_formats_tier1 && !has_texture_formats_tier2);
 	workarounds.force_omni_dual_paraboloid = true;
 	workarounds.merge_shadow_passes = true;
 	workarounds.batch_instance_draws = true;

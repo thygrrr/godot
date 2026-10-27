@@ -389,13 +389,15 @@ RendererCompositorRD::RendererCompositorRD() {
 			missing = vformat("%d textures per stage", textures_needed);
 		} else if (RD::get_singleton()->limit_get(RD::LIMIT_MAX_STORAGE_BUFFERS_PER_SHADER_STAGE) < storage_buffers_needed) {
 			missing = vformat("%d storage buffers per stage", storage_buffers_needed);
-		} else if (RD::get_singleton()->get_driver_workarounds().limited_read_write_storage) {
-			missing = "read-write storage for RGBA8, RGBA16 and RGBA32 formats"; // SDFGI, VoxelGI, SSIL and DOF need them.
 		}
 		if (!missing.is_empty()) {
 			WARN_PRINT(vformat("The Clustered renderer requires %s, which this platform lacks. Defaulting to Mobile renderer.", missing));
 			rendering_method = "mobile";
 			OS::get_singleton()->set_current_rendering_method(rendering_method, OS::get_singleton()->get_current_rendering_method_source());
+		} else if (RD::get_singleton()->get_driver_workarounds().limited_read_write_storage) {
+			// SDFGI, VoxelGI and compute depth of field need read-write storage in RGBA8, RGBA16 and RGBA32 formats (WebGPU
+			// texture-formats-tier2). The renderer runs without them and warns when a scene asks for one.
+			print_verbose("The Clustered renderer runs without SDFGI, VoxelGI and compute depth of field: this platform lacks read-write storage for RGBA8, RGBA16 and RGBA32 formats.");
 		}
 	}
 

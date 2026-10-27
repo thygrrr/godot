@@ -1837,6 +1837,15 @@ void RenderForwardClustered::_render_scene(RenderDataRD *p_render_data, const Co
 	bool using_voxelgi = false;
 	bool reverse_cull = p_render_data->scene_data->cam_transform.basis.determinant() < 0;
 	bool using_ssil = !is_reflection_probe && p_render_data->environment.is_valid() && environment_get_ssil_enabled(p_render_data->environment);
+	if (using_ssil && RD::get_singleton()->get_driver_workarounds().limited_read_write_storage_8bit) {
+		WARN_PRINT_ONCE("SSIL is unavailable on this platform, which lacks read-write storage for R8 textures. Disabling SSIL.");
+		using_ssil = false;
+	}
+	if (!gi.is_voxel_gi_supported() && p_render_data->voxel_gi_instances->size() > 0) {
+		WARN_PRINT_ONCE("VoxelGI is unavailable on this platform, which lacks read-write storage for RGBA8, RGBA16 and RGBA32 textures. Ignoring VoxelGI nodes.");
+		p_render_data->voxel_gi_instances = &no_voxel_gi_instances;
+		p_render_data->voxel_gi_count = 0;
+	}
 	bool using_motion_pass = rb_data.is_valid() && using_upscaling;
 
 	if (is_reflection_probe) {
@@ -4032,6 +4041,10 @@ void RenderForwardClustered::sdfgi_update(const Ref<RenderSceneBuffers> &p_rende
 	}
 
 	bool needs_sdfgi = p_environment.is_valid() && environment_get_sdfgi_enabled(p_environment);
+	if (needs_sdfgi && !gi.is_sdfgi_supported()) {
+		WARN_PRINT_ONCE("SDFGI is unavailable on this platform, which lacks read-write storage for RGBA8, RGBA16 and RGBA32 textures. Disabling SDFGI.");
+		needs_sdfgi = false;
+	}
 	bool needs_reset = sdfgi.is_valid() ? sdfgi->version != gi.sdfgi_current_version : false;
 
 	if (!needs_sdfgi || needs_reset) {
@@ -5065,6 +5078,9 @@ String RenderForwardClustered::get_name() const {
 }
 
 void RenderForwardClustered::GeometryInstanceForwardClustered::pair_voxel_gi_instances(const RID *p_voxel_gi_instances, uint32_t p_voxel_gi_instance_count) {
+	if (!RenderForwardClustered::get_singleton()->gi.is_voxel_gi_supported()) {
+		p_voxel_gi_instance_count = 0; // The probes are never rendered; see _render_scene().
+	}
 	if (p_voxel_gi_instance_count > 0) {
 		voxel_gi_instances[0] = p_voxel_gi_instances[0];
 	} else {

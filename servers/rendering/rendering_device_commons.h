@@ -1073,6 +1073,7 @@ public:
 		bool no_texture_swizzle = false; // Texture view component swizzles are ignored.
 		bool no_storage_render_targets = false; // Render targets can't be storage textures with sRGB views.
 		bool limited_read_write_storage = false; // Read-write storage textures are limited to R32 formats.
+		bool limited_read_write_storage_8bit = false; // R8 read-write storage textures are unsupported (8-bit storage formats without read-write access).
 		// Renderer policies for a high fixed cost per API call (WebGPU), needing RENDER_DRIVER_WEBGPU shaders.
 		bool force_omni_dual_paraboloid = false; // Fewer shadow passes than cubemaps.
 		bool merge_shadow_passes = false; // Draw shadow passes sharing a framebuffer in one render pass.

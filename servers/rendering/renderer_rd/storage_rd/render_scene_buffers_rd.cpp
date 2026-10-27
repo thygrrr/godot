@@ -527,15 +527,16 @@ void RenderSceneBuffersRD::allocate_blur_textures() {
 	uint32_t usage_bits = RD::TEXTURE_USAGE_SAMPLING_BIT | RD::TEXTURE_USAGE_CAN_COPY_TO_BIT;
 	if (can_be_storage) {
 		usage_bits += RD::TEXTURE_USAGE_STORAGE_BIT;
-	} else {
-		usage_bits += RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT;
+	}
+	if (!can_be_storage || raster_dof) {
+		usage_bits += RD::TEXTURE_USAGE_COLOR_ATTACHMENT_BIT; // The raster depth of field draws into the blur textures.
 	}
 
 	create_texture(RB_SCOPE_BUFFERS, RB_TEX_BLUR_0, get_base_data_format(), usage_bits, RD::TEXTURE_SAMPLES_1, blur_size, view_count, mipmaps_required);
 	create_texture(RB_SCOPE_BUFFERS, RB_TEX_BLUR_1, get_base_data_format(), usage_bits, RD::TEXTURE_SAMPLES_1, Size2i(blur_size.x >> 1, blur_size.y >> 1), view_count, mipmaps_required - 1);
 
 	// TODO redo this:
-	if (!can_be_storage) {
+	if (!can_be_storage || raster_dof) {
 		// create 4 weight textures, 2 full size, 2 half size
 
 		RD::TextureFormat tf;
