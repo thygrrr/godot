@@ -5636,6 +5636,10 @@ Error RenderingDevice::screen_create(DisplayServerEnums::WindowID p_screen) {
 	return OK;
 }
 
+bool RenderingDevice::screen_is_created(DisplayServerEnums::WindowID p_screen) const {
+	return screen_swap_chains.has(p_screen);
+}
+
 Error RenderingDevice::screen_prepare_for_drawing(DisplayServerEnums::WindowID p_screen) {
 	_THREAD_SAFE_METHOD_
 
@@ -8637,7 +8641,7 @@ Error RenderingDevice::initialize(RenderingContextDriver *p_context, DisplayServ
 
 	Error err;
 	RenderingContextDriver::SurfaceID main_surface = 0;
-	is_main_instance = (singleton == this) && (p_main_window != DisplayServerEnums::INVALID_WINDOW_ID);
+	is_main_instance = (singleton == this); // 2dog: a headless main device has no window but is still the main instance.
 	if (p_main_window != DisplayServerEnums::INVALID_WINDOW_ID) {
 		// Retrieve the surface from the main window if it was specified.
 		main_surface = p_context->surface_get_from_window(p_main_window);

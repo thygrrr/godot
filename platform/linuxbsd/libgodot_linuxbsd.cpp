@@ -141,14 +141,8 @@ int libgodot_export_pack(const char *p_project_path, const char *p_preset, const
 	OS_LinuxBSD export_os;
 
 	Vector<char *> argv;
-	// 2dog: an explicit rendering driver asks for a renderer, which the shader baker needs.
-	bool headless = true;
-	for (int i = 0; i < p_extra_argc; i++) {
-		headless = headless && String(p_extra_argv[i]) != "--rendering-driver";
-	}
-	if (headless) {
-		argv.push_back(const_cast<char *>("--headless"));
-	}
+	// 2dog: an explicit --rendering-driver in the extra arguments keeps a window-less rendering device for the shader baker.
+	argv.push_back(const_cast<char *>("--headless"));
 	argv.push_back(const_cast<char *>("--export-pack"));
 	argv.push_back(const_cast<char *>(p_preset));
 	argv.push_back(const_cast<char *>(p_output_path));

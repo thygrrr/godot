@@ -33,8 +33,6 @@
 #include "core/core_globals.h"
 #include "core/extension/godot_instance.h"
 #include "core/extension/libgodot.h"
-#include "core/input/input.h"
-#include "core/os/main_loop.h"
 #include "main/main.h"
 
 static OS_MacOS *os = nullptr;
@@ -155,14 +153,8 @@ int libgodot_export_pack(const char *p_project_path, const char *p_preset, const
 	CoreGlobals::libgodot_host_instance = false;
 
 	Vector<char *> argv;
-	// 2dog: an explicit rendering driver asks for a renderer, which the shader baker needs.
-	bool headless = true;
-	for (int i = 0; i < p_extra_argc; i++) {
-		headless = headless && String(p_extra_argv[i]) != "--rendering-driver";
-	}
-	if (headless) {
-		argv.push_back(const_cast<char *>("--headless"));
-	}
+	// 2dog: an explicit --rendering-driver in the extra arguments keeps a window-less rendering device for the shader baker.
+	argv.push_back(const_cast<char *>("--headless"));
 	argv.push_back(const_cast<char *>("--export-pack"));
 	argv.push_back(const_cast<char *>(p_preset));
 	argv.push_back(const_cast<char *>(p_output_path));
@@ -175,48 +167,10 @@ int libgodot_export_pack(const char *p_project_path, const char *p_preset, const
 	argv.push_back(const_cast<char *>("++"));
 	argv.push_back(const_cast<char *>("--2dog-host-pack"));
 
-	if (headless) {
-		// 2dog: OS_MacOS_Headless::run owns setup and cleanup.
-		OS_MacOS_Headless export_os("libgodot", argv.size(), argv.ptrw());
+	// 2dog: OS_MacOS_Headless::run owns setup and cleanup.
+	OS_MacOS_Headless export_os("libgodot", argv.size(), argv.ptrw());
 
-		export_os.run();
-		return export_os.get_exit_code();
-	}
-
-	// 2dog: a renderer needs AppKit. OS_MacOS_NSApp::run() never returns, so pump the export like an embedded host.
-	OS_MacOS_NSApp export_os("libgodot", argv.size(), argv.ptrw());
-	Error err;
-	@autoreleasepool {
-		err = Main::setup("libgodot", argv.size(), argv.ptrw());
-	}
-	if (err != OK) {
-		return (err == ERR_HELP) ? EXIT_SUCCESS : EXIT_FAILURE;
-	}
-	int ret;
-	@autoreleasepool {
-		ret = Main::start();
-	}
-	MainLoop *main_loop = export_os.get_main_loop();
-	if (ret == EXIT_SUCCESS && main_loop) {
-		@autoreleasepool {
-			main_loop->initialize();
-		}
-		while (true) {
-			@autoreleasepool {
-				if (Input::get_singleton()) {
-					Input::get_singleton()->flush_buffered_events();
-				}
-				if (Main::iteration()) {
-					break;
-				}
-				CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0, 0);
-			}
-		}
-		main_loop->finalize();
-	} else if (ret != EXIT_SUCCESS) {
-		export_os.set_exit_code(EXIT_FAILURE);
-	}
-	Main::cleanup();
+	export_os.run();
 	return export_os.get_exit_code();
 #endif
 }

@@ -40,6 +40,9 @@
 #include "servers/rendering/rendering_server_types.h"
 
 void RendererCompositorRD::blit_render_targets_to_screen(DisplayServerEnums::WindowID p_screen, const RenderingServerTypes::BlitToScreen *p_render_targets, int p_amount) {
+	if (!RD::get_singleton()->screen_is_created(p_screen)) {
+		return; // 2dog: a headless rendering device has no screens.
+	}
 	Error err = RD::get_singleton()->screen_prepare_for_drawing(p_screen);
 	if (err != OK) {
 		// Window is minimized and does not have valid swapchain, skip drawing without printing errors.
@@ -216,6 +219,9 @@ void RendererCompositorRD::set_boot_image_with_stretch(const Ref<Image> &p_image
 		return;
 	}
 
+	if (!RD::get_singleton()->screen_is_created(DisplayServerEnums::MAIN_WINDOW_ID)) {
+		return; // 2dog: a headless rendering device has no screens.
+	}
 	Error err = RD::get_singleton()->screen_prepare_for_drawing(DisplayServerEnums::MAIN_WINDOW_ID);
 	if (err != OK) {
 		// Window is minimized and does not have valid swapchain, skip drawing without printing errors.

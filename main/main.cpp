@@ -872,7 +872,7 @@ void Main::print_help(const char *p_binary) {
 	print_help_option("--gpu-luid <adapter_luid>", "Prefer the GPU whose OS adapter LUID matches (hexadecimal; Windows). Ignored when --gpu-index is set; falls back to automatic selection when no device matches.\n"); // 2dog:
 	print_help_option("--text-driver <driver>", "Text driver (used for font rendering, bidirectional support and shaping).\n");
 	print_help_option("--tablet-driver <driver>", "Pen tablet input driver.\n");
-	print_help_option("--headless", "Enable headless mode (--display-driver headless --audio-driver Dummy). Useful for servers and with --script.\n");
+	print_help_option("--headless", "Enable headless mode (--display-driver headless --audio-driver Dummy). Useful for servers and with --script. With an explicit --rendering-driver or --rendering-method, a window-less rendering device still runs, as shader baking needs one.\n");
 	print_help_option("--log-file <file>", "Write output/error log to the specified path instead of the default location defined by the project.\n");
 	print_help_option("", "<file> path should be absolute or relative to the project directory.\n");
 	print_help_option("--write-movie <file>", "Write a video to the specified path (usually with .avi or .png extension).\n");
