@@ -1786,7 +1786,6 @@ void AudioServer::set_bus_layout(const Ref<AudioBusLayout> &p_bus_layout) {
 		} else {
 			bus->name = p_bus_layout->buses[i].name;
 			bus->send = p_bus_layout->buses[i].send;
-			AudioDriver::get_singleton()->set_sample_bus_send(i, bus->send);
 		}
 
 		bus->solo = p_bus_layout->buses[i].solo;
@@ -1820,6 +1819,10 @@ void AudioServer::set_bus_layout(const Ref<AudioBusLayout> &p_bus_layout) {
 			buses.write[i]->channels.write[j].buffer.resize(buffer_size);
 		}
 		_update_bus_effects(i);
+	}
+	// Drivers can resolve send names through AudioServer, so all buses must exist first.
+	for (int i = 1; i < buses.size(); i++) {
+		AudioDriver::get_singleton()->set_sample_bus_send(i, buses[i]->send);
 	}
 #ifdef TOOLS_ENABLED
 	set_edited(false);
