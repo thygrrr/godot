@@ -108,8 +108,44 @@ func _check_direct_requests() -> void:
 			_check(texture.is_valid() == supported, "Direct texture request violated the format's sample-count support")
 			if texture.is_valid():
 				rd.free_rid(texture)
+	_check_integer_storage(rd)
 	_check_pipeline_requests(rd)
 	rd.free()
+
+
+func _check_integer_storage(rd: RenderingDevice) -> void:
+	var usage := RenderingDevice.TEXTURE_USAGE_COLOR_ATTACHMENT_BIT | RenderingDevice.TEXTURE_USAGE_STORAGE_BIT | RenderingDevice.TEXTURE_USAGE_SAMPLING_BIT
+	var textures: Array[RID] = []
+	for data_format in [RenderingDevice.DATA_FORMAT_R8_UINT, RenderingDevice.DATA_FORMAT_R8_SINT, RenderingDevice.DATA_FORMAT_R8G8_UINT, RenderingDevice.DATA_FORMAT_R8G8_SINT]:
+		_check(rd.texture_is_format_supported_for_usage(data_format, usage), "Integer storage capability is missing")
+		var format := RDTextureFormat.new()
+		format.width = 16
+		format.height = 16
+		format.format = data_format
+		format.usage_bits = usage
+		var texture := rd.texture_create(format, RDTextureView.new())
+		_check(texture.is_valid(), "Integer storage attachment could not be created")
+		textures.append(texture)
+
+	var normal_format := RDTextureFormat.new()
+	normal_format.width = 16
+	normal_format.height = 16
+	normal_format.format = RenderingDevice.DATA_FORMAT_R8G8B8A8_UNORM
+	normal_format.usage_bits = usage
+	var normal := rd.texture_create(normal_format, RDTextureView.new())
+	var framebuffer := rd.framebuffer_create([normal, textures[2]])
+	_check(framebuffer.is_valid(), "VoxelGI framebuffer lost its integer attachment")
+	var source := RDShaderSource.new()
+	source.source_vertex = "#version 450\nvoid main() { gl_Position = vec4(0.0, 0.0, 0.0, 1.0); }"
+	source.source_fragment = "#version 450\nlayout(location=0) out vec4 normal; layout(location=1) out uvec4 voxel; void main() { normal = vec4(1.0); voxel = uvec4(1, 2, 0, 0); }"
+	var shader := rd.shader_create_from_spirv(rd.shader_compile_spirv_from_source(source))
+	var blend := RDPipelineColorBlendState.new()
+	blend.attachments = [RDPipelineColorBlendStateAttachment.new(), RDPipelineColorBlendStateAttachment.new()]
+	var pipeline := rd.render_pipeline_create(shader, rd.framebuffer_get_format(framebuffer), -1, RenderingDevice.RENDER_PRIMITIVE_TRIANGLES,
+		RDPipelineRasterizationState.new(), RDPipelineMultisampleState.new(), RDPipelineDepthStencilState.new(), blend)
+	_check(pipeline.is_valid(), "VoxelGI fragment outputs do not match the framebuffer")
+	for resource in [pipeline, shader, framebuffer, normal] + textures:
+		rd.free_rid(resource)
 
 
 func _check_pipeline_requests(rd: RenderingDevice) -> void:

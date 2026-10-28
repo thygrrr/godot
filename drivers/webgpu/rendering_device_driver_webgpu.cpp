@@ -2042,8 +2042,12 @@ BitField<RDD::TextureUsageBits> RenderingDeviceDriverWebGPU::texture_get_usages_
 	switch (p_format) {
 		case DATA_FORMAT_R8_UNORM:
 		case DATA_FORMAT_R8_SNORM:
+		case DATA_FORMAT_R8_UINT:
+		case DATA_FORMAT_R8_SINT:
 		case DATA_FORMAT_R8G8_UNORM:
 		case DATA_FORMAT_R8G8_SNORM:
+		case DATA_FORMAT_R8G8_UINT:
+		case DATA_FORMAT_R8G8_SINT:
 		case DATA_FORMAT_R8G8B8A8_UNORM:
 		case DATA_FORMAT_R8G8B8A8_SNORM:
 		case DATA_FORMAT_R8G8B8A8_UINT:
