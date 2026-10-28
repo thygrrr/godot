@@ -633,6 +633,7 @@ Error RenderingDeviceDriverWebGPU::initialize(uint32_t p_device_index, uint32_t 
 }
 
 void RenderingDeviceDriverWebGPU::_check_capabilities() {
+	has_core_features = wgpuDeviceHasFeature(device, WGPUFeatureName_CoreFeaturesAndLimits);
 	capabilities.device_family = DEVICE_UNKNOWN;
 	capabilities.version_major = 1;
 	capabilities.version_minor = 0;
@@ -1379,6 +1380,14 @@ static WGPUTextureFormat _get_srgb_view_format(WGPUTextureFormat p_format) {
 }
 
 RDD::TextureID RenderingDeviceDriverWebGPU::texture_create(const TextureFormat &p_format, const TextureView &p_view) {
+	ERR_FAIL_COND_V_MSG(!texture_is_format_supported_for_samples(p_format.format, p_format.samples), TextureID(), "WebGPU: texture format does not support the requested sample count.");
+	if (p_format.samples != TEXTURE_SAMPLES_1) {
+		ERR_FAIL_COND_V_MSG(p_format.texture_type != TEXTURE_TYPE_2D || p_format.array_layers != 1 || p_format.mipmaps != 1,
+				TextureID(), "WebGPU: multisampled textures must be 2D with one layer and one mip level.");
+		const WGPUTextureUsage usage = _texture_usage_to_wgpu(p_format.usage_bits);
+		ERR_FAIL_COND_V_MSG(!(usage & WGPUTextureUsage_RenderAttachment) || (usage & WGPUTextureUsage_StorageBinding),
+				TextureID(), "WebGPU: multisampled textures require attachment usage and cannot use storage binding.");
+	}
 	WGTexture *tex = memnew(WGTexture);
 
 	tex->format = _data_format_to_wgpu(p_format.format);
@@ -1873,6 +1882,20 @@ Vector<uint8_t> RenderingDeviceDriverWebGPU::texture_get_data(TextureID p_textur
 	// Return empty on first call — signals "not ready" to the caller.
 	// Data will be available on the next call after frame_post_draw.
 	return Vector<uint8_t>();
+}
+
+bool RenderingDeviceDriverWebGPU::texture_is_format_supported_for_samples(DataFormat p_format, TextureSamples p_samples) {
+	if (p_samples != TEXTURE_SAMPLES_1 && p_samples != TEXTURE_SAMPLES_4) {
+		return false;
+	}
+	if (texture_get_usages_supported_by_format(p_format, false) == 0) {
+		return false;
+	}
+	if (p_samples == TEXTURE_SAMPLES_1) {
+		return true;
+	}
+	const WGPUTextureFormat format = _data_format_to_wgpu(p_format);
+	return wgpu_format_supports_multisampling(format, has_core_features, has_texture_formats_tier1, format == WGPUTextureFormat_RG11B10Ufloat && wgpuDeviceHasFeature(device, WGPUFeatureName_RG11B10UfloatRenderable));
 }
 
 BitField<RDD::TextureUsageBits> RenderingDeviceDriverWebGPU::texture_get_usages_supported_by_format(DataFormat p_format, bool p_cpu_readable) {
@@ -7046,6 +7069,22 @@ RDD::PipelineID RenderingDeviceDriverWebGPU::render_pipeline_create(
 		RenderPassID p_render_pass,
 		uint32_t p_render_subpass,
 		VectorView<PipelineSpecializationConstant> p_specialization_constants) {
+	ERR_FAIL_COND_V_MSG(p_multisample_state.sample_count != TEXTURE_SAMPLES_1 && p_multisample_state.sample_count != TEXTURE_SAMPLES_4,
+			PipelineID(), "WebGPU: render pipelines only support sample counts 1 and 4.");
+	WGRenderPass *render_pass = (WGRenderPass *)p_render_pass.id;
+	ERR_FAIL_NULL_V(render_pass, PipelineID());
+	ERR_FAIL_UNSIGNED_INDEX_V(p_render_subpass, render_pass->subpasses.size(), PipelineID());
+	const WGRenderPass::SubpassInfo &subpass = render_pass->subpasses[p_render_subpass];
+	for (const AttachmentReference &ref : subpass.color_references) {
+		if (ref.attachment != AttachmentReference::UNUSED) {
+			ERR_FAIL_COND_V_MSG(!texture_is_format_supported_for_samples(render_pass->attachments[ref.attachment].format, p_multisample_state.sample_count),
+					PipelineID(), "WebGPU: color attachment format does not support the pipeline sample count.");
+		}
+	}
+	if (subpass.depth_stencil_reference.attachment != AttachmentReference::UNUSED) {
+		ERR_FAIL_COND_V_MSG(!texture_is_format_supported_for_samples(render_pass->attachments[subpass.depth_stencil_reference.attachment].format, p_multisample_state.sample_count),
+				PipelineID(), "WebGPU: depth attachment format does not support the pipeline sample count.");
+	}
 #ifdef WEB_ENABLED
 	// Chrome compiles pipelines one by one on its GPU thread and presents no frames meanwhile, and Godot creates many
 	// pipelines it never binds, which stalled Forward+ startup for half a minute. Create each on first bind instead.

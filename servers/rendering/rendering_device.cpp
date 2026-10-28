@@ -3348,6 +3348,12 @@ Error RenderingDevice::texture_clear(RID p_texture, const Color &p_color, uint32
 	return OK;
 }
 
+bool RenderingDevice::texture_is_format_supported_for_samples(DataFormat p_format, TextureSamples p_samples) const {
+	ERR_FAIL_INDEX_V(p_format, DATA_FORMAT_MAX, false);
+	ERR_FAIL_INDEX_V(p_samples, TEXTURE_SAMPLES_MAX, false);
+	return driver->texture_is_format_supported_for_samples(p_format, p_samples);
+}
+
 bool RenderingDevice::texture_is_format_supported_for_usage(DataFormat p_format, BitField<RenderingDevice::TextureUsageBits> p_usage) const {
 	ERR_FAIL_INDEX_V(p_format, DATA_FORMAT_MAX, false);
 
@@ -5114,7 +5120,7 @@ RID RenderingDevice::render_pipeline_create(RID p_shader, FramebufferFormatID p_
 			}
 		}
 		ERR_FAIL_COND_V_MSG(shader->fragment_output_mask != output_mask, RID(),
-				"Mismatch fragment shader output mask (" + itos(shader->fragment_output_mask) + ") and framebuffer color output mask (" + itos(output_mask) + ") when binding both in render pipeline.");
+				"Mismatch fragment shader output mask (" + itos(shader->fragment_output_mask) + ") and framebuffer color output mask (" + itos(output_mask) + ") when binding both in render pipeline. Shader: '" + shader->name + "', framebuffer format: " + itos(p_framebuffer_format) + ", pass: " + itos(p_for_render_pass) + ".");
 	}
 
 	RDD::VertexFormatID driver_vertex_format;

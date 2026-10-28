@@ -46,6 +46,20 @@ through the actual shader, layout and uniform-set paths:
 
 See [the driver notes](../README.md) for build and renderer selection.
 
+`native_smoke/msaa.gd` checks effective root/SubViewport sample counts, 2D HDR and
+SDR pixels, runtime MSAA switching, and rejection of unsupported direct texture
+and pipeline requests. From the outer 2dog checkout, run it against a rebuilt
+native engine with:
+
+```text
+dotnet run --project tests/webgpu-smoke -- webgpu forward_plus --msaa
+dotnet run --project tests/webgpu-smoke -- webgpu mobile --msaa
+```
+
+Set `TWODOG_WEBGPU_NATIVE_PATH` to the rebuilt libgodot when testing local changes.
+The direct rejection probes deliberately produce capability errors; the host
+rejects any unexpected engine errors.
+
 The outer `tests/webgpu-smoke` test reloads a baked shader container and checks
 specialization constants and push constants by compute readback. Native and
 browser rendering checks also cover two user varyings and a textured lightmapped

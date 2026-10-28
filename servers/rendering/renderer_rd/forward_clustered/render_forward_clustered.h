@@ -156,6 +156,7 @@ public:
 		RID get_specular_only_fb();
 		RID get_velocity_only_fb();
 
+		virtual void get_msaa_texture_formats(Vector<RD::DataFormat> &r_formats) const override;
 		virtual void configure(RenderSceneBuffersRD *p_render_buffers) override;
 		virtual void free_data() override;
 

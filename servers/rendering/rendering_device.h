@@ -484,6 +484,7 @@ public:
 	Error texture_get_data_async(RID p_texture, uint32_t p_layer, const Callable &p_callback);
 
 	bool texture_is_format_supported_for_usage(DataFormat p_format, BitField<TextureUsageBits> p_usage) const;
+	bool texture_is_format_supported_for_samples(DataFormat p_format, TextureSamples p_samples) const;
 	bool texture_is_shared(RID p_texture);
 	bool texture_is_valid(RID p_texture);
 	TextureFormat texture_get_format(RID p_texture);

@@ -3038,8 +3038,18 @@ void RenderForwardMobile::_update_global_pipeline_data_requirements_from_project
 	const bool positional_shadow_16_bits = GLOBAL_GET("rendering/lights_and_shadows/positional_shadow/atlas_16_bits");
 	global_pipeline_data_required.use_16_bit_shadows = directional_shadow_16_bits || positional_shadow_16_bits;
 	global_pipeline_data_required.use_32_bit_shadows = !directional_shadow_16_bits || !positional_shadow_16_bits;
-	global_pipeline_data_required.target_samples = RenderSceneBuffersRD::msaa_to_samples(RSE::ViewportMSAA(msaa_2d_mode));
-	global_pipeline_data_required.texture_samples = RenderSceneBuffersRD::msaa_to_samples(RSE::ViewportMSAA(msaa_3d_mode));
+	const RD::DataFormat target_formats[] = {
+		RendererRD::TextureStorage::render_target_get_color_format(false, false),
+		RendererRD::TextureStorage::render_target_get_color_format(true, false),
+	};
+	const RD::DataFormat texture_formats[] = {
+		_render_buffers_get_preferred_color_format(),
+		RD::DATA_FORMAT_R16G16B16A16_SFLOAT, // HDR viewports can use the same precompiled pipelines.
+		RenderSceneBuffersRD::get_depth_format(false, true, false),
+		RenderSceneBuffersRD::get_velocity_format(),
+	};
+	global_pipeline_data_required.target_samples = RenderSceneBuffersRD::msaa_to_samples(RenderSceneBuffersRD::get_supported_msaa(RSE::ViewportMSAA(msaa_2d_mode), { target_formats, std::size(target_formats) }));
+	global_pipeline_data_required.texture_samples = RenderSceneBuffersRD::msaa_to_samples(RenderSceneBuffersRD::get_supported_msaa(RSE::ViewportMSAA(msaa_3d_mode), { texture_formats, std::size(texture_formats) }));
 }
 
 void RenderForwardMobile::_update_global_pipeline_data_requirements_from_light_storage() {

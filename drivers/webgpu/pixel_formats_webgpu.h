@@ -34,6 +34,58 @@
 
 #include <webgpu/webgpu.h>
 
+// WebGPU's format table defines 4x support; 2x and 8x are never valid.
+static inline bool wgpu_format_supports_multisampling(WGPUTextureFormat p_format, bool p_core, bool p_tier1, bool p_rg11b10_renderable) {
+	switch (p_format) {
+		case WGPUTextureFormat_R8Unorm:
+		case WGPUTextureFormat_RG8Unorm:
+		case WGPUTextureFormat_RGBA8Unorm:
+		case WGPUTextureFormat_RGBA8UnormSrgb:
+		case WGPUTextureFormat_BGRA8Unorm:
+		case WGPUTextureFormat_R16Float:
+		case WGPUTextureFormat_RG16Float:
+		case WGPUTextureFormat_RGB10A2Unorm:
+		case WGPUTextureFormat_Stencil8:
+		case WGPUTextureFormat_Depth16Unorm:
+		case WGPUTextureFormat_Depth24Plus:
+		case WGPUTextureFormat_Depth24PlusStencil8:
+		case WGPUTextureFormat_Depth32Float:
+		case WGPUTextureFormat_Depth32FloatStencil8:
+			return true;
+		case WGPUTextureFormat_BGRA8UnormSrgb:
+		case WGPUTextureFormat_RGBA16Float:
+		case WGPUTextureFormat_R32Float:
+		case WGPUTextureFormat_R8Uint:
+		case WGPUTextureFormat_R8Sint:
+		case WGPUTextureFormat_RG8Uint:
+		case WGPUTextureFormat_RG8Sint:
+		case WGPUTextureFormat_RGBA8Uint:
+		case WGPUTextureFormat_RGBA8Sint:
+		case WGPUTextureFormat_R16Uint:
+		case WGPUTextureFormat_R16Sint:
+		case WGPUTextureFormat_RG16Uint:
+		case WGPUTextureFormat_RG16Sint:
+		case WGPUTextureFormat_RGBA16Uint:
+		case WGPUTextureFormat_RGBA16Sint:
+		case WGPUTextureFormat_RGB10A2Uint:
+			return p_core;
+		case WGPUTextureFormat_R8Snorm:
+		case WGPUTextureFormat_RG8Snorm:
+		case WGPUTextureFormat_RGBA8Snorm:
+		case WGPUTextureFormat_R16Unorm:
+		case WGPUTextureFormat_R16Snorm:
+		case WGPUTextureFormat_RG16Unorm:
+		case WGPUTextureFormat_RG16Snorm:
+		case WGPUTextureFormat_RGBA16Unorm:
+		case WGPUTextureFormat_RGBA16Snorm:
+			return p_tier1;
+		case WGPUTextureFormat_RG11B10Ufloat:
+			return p_rg11b10_renderable;
+		default:
+			return false;
+	}
+}
+
 // Storage declarations use a format name followed by a comma.
 static inline WGPUTextureFormat wgpu_storage_format_from_wgsl(const char *p_format) {
 	if (strncmp(p_format, "rgba8unorm,", 11) == 0) {

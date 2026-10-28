@@ -35,6 +35,7 @@
 #include "servers/rendering/renderer_rd/framebuffer_cache_rd.h"
 #include "servers/rendering/renderer_rd/renderer_scene_render_rd.h"
 #include "servers/rendering/renderer_rd/storage_rd/material_storage.h"
+#include "servers/rendering/renderer_rd/storage_rd/render_scene_buffers_rd.h"
 #include "servers/rendering/renderer_rd/uniform_set_cache_rd.h"
 #include "servers/rendering/rendering_server_globals.h"
 
@@ -4306,6 +4307,7 @@ void TextureStorage::_update_render_target(RenderTarget *rt) {
 
 	rt->color_format = render_target_get_color_format(rt->use_hdr, false);
 	rt->color_format_srgb = render_target_get_color_format(rt->use_hdr, true);
+	rt->msaa = RenderSceneBuffersRD::get_supported_msaa(rt->requested_msaa, rt->color_format);
 
 	if (rt->use_hdr) {
 		rt->image_format = rt->is_transparent ? Image::FORMAT_RGBAH : Image::FORMAT_RGBH;
@@ -4652,11 +4654,11 @@ void TextureStorage::render_target_set_as_unused(RID p_render_target) {
 void TextureStorage::render_target_set_msaa(RID p_render_target, RSE::ViewportMSAA p_msaa) {
 	RenderTarget *rt = render_target_owner.get_or_null(p_render_target);
 	ERR_FAIL_NULL(rt);
-	if (p_msaa == rt->msaa) {
+	if (p_msaa == rt->requested_msaa) {
 		return;
 	}
 
-	rt->msaa = p_msaa;
+	rt->requested_msaa = p_msaa;
 	_update_render_target(rt);
 }
 

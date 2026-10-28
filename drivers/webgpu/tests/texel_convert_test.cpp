@@ -43,6 +43,26 @@ static double round_trip(WGPUTextureFormat p_format, double p_value) {
 }
 
 int main() {
+	// A format must support multisampling in every enabled feature level, not just be renderable.
+	for (bool core : { false, true }) {
+		for (bool tier1 : { false, true }) {
+			for (bool rg11b10 : { false, true }) {
+				assert(wgpu_format_supports_multisampling(WGPUTextureFormat_RGBA8Unorm, core, tier1, rg11b10));
+				assert(wgpu_format_supports_multisampling(WGPUTextureFormat_Depth24PlusStencil8, core, tier1, rg11b10));
+				assert(wgpu_format_supports_multisampling(WGPUTextureFormat_RGBA16Float, core, tier1, rg11b10) == core);
+				assert(wgpu_format_supports_multisampling(WGPUTextureFormat_RG8Uint, core, tier1, rg11b10) == core);
+				assert(wgpu_format_supports_multisampling(WGPUTextureFormat_R32Float, core, tier1, rg11b10) == core);
+				assert(wgpu_format_supports_multisampling(WGPUTextureFormat_RGBA8Snorm, core, tier1, rg11b10) == tier1);
+				assert(wgpu_format_supports_multisampling(WGPUTextureFormat_RGBA16Unorm, core, tier1, rg11b10) == tier1);
+				assert(wgpu_format_supports_multisampling(WGPUTextureFormat_RG11B10Ufloat, core, tier1, rg11b10) == rg11b10);
+				assert(!wgpu_format_supports_multisampling(WGPUTextureFormat_RG32Float, core, tier1, rg11b10));
+				assert(!wgpu_format_supports_multisampling(WGPUTextureFormat_RGBA32Float, core, tier1, rg11b10));
+				assert(!wgpu_format_supports_multisampling(WGPUTextureFormat_R32Uint, core, tier1, rg11b10));
+				assert(!wgpu_format_supports_multisampling(WGPUTextureFormat_BC1RGBAUnorm, core, tier1, rg11b10));
+				assert(!wgpu_format_supports_multisampling(WGPUTextureFormat_Undefined, core, tier1, rg11b10));
+			}
+		}
+	}
 	// WGSL language support and texture-format capabilities are independent.
 	assert(wgpu_storage_format_from_wgsl("rgba16sint, read_write>") == WGPUTextureFormat_RGBA16Sint);
 	assert(wgpu_storage_format_from_wgsl("r32uint,read_write>") == WGPUTextureFormat_R32Uint);
@@ -75,5 +95,5 @@ int main() {
 	assert(!wgpu_format_texel_info(WGPUTextureFormat_RGB10A2Unorm, channels, type));
 	assert(wgpu_format_pixel_size(WGPUTextureFormat_RGBA16Unorm) == 8);
 
-	std::puts("PASS: storage format capabilities and texel sign, range and channel layout");
+	std::puts("PASS: multisample/storage format capabilities and texel sign, range and channel layout");
 }

@@ -334,6 +334,8 @@ public:
 		return samplers;
 	}
 
+	static RSE::ViewportMSAA get_supported_msaa(RSE::ViewportMSAA p_requested, VectorView<RD::DataFormat> p_formats);
+
 	_FORCE_INLINE_ static RD::TextureSamples msaa_to_samples(RSE::ViewportMSAA p_msaa) {
 		switch (p_msaa) {
 			case RSE::VIEWPORT_MSAA_DISABLED:

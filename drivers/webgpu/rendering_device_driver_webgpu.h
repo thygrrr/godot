@@ -89,6 +89,7 @@ class RenderingDeviceDriverWebGPU : public RenderingDeviceDriver {
 	FragmentDensityMapCapabilities fdm_capabilities;
 	WGPULimits device_limits = WGPU_LIMITS_INIT;
 	bool has_texture_formats_tier1 = false;
+	bool has_core_features = false;
 	bool has_texture_formats_tier2 = false;
 	bool has_rw_storage_textures = false; // readonly-and-readwrite-storage-textures
 
@@ -327,6 +328,7 @@ public:
 	virtual Vector<uint8_t> texture_get_data(TextureID p_texture, uint32_t p_layer) override final;
 	/// Query which texture usage bits are supported for a given format.
 	virtual BitField<TextureUsageBits> texture_get_usages_supported_by_format(DataFormat p_format, bool p_cpu_readable) override final;
+	virtual bool texture_is_format_supported_for_samples(DataFormat p_format, TextureSamples p_samples) override final;
 	/// Check if a texture can create a shared view with a different format.
 	virtual bool texture_can_make_shared_with_format(TextureID p_texture, DataFormat p_format, bool &r_raw_reinterpretation) override final;
 
