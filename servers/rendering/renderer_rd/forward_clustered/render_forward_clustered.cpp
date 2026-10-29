@@ -4174,7 +4174,7 @@ void RenderForwardClustered::_update_global_pipeline_data_requirements_from_proj
 		RenderBufferDataForwardClustered::get_normal_roughness_format(),
 		RenderBufferDataForwardClustered::get_voxelgi_format(),
 	};
-	global_pipeline_data_required.texture_samples = RenderSceneBuffersRD::msaa_to_samples(RenderSceneBuffersRD::get_supported_msaa(RSE::ViewportMSAA(msaa_3d_mode), { formats, std::size(formats) }));
+	global_pipeline_data_required.texture_samples = RenderSceneBuffersRD::msaa_to_samples(RenderSceneBuffersRD::get_supported_msaa(RSE::ViewportMSAA(msaa_3d_mode), { formats, std_size(formats) }));
 }
 
 void RenderForwardClustered::_update_global_pipeline_data_requirements_from_light_storage() {

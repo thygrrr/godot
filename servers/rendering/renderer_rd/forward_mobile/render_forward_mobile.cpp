@@ -3048,8 +3048,8 @@ void RenderForwardMobile::_update_global_pipeline_data_requirements_from_project
 		RenderSceneBuffersRD::get_depth_format(false, true, false),
 		RenderSceneBuffersRD::get_velocity_format(),
 	};
-	global_pipeline_data_required.target_samples = RenderSceneBuffersRD::msaa_to_samples(RenderSceneBuffersRD::get_supported_msaa(RSE::ViewportMSAA(msaa_2d_mode), { target_formats, std::size(target_formats) }));
-	global_pipeline_data_required.texture_samples = RenderSceneBuffersRD::msaa_to_samples(RenderSceneBuffersRD::get_supported_msaa(RSE::ViewportMSAA(msaa_3d_mode), { texture_formats, std::size(texture_formats) }));
+	global_pipeline_data_required.target_samples = RenderSceneBuffersRD::msaa_to_samples(RenderSceneBuffersRD::get_supported_msaa(RSE::ViewportMSAA(msaa_2d_mode), { target_formats, std_size(target_formats) }));
+	global_pipeline_data_required.texture_samples = RenderSceneBuffersRD::msaa_to_samples(RenderSceneBuffersRD::get_supported_msaa(RSE::ViewportMSAA(msaa_3d_mode), { texture_formats, std_size(texture_formats) }));
 }
 
 void RenderForwardMobile::_update_global_pipeline_data_requirements_from_light_storage() {
