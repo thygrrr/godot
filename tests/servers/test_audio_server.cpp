@@ -34,6 +34,11 @@ TEST_FORCE_LINK(test_audio_server)
 
 #include "servers/audio/audio_server.h"
 
+#ifdef TOOLS_ENABLED
+#include "editor/audio/audio_stream_preview.h"
+#include "scene/resources/audio_stream_wav.h"
+#endif
+
 namespace TestAudioServer {
 
 // Reproduce the Web driver's name lookup without requiring a browser or audio device.
@@ -96,3 +101,23 @@ TEST_CASE("[Audio] Bus layout is complete before drivers resolve sends") {
 }
 
 } // namespace TestAudioServer
+
+#ifdef TOOLS_ENABLED
+TEST_CASE("[Audio] Audio preview destruction waits for decoding") {
+	Ref<AudioStreamWAV> stream;
+	stream.instantiate();
+	stream->set_format(AudioStreamWAV::FORMAT_8_BITS);
+	stream->set_mix_rate(44100);
+	Vector<uint8_t> silence;
+	silence.resize(60 * 44100);
+	silence.fill(0);
+	stream->set_data(silence);
+
+	AudioStreamPreviewGenerator *generator = memnew(AudioStreamPreviewGenerator);
+	Ref<AudioStreamPreview> preview = generator->generate_preview(stream);
+	memdelete(generator);
+
+	CHECK(preview->get_version() == 2);
+	CHECK(AudioStreamPreviewGenerator::get_singleton() == nullptr);
+}
+#endif
