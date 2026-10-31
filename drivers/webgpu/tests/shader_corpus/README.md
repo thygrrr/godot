@@ -11,6 +11,7 @@ and checks the transformations listed there; it fails when the converter has not
 | basic_vertex | vert | Push constants, UBO, gl_Position |
 | basic_fragment | frag | Combined samplers, push constants |
 | compute_particles | comp | SSBO read/write, push constants |
+| camera_struct | comp | Camera structs passed by value, current and previous-frame matrices |
 | shadow_pass | vert | Minimal push constant MVP |
 | depth_sampling | frag | sampler2DShadow, depth comparison |
 | storage_image | comp | image2D with r8 format |

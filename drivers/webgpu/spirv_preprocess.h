@@ -48,7 +48,7 @@ static constexpr uint32_t PUSH_CONSTANT_BINDING = 999;
 Vector<uint8_t> run_pipeline(const Vector<uint8_t> &p_bytes);
 
 // SPIRV-Tools passes: preserve scalar specialization constants, fold constant expressions, and inline
-// opaque calls. Unsupported composite specialization operations fall back to patched default values.
+// shader calls. Unsupported composite specialization operations fall back to patched default values.
 Vector<uint8_t> freeze_and_inline(const Vector<uint8_t> &p_bytes);
 
 // Rewrite OpCopyLogical (SPIR-V 1.4+) to the equivalent OpCopyObject.

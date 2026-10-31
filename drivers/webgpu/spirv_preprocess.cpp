@@ -209,7 +209,8 @@ Vector<uint8_t> freeze_and_inline(const Vector<uint8_t> &p_bytes) {
 			ERR_PRINT(p_message);
 		}
 	});
-	// The driver patches specialization values into the defaults first. Merged returns let opaque calls inline.
+	// The driver patches specialization values into the defaults first. Merged returns let helpers inline.
+	// DXC miscompiles row-major matrices in struct inout arguments; inline before Tint emits those calls.
 	// Preserve scalar SpecIds as WGSL overrides; only unsupported composite operations need freezing.
 	for (const Inst inst : SpirvView(p_bytes)) {
 		if (inst.op() == spv::OpSpecConstantComposite || (inst.op() == spv::OpSpecConstantOp && (inst[3] == spv::OpCompositeInsert || inst[3] == spv::OpVectorShuffle || inst[3] == spv::OpSelect))) {
@@ -219,13 +220,13 @@ Vector<uint8_t> freeze_and_inline(const Vector<uint8_t> &p_bytes) {
 	}
 	optimizer.RegisterPass(spvtools::CreateFoldSpecConstantOpAndCompositePass())
 			.RegisterPass(spvtools::CreateMergeReturnPass())
-			.RegisterPass(spvtools::CreateInlineOpaquePass())
+			.RegisterPass(spvtools::CreateInlineExhaustivePass())
 			.RegisterPass(spvtools::CreateDeadBranchElimPass())
 			.RegisterPass(spvtools::CreateCFGCleanupPass())
 			.RegisterPass(spvtools::CreateEliminateDeadFunctionsPass());
 	std::vector<uint32_t> words;
 	const bool optimized = optimizer.Run(reinterpret_cast<const uint32_t *>(p_bytes.ptr()), p_bytes.size() / 4, &words);
-	ERR_FAIL_COND_V_MSG(!optimized, p_bytes, "SPIRV-Tools could not freeze specialization constants or inline opaque calls.");
+	ERR_FAIL_COND_V_MSG(!optimized, p_bytes, "SPIRV-Tools could not freeze specialization constants or inline shader calls.");
 	Vector<uint8_t> out;
 	out.resize(words.size() * 4);
 	memcpy(out.ptrw(), words.data(), out.size());

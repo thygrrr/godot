@@ -397,6 +397,16 @@ console.log("\n=== Test 1: specialization constants ===");
   assert(!wgsl.includes("override"), "spec bool constants folded");
 }
 
+{
+  // DXC corrupts row-major matrices in struct inout arguments emitted for ordinary GLSL helpers.
+  const wgsl = fixtureWgsl("camera_struct.spv");
+  assert(wgsl.includes("scene.current") && wgsl.includes("scene.previous"),
+    "camera_struct: current and previous-frame cameras remain distinct");
+  assertEq([...wgsl.matchAll(/\bfn\s+/g)].length, 1,
+    "camera_struct: no camera helper argument boundary reaches DXC");
+  assert(!wgsl.includes("ptr<function,"), "camera_struct: no struct inout arguments remain");
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Test 2: rewrite_copy_logical and malformed input
 // ─────────────────────────────────────────────────────────────────────────────
