@@ -163,11 +163,8 @@ const engine = new Engine(GODOT_CONFIG);
 
 	const missing = Engine.getMissingFeatures({
 		threads: GODOT_THREADS_ENABLED,
+		renderingDriver: GODOT_RENDERING_DRIVER,
 	});
-
-	if (GODOT_RENDERING_DRIVER === 'webgpu' && (typeof navigator === 'undefined' || !navigator.gpu)) {
-		missing.push('WebGPU (try Chrome, Edge, or Firefox)');
-	}
 
 	if (missing.length !== 0) {
 		if (GODOT_CONFIG['serviceWorker'] && GODOT_CONFIG['ensureCrossOriginIsolationHeaders'] && 'serviceWorker' in navigator) {

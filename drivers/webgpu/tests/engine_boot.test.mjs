@@ -5,19 +5,24 @@ import vm from 'node:vm';
 
 const configSource = readFileSync(new URL('../../../platform/web/js/engine/config.js', import.meta.url), 'utf8');
 const engineSource = readFileSync(new URL('../../../platform/web/js/engine/engine.js', import.meta.url), 'utf8');
+const featuresSource = readFileSync(new URL('../../../platform/web/js/engine/features.js', import.meta.url), 'utf8');
 
-function harness(gpu, unavailableReason = '') {
+function harness(gpu, unavailableReason = '', { webgl = true, defaultDriver = '' } = {}) {
     const modules = [];
     const calls = [];
     const warnings = [];
+    const contexts = [];
     class HTMLCanvasElement {}
     const canvas = new HTMLCanvasElement();
     const context = vm.createContext({
         Response, console: { ...console, warn: (...args) => warnings.push(args) },
-        window: {}, navigator: { gpu, language: 'en-US' },
-        HTMLCanvasElement, document: { getElementsByTagName: () => [canvas] },
+        window: { fetch() {}, Response, isSecureContext: true, crossOriginIsolated: true, SharedArrayBuffer },
+        navigator: { gpu, language: 'en-US' },
+        HTMLCanvasElement, document: {
+            getElementsByTagName: () => [canvas],
+            createElement: () => ({ getContext(type) { contexts.push(type); return webgl ? {} : null; } }),
+        },
         requestAnimationFrame() {},
-        Features: {},
         Preloader: class {
             preloadedFiles = [];
             loadPromise() { return Promise.resolve(new Response(new Uint8Array())); }
@@ -33,9 +38,47 @@ function harness(gpu, unavailableReason = '') {
             });
         },
     });
-    vm.runInContext(configSource + '\n' + engineSource.replace('___GODOT_WEBGPU_UNAVAILABLE_REASON___', JSON.stringify(unavailableReason)), context);
-    return { Engine: context.window.Engine, modules, calls, warnings };
+    vm.runInContext(configSource.replace("renderingDriver: '',", `renderingDriver: '${defaultDriver}',`)
+        + '\n' + featuresSource + '\n' + engineSource.replace('___GODOT_WEBGPU_UNAVAILABLE_REASON___', JSON.stringify(unavailableReason)), context);
+    return { Engine: context.window.Engine, modules, calls, warnings, contexts, window: context.window };
 }
+
+test('WebGPU preflight does not create or require a WebGL context', () => {
+    const { Engine, contexts } = harness({}, '', { webgl: false });
+    assert.deepEqual([...Engine.getMissingFeatures({ threads: false, renderingDriver: 'webgpu' })], []);
+    assert.deepEqual(contexts, []);
+});
+
+test('preflight uses the renderer default patched by browser-wasm publish and honors shell overrides', () => {
+    const { Engine } = harness({}, '', { webgl: false, defaultDriver: 'webgpu' });
+    assert.deepEqual([...Engine.getMissingFeatures({ threads: false })], []);
+    assert.match(Engine.getMissingFeatures({ threads: false, renderingDriver: 'opengl3' })[0], /^WebGL2/);
+});
+
+test('Compatibility preflight still requires WebGL2 even when WebGPU is available', () => {
+    const { Engine } = harness({}, '', { webgl: false });
+    assert.match(Engine.getMissingFeatures({ threads: false })[0], /^WebGL2/);
+});
+
+test('WebGPU preflight permits WebGL fallback and reports when neither API is available', () => {
+    const options = { threads: false, renderingDriver: 'webgpu' };
+    assert.deepEqual([...harness(undefined).Engine.getMissingFeatures(options)], []);
+    const { Engine } = harness(undefined, '', { webgl: false });
+    assert.match(Engine.getMissingFeatures(options)[0], /^WebGPU or WebGL2/);
+});
+
+test('WebGPU preflight preserves fetch, HTTPS and threading requirements', () => {
+    const { Engine, window } = harness({}, '', { webgl: false });
+    delete window.fetch;
+    window.isSecureContext = false;
+    window.crossOriginIsolated = false;
+    delete window.SharedArrayBuffer;
+    const missing = [...Engine.getMissingFeatures({ renderingDriver: 'webgpu' })];
+    assert.equal(missing.length, 4);
+    for (const prefix of ['Fetch', 'Secure Context', 'Cross-Origin Isolation', 'SharedArrayBuffer']) {
+        assert.ok(missing.some(feature => feature.startsWith(prefix)));
+    }
+});
 
 test('existing WebGL init works without navigator.gpu', async () => {
     const { Engine, modules } = harness(undefined);
