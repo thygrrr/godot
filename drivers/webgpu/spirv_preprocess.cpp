@@ -547,6 +547,14 @@ Vector<uint8_t> split_combined_samplers(const Vector<uint8_t> &p_bytes) {
 
 	// Combined-sampler loads -> split index, for OpImage on multisampled loads.
 	HashMap<uint32_t, int> split_of_load;
+	struct SampledLoad {
+		uint32_t block;
+		uint32_t image;
+		uint32_t sampler;
+		uint32_t type;
+	};
+	HashMap<uint32_t, SampledLoad> sampled_loads;
+	uint32_t block = 0;
 	Vector<uint8_t> out;
 	append_bytes(out, code.data, 0, 20);
 	bool decorations_injected = false;
@@ -577,6 +585,9 @@ Vector<uint8_t> split_combined_samplers(const Vector<uint8_t> &p_bytes) {
 			}
 		}
 
+		if (op == spv::OpLabel) {
+			block = inst[1];
+		}
 		const int *split_index = nullptr;
 		switch (op) {
 			case spv::OpEntryPoint: {
@@ -631,6 +642,7 @@ Vector<uint8_t> split_combined_samplers(const Vector<uint8_t> &p_bytes) {
 						push_inst(out, spv::OpLoad, { split.image_type, image, split.var });
 						push_inst(out, spv::OpLoad, { sampler_type, sampler, split.sampler_var });
 						push_inst(out, spv::OpSampledImage, { split.sampled_image_type, inst[2], image, sampler });
+						sampled_loads.insert(inst[2], { block, image, sampler, split.sampled_image_type });
 					}
 					split_of_load.insert(inst[2], *split_index);
 					continue;
@@ -646,6 +658,18 @@ Vector<uint8_t> split_combined_samplers(const Vector<uint8_t> &p_bytes) {
 				break;
 			default:
 				break;
+		}
+		// Combined OpLoad values may cross blocks; OpSampledImage values must be consumed in their own block.
+		if ((op >= spv::OpImageSampleImplicitLod && op <= spv::OpImageDrefGather) || op == spv::OpImage || op == spv::OpImageQueryLod) {
+			const SampledLoad *load = sampled_loads.getptr(inst[3]);
+			if (load && load->block != block) {
+				const uint32_t sampled = next_id++;
+				push_inst(out, spv::OpSampledImage, { load->type, sampled, load->image, load->sampler });
+				const int64_t start = out.size();
+				append_inst(out, inst);
+				write_word(out.ptrw() + start, 3, sampled);
+				continue;
+			}
 		}
 		append_inst(out, inst);
 		// Image pointers must follow their image type and precede the variables using them.

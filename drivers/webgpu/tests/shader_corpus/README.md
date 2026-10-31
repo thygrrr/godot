@@ -25,6 +25,7 @@ and checks the transformations listed there; it fails when the converter has not
 | texture_array | frag | Texture array with constant and dynamic indices |
 | sampler_array | frag | Array of combined samplers |
 | sampler_params | frag | One helper sampling two combined samplers |
+| sampler_control_flow | comp | 2D and array sampler loads consumed after an inlined branch |
 
 The SPIR-V is SPIR-V 1.3 for a Vulkan 1.1 client, the targets Godot's glslang uses for
 WebGPU shaders. `compile_fixtures.sh` regenerates it with `glslangValidator`.

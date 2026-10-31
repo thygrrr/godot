@@ -498,6 +498,15 @@ console.log("\n=== Test 5: split_combined_samplers ===");
   assert(ok.wgsl !== null && ok.wgsl.includes("@binding(996") && !ok.stderr.includes("ERROR"), "binding 498 doubles to 996");
 }
 
+{
+  // Inlining the coordinate helper puts sampling in a different block from the combined-sampler load.
+  const wgsl = fixtureWgsl("sampler_control_flow.spv");
+  assert(wgsl.includes("textureSampleLevel(first_tex,") && wgsl.includes("textureSampleLevel(second_tex,"),
+    "sampler_control_flow: 2D and array sampling survive inlined control flow");
+  assertEq(bindingsOf(wgsl), ["0,0", "0,1", "0,2", "0,3", "0,4"],
+    "sampler_control_flow: both sampler/image pairs and the output buffer retain distinct bindings");
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Test 6: fix_depth2_images
 // ─────────────────────────────────────────────────────────────────────────────
